@@ -1,0 +1,2850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Daily B2C</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --border: #2e3347;
+      --primary: #4f8ef7;
+      --primary-hover: #3b7af0;
+      --danger: #f87171;
+      --success: #4ade80;
+      --text: #ffffff;
+      --muted: #6b7a99;
+      --tag-bg: #1e2a47;
+      --tag-text: #7eb3ff;
+      --radius: 10px;
+      --shadow: 0 2px 8px rgba(0,0,0,.4);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      height: 56px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      gap: 20px;
+    }
+    header .logo {
+      font-weight: 700;
+      font-size: 1rem;
+      letter-spacing: -.3px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    header .logo svg { color: var(--primary); }
+
+    /* ── Full-width tab bar ── */
+    .tab-bar {
+      display: flex;
+      gap: 0;
+      flex: 1;
+      height: 100%;
+      align-items: stretch;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      cursor: pointer;
+      padding: 0 20px;
+      font-size: .9rem;
+      font-weight: 600;
+      color: var(--muted);
+      transition: color .15s, border-color .15s;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      white-space: nowrap;
+    }
+    .tab-btn.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
+    .tab-btn:hover:not(.active) { color: var(--text); }
+    .tab-count {
+      background: var(--primary);
+      color: #fff;
+      border-radius: 12px;
+      font-size: .7rem;
+      font-weight: 700;
+      padding: 1px 7px;
+      min-width: 20px;
+      text-align: center;
+      display: none;
+    }
+    .tab-count.visible { display: inline-block; }
+
+    /* ── Layout ── */
+    main { max-width: 1200px; margin: 32px auto; padding: 0 16px 64px; }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    .card h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
+    .card .subtitle { font-size: .85rem; color: var(--muted); margin-bottom: 24px; }
+
+    /* ── Form ── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
+
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field.full { grid-column: 1 / -1; }
+    label { font-size: .8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+
+    input, select, textarea {
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 9px 12px;
+      font-size: .9rem;
+      font-family: inherit;
+      color: var(--text);
+      background: var(--surface2);
+      transition: border-color .15s, box-shadow .15s;
+      outline: none;
+      width: 100%;
+      color-scheme: dark;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37,99,235,.12);
+    }
+    textarea { resize: vertical; min-height: 80px; }
+
+    /* Photo upload */
+    .photo-drop {
+      border: 2px dashed var(--border);
+      border-radius: 7px;
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+      position: relative;
+    }
+    .photo-drop:hover, .photo-drop.over { border-color: var(--primary); background: var(--tag-bg); }
+    .photo-drop input[type=file] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .photo-drop .drop-label { font-size: .85rem; color: var(--muted); pointer-events: none; }
+    .photo-drop .drop-label span { color: var(--primary); font-weight: 600; }
+
+    .photo-previews {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .photo-thumb {
+      position: relative;
+      width: 72px;
+      height: 72px;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .photo-thumb button {
+      position: absolute;
+      top: 2px; right: 2px;
+      background: rgba(0,0,0,.55);
+      border: none;
+      border-radius: 50%;
+      width: 18px; height: 18px;
+      color: #fff;
+      font-size: 10px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0;
+    }
+
+    /* Error type pills */
+    .error-types {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .error-types input[type=radio] { display: none; }
+    .error-types label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      border-radius: 20px;
+      padding: 6px 14px;
+      font-size: .8rem;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+      text-transform: none;
+      letter-spacing: 0;
+      transition: border-color .15s, background .15s, color .15s;
+    }
+    .error-types input[type=radio]:checked + label {
+      background: var(--tag-bg);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    /* Submit */
+    .form-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 24px;
+    }
+    .btn {
+      padding: 9px 20px;
+      border-radius: 7px;
+      font-size: .875rem;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: background .15s, transform .1s;
+    }
+    .btn:active { transform: scale(.98); }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: #2a2f45; }
+
+    /* Toast */
+    #toast {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      background: #2e3347;
+      color: var(--text);
+      padding: 12px 18px;
+      border-radius: 8px;
+      font-size: .875rem;
+      font-weight: 500;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity .25s, transform .25s;
+      pointer-events: none;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+    #toast.success::before { content: "✓"; color: #4ade80; font-weight: 700; }
+
+    /* ── Dashboard ── */
+    .dash-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .dash-header h2 { font-size: 1.1rem; font-weight: 700; }
+
+    .dash-controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .dash-subtabs {
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid var(--border);
+      margin: 0 -20px 16px;
+      padding: 0 20px;
+    }
+    .dash-subtab {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 8px 16px;
+      font-size: .85rem;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+      margin-bottom: -1px;
+      transition: color .15s, border-color .15s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dash-subtab:hover { color: var(--text); }
+    .dash-subtab.active { color: var(--primary); border-bottom-color: var(--primary); }
+    .subtab-count {
+      background: var(--surface);
+      border-radius: 999px;
+      padding: 1px 7px;
+      font-size: .72rem;
+      font-weight: 700;
+      min-width: 20px;
+      text-align: center;
+    }
+    .dash-subtab.active .subtab-count { background: color-mix(in srgb, var(--primary) 20%, transparent); color: var(--primary); }
+    .dash-controls input, .dash-controls select {
+      width: auto;
+      font-size: .8rem;
+      padding: 6px 10px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 12px;
+      font-size: .73rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .badge-wrong    { background: #3a2a10; color: #fbbf24; }
+    .badge-missing  { background: #3a1212; color: #f87171; }
+    .badge-extra    { background: #12213a; color: #60a5fa; }
+    .badge-damaged  { background: #3a1228; color: #f472b6; }
+    .badge-label    { background: #271238; color: #c084fc; }
+    .badge-qty      { background: #0f2e1a; color: #4ade80; }
+    .badge-other    { background: #1e2130; color: #9ca3af; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .875rem;
+    }
+    thead th {
+      text-align: left;
+      font-size: .72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: var(--muted);
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: #1e2235; }
+    tbody tr.row-selected { background: color-mix(in srgb, var(--primary) 10%, transparent); }
+    tbody td { padding: 10px 12px; vertical-align: middle; }
+    .td-muted { color: var(--muted); font-size: .8rem; }
+    .td-mono { font-family: "SF Mono", "Fira Code", monospace; font-size: .82rem; }
+
+    .thumb-cell img {
+      width: 36px; height: 36px;
+      border-radius: 5px;
+      object-fit: cover;
+      border: 1px solid var(--border);
+      cursor: pointer;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 56px 24px;
+      color: var(--muted);
+    }
+    .empty-state .icon { font-size: 2.5rem; margin-bottom: 10px; }
+    .empty-state p { font-size: .9rem; }
+
+    /* Stats row */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .stat-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      text-align: center;
+    }
+    .stat-box .num { font-size: 1.6rem; font-weight: 800; color: var(--primary); }
+    .stat-box .lbl { font-size: .72rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .4px; margin-top: 2px; }
+
+    /* Lightbox */
+    #lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.8);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+    #lightbox.open { display: flex; }
+    #lightbox img { max-width: 90vw; max-height: 85vh; border-radius: 8px; }
+    #lightbox button {
+      position: absolute;
+      top: 16px; right: 20px;
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 1.8rem;
+      cursor: pointer;
+    }
+
+    /* Export btn */
+    .btn-sm { padding: 6px 14px; font-size: .8rem; }
+
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* ── Sync indicator ── */
+    .sync-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+      transition: background .3s;
+    }
+    .sync-dot.ok      { background: var(--success); }
+    .sync-dot.syncing { background: #facc15; animation: pulse 1s infinite; }
+    .sync-dot.error   { background: var(--danger); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    .sync-label {
+      font-size: .75rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .sync-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    /* ── Settings button ── */
+    .settings-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--muted);
+      padding: 6px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      transition: color .15s, background .15s;
+      flex-shrink: 0;
+    }
+    .settings-btn:hover { color: var(--text); background: var(--surface2); }
+
+    /* ── Settings modal ── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.6);
+      z-index: 300;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 28px;
+      width: 100%;
+      max-width: 480px;
+      margin: 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.5);
+    }
+    .modal h3 { font-size: 1rem; font-weight: 700; margin-bottom: 4px; }
+    .modal .modal-sub { font-size: .82rem; color: var(--muted); margin-bottom: 20px; line-height: 1.5; }
+    .modal .field { margin-bottom: 16px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+    .url-status { font-size: .78rem; margin-top: 6px; min-height: 18px; }
+    .url-status.connected { color: var(--success); }
+    .url-status.empty     { color: var(--muted); }
+
+    /* ── Setup banner ── */
+    .setup-banner {
+      background: #1e2a47;
+      border: 1px solid #3b5098;
+      border-radius: var(--radius);
+      padding: 18px 22px;
+      margin-bottom: 20px;
+      display: none;
+    }
+    .setup-banner.show { display: block; }
+    .setup-banner h3 { color: #7eb3ff; font-size: .95rem; margin-bottom: 8px; }
+    .setup-banner ol { padding-left: 18px; color: var(--muted); font-size: .85rem; line-height: 1.9; }
+    .setup-banner ol li strong { color: var(--text); }
+    .setup-banner code {
+      background: #0f1117;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: .8rem;
+      font-family: "SF Mono","Fira Code",monospace;
+      color: #7eb3ff;
+    }
+    .setup-banner .dismiss {
+      float: right;
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+    }
+
+    /* ── Help view accordion ── */
+    .help-section {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    .help-section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      cursor: pointer;
+      user-select: none;
+      background: var(--surface);
+      transition: background .15s;
+    }
+    .help-section-header:hover { background: var(--surface2); }
+    .help-section-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: .9rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .help-chevron {
+      color: var(--muted);
+      transition: transform .2s;
+      flex-shrink: 0;
+    }
+    .help-section.open .help-chevron { transform: rotate(180deg); }
+    .help-section-body {
+      display: none;
+      padding: 16px;
+      border-top: 1px solid var(--border);
+    }
+    .help-section.open .help-section-body { display: block; }
+    .help-section h3 {
+      font-size: .9rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .step-list { list-style: none; padding: 0; counter-reset: steps; }
+    .step-list li {
+      counter-increment: steps;
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: .875rem;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+    .step-list li:last-child { border-bottom: none; }
+    .step-list li::before {
+      content: counter(steps);
+      min-width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: var(--tag-bg);
+      color: var(--primary);
+      font-size: .75rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .step-list li strong { color: var(--text); }
+    .step-list li code {
+      background: #0f1117;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 7px;
+      font-size: .78rem;
+      font-family: "SF Mono","Fira Code",monospace;
+      color: #7eb3ff;
+    }
+
+    .code-block-wrap { position: relative; }
+    .code-block {
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 18px;
+      font-family: "SF Mono","Fira Code",monospace;
+      font-size: .78rem;
+      line-height: 1.7;
+      color: #c9d1d9;
+      overflow-x: auto;
+      white-space: pre;
+      max-height: 420px;
+      overflow-y: auto;
+    }
+    .copy-btn {
+      position: absolute;
+      top: 10px; right: 10px;
+      z-index: 10;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: .75rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      cursor: pointer;
+      transition: background .15s, color .15s;
+    }
+    .copy-btn:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .connect-cta {
+      background: var(--tag-bg);
+      border: 1px solid #3b5098;
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 20px;
+    }
+    .connect-cta p { font-size: .875rem; color: var(--muted); margin: 0; }
+    .connect-cta p strong { color: var(--text); }
+
+    /* ── Expandable row ── */
+    .order-id-link {
+      color: var(--primary);
+      cursor: pointer;
+      font-family: "SF Mono","Fira Code",monospace;
+      font-size: .82rem;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      text-decoration-color: transparent;
+      transition: text-decoration-color .15s;
+    }
+    .order-id-link:hover { text-decoration-color: var(--primary); }
+    .expanded-row td {
+      background: var(--surface2);
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .expanded-detail {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px 24px;
+    }
+    .expanded-detail .detail-item { display: flex; flex-direction: column; gap: 3px; }
+    .expanded-detail .detail-label { font-size: .7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .expanded-detail .detail-value { font-size: .875rem; color: var(--text); word-break: break-word; }
+
+    /* ── Wrong Item conditional fields ── */
+    .wrong-item-section {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      padding: 16px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-top: 4px;
+    }
+    @media (max-width: 540px) { .wrong-item-section { grid-template-columns: 1fr; } }
+    .wrong-item-group { display: flex; flex-direction: column; gap: 10px; }
+    .wrong-item-label {
+      font-size: .75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: var(--primary);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 6px;
+    }
+    .sku-sub-grid { display: grid; grid-template-columns: 1fr 80px 1fr; gap: 8px; }
+    @media (max-width: 400px) { .sku-sub-grid { grid-template-columns: 1fr 1fr; } }
+    #wrongItemFields, #missingItemFields { animation: fadeIn .2s ease; }
+    .sku-dynamic-list { display: flex; flex-direction: column; gap: 8px; }
+    .sku-row-item { display: grid; grid-template-columns: 1fr 80px 1fr auto; gap: 8px; align-items: end; }
+    @media (max-width: 480px) { .sku-row-item { grid-template-columns: 1fr 1fr; } }
+    .btn-add-sku {
+      margin-top: 8px; background: none;
+      border: 1px dashed var(--border); border-radius: 6px;
+      color: var(--primary); font-size: .78rem; font-weight: 600;
+      padding: 6px 12px; cursor: pointer; width: 100%;
+      transition: background .15s, border-color .15s;
+    }
+    .btn-add-sku:hover { background: var(--surface); border-color: var(--primary); }
+    .btn-remove-sku {
+      background: none; border: 1px solid var(--border); border-radius: 6px;
+      color: var(--muted); font-size: .75rem; padding: 0 10px; cursor: pointer;
+      height: 36px; align-self: end; transition: background .15s, color .15s, border-color .15s;
+    }
+    .btn-remove-sku:hover { background: #3a1212; color: #f87171; border-color: #7f1d1d; }
+    .btn-delete-row {
+      background: none; border: none; cursor: pointer; font-size: 1rem;
+      opacity: .45; padding: 4px 6px; border-radius: 6px; transition: opacity .15s, background .15s;
+    }
+    .btn-delete-row:hover { opacity: 1; background: #3a1212; }
+
+    /* ── Row checkboxes ── */
+    input[type="checkbox"].row-check {
+      width: 15px; height: 15px; cursor: pointer; accent-color: var(--primary);
+    }
+    th.col-check, td.col-check { width: 36px; padding: 0 0 0 12px; text-align: center; }
+
+    /* ── Bulk action bar ── */
+    .bulk-bar {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+      border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
+      border-radius: 8px;
+      margin-bottom: 10px;
+      font-size: .82rem;
+      flex-wrap: wrap;
+    }
+    .bulk-bar.visible { display: flex; }
+    .bulk-bar-count { font-weight: 700; color: var(--primary); margin-right: 4px; }
+    .bulk-bar select {
+      font-size: .8rem; padding: 5px 8px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--surface2); color: var(--text); cursor: pointer;
+    }
+    .bulk-bar .btn-clear { margin-left: auto; background: none; border: none; color: var(--muted); font-size: .78rem; cursor: pointer; }
+    .bulk-bar .btn-clear:hover { color: var(--text); }
+
+    @keyframes fadeIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:none; } }
+
+    /* ── Search combobox ── */
+    .search-wrap { position: relative; }
+    .search-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      min-width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 6px 20px rgba(0,0,0,.4);
+      z-index: 50;
+      overflow: hidden;
+    }
+    .search-dropdown.open { display: block; }
+    .search-group-label {
+      font-size: .68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      color: var(--muted);
+      padding: 8px 12px 4px;
+    }
+    .search-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      font-size: .82rem;
+      cursor: pointer;
+      color: var(--text);
+      transition: background .1s;
+    }
+    .search-option:hover, .search-option.focused { background: var(--surface2); }
+    .search-option:last-child { margin-bottom: 6px; }
+
+    .status-select { appearance: none; -webkit-appearance: none; border-radius: 12px; font-size: .72rem; font-weight: 700; padding: 3px 10px; cursor: pointer; border: 1.5px solid; }
+    .status-select.status-open { background: #3a1212; color: #f87171; border-color: #7f1d1d; }
+    .status-select.status-inprogress { background: #3a2a10; color: #fbbf24; border-color: #78350f; }
+    .status-select.status-resolved { background: #0f2e1a; color: #4ade80; border-color: #14532d; }
+    .status-select option { background: #1a1d27; color: #ffffff; }
+
+    /* ── Settings collapsible sections ── */
+    .settings-group { border: 1px solid var(--border); border-radius: 8px; margin-top: 12px; overflow: hidden; }
+    .settings-group-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      cursor: pointer;
+      user-select: none;
+      background: var(--surface2);
+      font-size: .75rem;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .settings-group-header:hover { color: var(--text); }
+    .settings-group-chevron { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; transition: transform .2s; flex-shrink: 0; }
+    .settings-group.open .settings-group-chevron { transform: rotate(180deg); }
+    .settings-group-body { display: none; padding: 0 14px; }
+    .settings-group.open .settings-group-body { display: block; }
+    /* ── Theme toggle in settings ── */
+    .theme-toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-top: 1px solid var(--border);
+    }
+    .theme-toggle-row:first-child { border-top: none; }
+    .theme-toggle-row label { font-size: .85rem; color: var(--text); font-weight: 500; text-transform: none; letter-spacing: 0; }
+    .toggle-switch { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-track {
+      position: absolute; inset: 0;
+      background: var(--border);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .toggle-track::before {
+      content: '';
+      position: absolute;
+      width: 18px; height: 18px;
+      left: 3px; top: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform .2s;
+    }
+    .toggle-switch input:checked + .toggle-track { background: var(--primary); }
+    .toggle-switch input:checked + .toggle-track::before { transform: translateX(20px); }
+
+    /* ── Light mode overrides ── */
+    html[data-theme="light"] {
+      --bg: #f4f6f9;
+      --surface: #ffffff;
+      --surface2: #f1f3f7;
+      --border: #e2e6ea;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --text: #111827;
+      --muted: #6b7280;
+      --tag-bg: #eff6ff;
+      --tag-text: #1d4ed8;
+      --shadow: 0 1px 4px rgba(0,0,0,.08);
+    }
+    html[data-theme="light"] input,
+    html[data-theme="light"] select,
+    html[data-theme="light"] textarea { color-scheme: light; }
+    html[data-theme="light"] .badge-wrong    { background: #fef3c7; color: #92400e; }
+    html[data-theme="light"] .badge-missing  { background: #fee2e2; color: #991b1b; }
+    html[data-theme="light"] .badge-extra    { background: #dbeafe; color: #1e40af; }
+    html[data-theme="light"] .badge-damaged  { background: #fce7f3; color: #9d174d; }
+    html[data-theme="light"] .badge-label    { background: #f3e8ff; color: #6b21a8; }
+    html[data-theme="light"] .badge-qty      { background: #dcfce7; color: #15803d; }
+    html[data-theme="light"] .badge-other    { background: #f3f4f6; color: #374151; }
+    html[data-theme="light"] tbody tr:hover  { background: #f8fafc; }
+    html[data-theme="light"] .status-select.status-open       { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+    html[data-theme="light"] .status-select.status-inprogress { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
+    html[data-theme="light"] .status-select.status-resolved   { background: #dcfce7; color: #15803d; border-color: #86efac; }
+    html[data-theme="light"] .status-select option            { background: #fff; color: #111827; }
+    html[data-theme="light"] .setup-banner   { background: #eff6ff; border-color: #bfdbfe; }
+    html[data-theme="light"] .setup-banner h3 { color: #1d4ed8; }
+    html[data-theme="light"] .setup-banner code { background: #f1f5f9; border-color: #e2e8f0; color: #1d4ed8; }
+    html[data-theme="light"] .code-block     { background: #f8fafc; color: #1e293b; border-color: #e2e8f0; }
+    html[data-theme="light"] .copy-btn       { background: #f1f5f9; border-color: #e2e8f0; color: #475569; }
+    html[data-theme="light"] #toast          { background: #1e293b; color: #ffffff; }
+    html[data-theme="light"] .expanded-row td { background: #f8fafc; }
+    html[data-theme="light"] .search-dropdown { box-shadow: 0 6px 20px rgba(0,0,0,.12); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round"
+        d="M20 7H4a2 2 0 00-2 2v10a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/>
+      <path stroke-linecap="round" stroke-linejoin="round" d="M16 3H8a2 2 0 00-2 2v2h12V5a2 2 0 00-2-2z"/>
+    </svg>
+    Daily B2C
+  </div>
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tab-btn-b2c" onclick="showView('b2c')">
+      <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13l-1.4 7h12.8M7 13l-1-5m10 5l1-5M9 21a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z"/></svg>
+      B2C Dashboard
+    </button>
+    <button class="tab-btn" id="tab-btn-dash" onclick="showView('dash')">
+      <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      Error Dashboard
+      <span class="tab-count" id="dashCount"></span>
+    </button>
+    <button class="tab-btn" id="tab-btn-help" onclick="showView('help')">
+      <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17" stroke-linecap="round"/></svg>
+      Help
+    </button>
+  </div>
+  <div class="sync-wrap" id="syncWrap" style="display:none">
+    <div class="sync-dot" id="syncDot"></div>
+    <span class="sync-label" id="syncLabel">—</span>
+  </div>
+  <button class="btn btn-primary" onclick="openReportModal()" style="font-size:.8rem;padding:6px 14px;display:flex;align-items:center;gap:6px;white-space:nowrap">
+    <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+    Report Error
+  </button>
+  <button class="settings-btn" onclick="openSettings()" title="Settings">
+    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="3"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+    </svg>
+  </button>
+</header>
+
+<!-- Settings modal -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <h3>⚙️ Settings</h3>
+    <div class="settings-group" id="sg-looks">
+      <div class="settings-group-header" onclick="toggleSettingsGroup('sg-looks')">
+        Looks
+        <svg class="settings-group-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="settings-group-body">
+        <div class="theme-toggle-row">
+          <div>
+            <div style="font-size:.85rem;color:var(--text);font-weight:500">☀️ Light mode</div>
+            <div id="themeSystemNote" style="font-size:.72rem;color:var(--muted);margin-top:2px"></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <button id="resetThemeBtn" onclick="resetTheme()" style="display:none;background:none;border:none;font-size:.72rem;color:var(--primary);cursor:pointer;padding:0">Use system</button>
+            <label class="toggle-switch">
+              <input type="checkbox" id="themeToggle" onchange="applyTheme(this.checked)" />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+        </div>
+        <div class="theme-toggle-row">
+          <div>
+            <div style="font-size:.85rem;color:var(--text);font-weight:500">🖥️ Desktop mode</div>
+            <div style="font-size:.72rem;color:var(--muted);margin-top:2px">Wider layout (1200px vs 600px)</div>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="layoutToggle" onchange="applyLayout(this.checked)" />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="settings-group" id="sg-tabs">
+      <div class="settings-group-header" onclick="toggleSettingsGroup('sg-tabs')">
+        Tabs
+        <svg class="settings-group-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="settings-group-body">
+        <div class="theme-toggle-row">
+          <div style="font-size:.85rem;color:var(--text);font-weight:500">Error Dashboard</div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="tabToggleDash" onchange="applyTabVisibility()" checked />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+        <div class="theme-toggle-row">
+          <div style="font-size:.85rem;color:var(--text);font-weight:500">B2C Dashboard</div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="tabToggleB2c" onchange="applyTabVisibility()" checked />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+        <div class="theme-toggle-row">
+          <div style="font-size:.85rem;color:var(--text);font-weight:500">Help</div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="tabToggleHelp" onchange="applyTabVisibility()" checked />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="settings-group" id="sg-b2c">
+      <div class="settings-group-header" onclick="toggleSettingsGroup('sg-b2c')">
+        B2C Dashboard
+        <svg class="settings-group-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="settings-group-body">
+        <div class="theme-toggle-row" style="align-items:center">
+          <div>
+            <div style="font-size:.85rem;color:var(--text);font-weight:500">Warehouse Filter</div>
+            <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Show data for a specific warehouse</div>
+          </div>
+          <select id="b2cWarehouseFilter" onchange="localStorage.setItem('b2cWarehouseFilter', this.value); renderB2C()" style="font-size:.8rem;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
+            <option value="">All Warehouses</option>
+            <option value="LOCAD Bekasi FC">LOCAD Bekasi FC</option>
+            <option value="LOCAD Cabuyao (LISP) FC">LOCAD Cabuyao (LISP) FC</option>
+            <option value="LOCAD Hicom FC">LOCAD Hicom FC</option>
+            <option value="LOCAD Joo Koon FC">LOCAD Joo Koon FC</option>
+            <option value="LOCAD Lat Krabang FC">LOCAD Lat Krabang FC</option>
+            <option value="LOCAD Mesquite (TX-015) FC">LOCAD Mesquite (TX-015) FC</option>
+            <option value="LOCAD Santa Fe Springs FC (US-SAN)">LOCAD Santa Fe Springs FC</option>
+            <option value="LOCAD Umm Ramool FC">LOCAD Umm Ramool FC</option>
+          </select>
+        </div>
+        <div class="theme-toggle-row" style="align-items:center">
+          <div>
+            <div style="font-size:.85rem;color:var(--text);font-weight:500">Live Data Source</div>
+            <div style="font-size:.75rem;color:var(--muted);margin-top:2px" id="b2cLiveSourceNote">Uses your Web App URL from Help → Connect to Google Sheets</div>
+          </div>
+          <span id="b2cLiveSourceStatus" style="font-size:.75rem;font-weight:600;color:var(--muted)">—</span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<main>
+  <!-- ── REPORT ERROR MODAL ── -->
+  <div class="modal-overlay" id="reportModal">
+    <div class="modal" style="max-width:620px;max-height:90vh;overflow-y:auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <h3 style="margin:0">Report a Packing Error</h3>
+        <button onclick="closeReportModal()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem;line-height:1;padding:4px">✕</button>
+      </div>
+      <p class="subtitle" style="margin-top:4px;margin-bottom:16px">Fill in the details below. All fields marked * are required.</p>
+
+      <form id="errorForm" novalidate>
+        <div class="form-grid">
+
+          <div class="field">
+            <label>Order ID *</label>
+            <input type="text" id="orderId" placeholder="e.g. ORD-20240001" required />
+          </div>
+
+          <div class="field">
+            <label>Tote Number *</label>
+            <input type="text" id="toteNum" placeholder="e.g. T-045" required />
+          </div>
+
+          <div class="field">
+            <label>Packing Station</label>
+            <input type="text" id="stationNum" placeholder="e.g. PS-07" />
+          </div>
+
+          <div class="field full">
+            <label>Error Type *</label>
+            <div class="error-types" id="errorTypes">
+              <input type="radio" name="errorType" id="et-wrong" value="Wrong Item" />
+              <label for="et-wrong">📦 Wrong Item</label>
+
+              <input type="radio" name="errorType" id="et-missing" value="Missing Item" />
+              <label for="et-missing">❌ Missing Item</label>
+
+              <input type="radio" name="errorType" id="et-extra" value="Extra Item" />
+              <label for="et-extra">➕ Extra Item</label>
+
+              <input type="radio" name="errorType" id="et-damaged" value="Damaged Item" />
+              <label for="et-damaged">⚠️ Damaged Item</label>
+
+<input type="radio" name="errorType" id="et-awb" value="AWB Error" />
+              <label for="et-awb">📋 AWB Error</label>
+
+              <input type="radio" name="errorType" id="et-other" value="Other" />
+              <label for="et-other">💬 Other</label>
+            </div>
+          </div>
+
+          <div class="field full" id="wrongItemFields" style="display:none">
+            <label>Wrong Item Details</label>
+            <div class="wrong-item-section" style="grid-template-columns:1fr">
+              <div class="wrong-item-group">
+                <span class="wrong-item-label">SKU</span>
+                <div class="sku-dynamic-list" id="correctSkuList"></div>
+                <button type="button" class="btn-add-sku" onclick="addSkuRow('correctSkuList')">+ Add SKU</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="field full" id="otherFields" style="display:none">
+            <label>Notes</label>
+            <textarea id="otherNotes" placeholder="Describe the issue…"></textarea>
+          </div>
+
+          <div class="field full" id="awbErrorFields" style="display:none">
+            <label>AWB Error Code</label>
+            <textarea id="awbErrorCode" placeholder="Paste error code here…"></textarea>
+          </div>
+
+          <div class="field full" id="damagedItemFields" style="display:none">
+            <label>Damaged Item Details</label>
+            <div class="wrong-item-section" style="grid-template-columns:1fr">
+              <div class="wrong-item-group">
+                <span class="wrong-item-label">SKU</span>
+                <div class="sku-dynamic-list" id="damagedSkuList"></div>
+                <button type="button" class="btn-add-sku" onclick="addSkuRow('damagedSkuList')">+ Add SKU</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="field full" id="extraItemFields" style="display:none">
+            <label>Extra Item Details</label>
+            <div class="wrong-item-section" style="grid-template-columns:1fr">
+              <div class="wrong-item-group">
+                <span class="wrong-item-label">SKU</span>
+                <div class="sku-dynamic-list" id="extraSkuList"></div>
+                <button type="button" class="btn-add-sku" onclick="addSkuRow('extraSkuList')">+ Add SKU</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="field full" id="missingItemFields" style="display:none">
+            <label>Missing Item Details</label>
+            <div class="wrong-item-section" style="grid-template-columns:1fr">
+              <div class="wrong-item-group">
+                <span class="wrong-item-label">SKU</span>
+                <div class="sku-dynamic-list" id="missingSkuList"></div>
+                <button type="button" class="btn-add-sku" onclick="addSkuRow('missingSkuList')">+ Add SKU</button>
+              </div>
+            </div>
+          </div>
+
+
+          <div class="field full">
+            <label>Photos</label>
+            <div class="photo-drop" id="photoDrop">
+              <input type="file" id="photoInput" accept="image/*" multiple />
+              <div class="drop-label">Drag & drop images or <span>browse</span></div>
+            </div>
+            <div class="photo-previews" id="photoPreviews"></div>
+          </div>
+
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" onclick="resetForm()">Clear</button>
+          <button type="submit" class="btn btn-primary">Submit Report</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── DASHBOARD VIEW ── -->
+  <div class="view" id="view-dash">
+
+    <div class="stats-row" id="statsRow"></div>
+
+    <div class="card">
+      <div class="dash-header">
+        <h2>Error Log</h2>
+        <div class="dash-controls">
+          <div class="search-wrap">
+            <input type="search" id="searchInput" placeholder="Search order, error type, status…"
+              oninput="renderTable()" onfocus="openSearchDrop()" onkeydown="searchKeyDown(event)"
+              autocomplete="off" style="width:240px" />
+            <div class="search-dropdown" id="searchDropdown">
+              <div class="search-group-label">Status</div>
+              <div class="search-option" onclick="pickFilter('Open')"><span class="badge badge-missing" style="font-size:.7rem">Open</span></div>
+              <div class="search-option" onclick="pickFilter('In Progress')"><span class="badge badge-wrong" style="font-size:.7rem">In Progress</span></div>
+              <div class="search-option" onclick="pickFilter('Resolved')"><span class="badge badge-qty" style="font-size:.7rem">Resolved</span></div>
+              <div class="search-group-label">Error Type</div>
+              <div class="search-option" onclick="pickFilter('Wrong Item')">📦 Wrong Item</div>
+              <div class="search-option" onclick="pickFilter('Missing Item')">❌ Missing Item</div>
+              <div class="search-option" onclick="pickFilter('Extra Item')">➕ Extra Item</div>
+              <div class="search-option" onclick="pickFilter('Damaged Item')">⚠️ Damaged Item</div>
+              <div class="search-option" onclick="pickFilter('Wrong Label')">🏷️ Wrong Label</div>
+              <div class="search-option" onclick="pickFilter('AWB Error')">📋 AWB Error</div>
+              <div class="search-option" onclick="pickFilter('Other')">💬 Other</div>
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="refreshBtn" onclick="manualRefresh()" title="Sync now">
+            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" style="vertical-align:middle;margin-right:4px"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.36-3.36L23 10M1 14l5.13 4.36A9 9 0 0020.49 15"/></svg>
+            Refresh
+          </button>
+          <button class="btn btn-ghost btn-sm" id="openSheetBtn" onclick="openSheet()" style="display:none">
+            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" style="vertical-align:middle;margin-right:4px"><path stroke-linecap="round" stroke-linejoin="round" d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            Open Sheet
+          </button>
+        </div>
+      </div>
+
+      <div class="dash-subtabs">
+        <button class="dash-subtab active" id="subtab-active" onclick="setDashTab('active')">Active <span class="subtab-count" id="activeCount"></span></button>
+        <button class="dash-subtab" id="subtab-resolved" onclick="setDashTab('resolved')">Resolved <span class="subtab-count" id="resolvedCount"></span></button>
+      </div>
+
+      <div class="bulk-bar" id="bulkBar">
+        <span class="bulk-bar-count" id="bulkCount">0</span> selected
+        <select id="bulkStatusSelect" onchange="bulkUpdateStatus(this.value)" title="Set status">
+          <option value="">Set status…</option>
+          <option value="Open">Open</option>
+          <option value="In Progress">In Progress</option>
+          <option value="Resolved">Resolved</option>
+        </select>
+        <button class="btn btn-sm" id="bulkDeleteBtn"
+          style="background:#3a1212;border:1px solid #7f1d1d;color:#f87171;font-size:.78rem;padding:5px 10px;border-radius:6px;cursor:pointer"
+          onclick="bulkDelete()">🗑 Delete</button>
+        <button class="btn-clear" onclick="clearSelection()">✕ Clear</button>
+      </div>
+
+      <div id="tableWrap">
+        <div class="empty-state" id="emptyState">
+          <div class="icon">📋</div>
+          <p>No errors reported yet.<br>Submit your first report to see it here.</p>
+        </div>
+        <table id="errorTable" style="display:none">
+          <thead>
+            <tr>
+              <th class="col-check"><input type="checkbox" class="row-check" id="selectAll" onchange="toggleSelectAll(this.checked)" /></th>
+              <th>Time</th>
+              <th>Order ID</th>
+              <th>Error Type</th>
+              <th>Status</th>
+              <th style="width:40px"></th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── B2C DASHBOARD VIEW ── -->
+  <div class="view active" id="view-b2c">
+
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Ops — B2C Fulfillment</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">
+          <span id="b2cDataMode">Snapshot</span> · <span id="b2cSyncTime">4 Jul 2026, 16:50 SGT</span> · <span style="color:var(--primary);cursor:pointer" onclick="openSettings()">Change warehouse ↗</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <button id="b2cRefreshBtn" class="btn btn-ghost btn-sm" onclick="refreshB2C(this)"
+          style="display:flex;align-items:center;gap:5px;font-size:.75rem;padding:5px 10px">
+          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.36-3.36L23 10M1 14l5.13 4.36A9 9 0 0020.49 15"/></svg>
+          Refresh
+        </button>
+        <a href="https://metabase.golocad.com/dashboard/479-daily-ops" target="_blank"
+           style="font-size:.75rem;color:var(--primary);text-decoration:none;display:flex;align-items:center;gap:4px">
+          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+          Open in Metabase
+        </a>
+      </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div id="b2cKpis" style="margin-bottom:20px"></div>
+
+    <!-- Warehouse Breakdown -->
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Warehouse Breakdown</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+          <thead>
+            <tr style="background:var(--surface2)">
+              <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Warehouse</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#fb923c;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Open</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#fcd34d;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Ready for Picking</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#93c5fd;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Picking Started</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#86efac;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Ready to Pack</th>
+            </tr>
+          </thead>
+          <tbody id="b2cWHTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── HELP VIEW ── -->
+  <div class="view" id="view-help">
+    <div class="card">
+
+      <!-- Section: Connect to Google Sheets (unified) -->
+      <div class="help-section" id="help-s1">
+        <div class="help-section-header" onclick="toggleHelpSection('help-s1')">
+          <span class="help-section-title">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            Connect to Google Sheets
+          </span>
+          <svg class="help-chevron" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="help-section-body">
+          <p style="font-size:.875rem;color:var(--muted);margin-bottom:16px;line-height:1.6">
+            Follow these steps to sync error reports across all devices in real time.
+          </p>
+          <ol class="step-list">
+            <li>
+              <div>
+                <strong>Create a Google Sheet.</strong><br>
+                Go to <a href="https://sheets.google.com" target="_blank" style="color:var(--primary)">sheets.google.com</a> and create a new spreadsheet.
+                Paste the URL below — the Spreadsheet ID will be extracted and inserted into the code automatically.
+                <div class="field" style="margin:10px 0 0">
+                  <input type="url" id="sheetUrlInput" placeholder="https://docs.google.com/spreadsheets/d/…/edit" oninput="onSheetUrlInput(this.value)" />
+                  <div class="url-status" id="sheetUrlStatus">Paste your sheet URL above — the Spreadsheet ID will be filled in automatically.</div>
+                </div>
+              </div>
+            </li>
+            <li>
+              <div>
+                <strong>Open Apps Script &amp; paste the code.</strong><br>
+                Inside the spreadsheet, go to <strong>Extensions → Apps Script</strong>. Delete any existing code, paste the block below, then click <strong>Save</strong> (Ctrl+S).
+                <div class="code-block-wrap" style="margin-top:10px">
+                  <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+                    <button class="copy-btn" style="position:static" onclick="copyCode(this)">Copy</button>
+                  </div>
+                  <div class="code-block" id="codeBlock"></div>
+                </div>
+              </div>
+            </li>
+            <li>
+              <div>
+                <strong>Deploy as a Web App.</strong><br>
+                Click <strong>Deploy → New deployment</strong>. Choose type <em>Web app</em>.
+                Set <em>Execute as: <strong>Me</strong></em> and <em>Who has access: <strong>Anyone</strong></em>.
+                Click <strong>Deploy</strong>, copy the Web App URL, and paste it below.
+                <div class="field" style="margin:10px 0 4px">
+                  <input type="url" id="scriptUrlInput" placeholder="https://script.google.com/macros/s/…/exec"
+                    oninput="updateUrlStatus(this.value.trim())" />
+                  <div class="url-status" id="urlStatus"></div>
+                </div>
+                <button class="btn btn-primary" onclick="saveScriptUrl()">Save &amp; Connect</button>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </div>
+
+      <!-- Section: Slack Notifications -->
+      <div class="help-section" id="help-s2">
+        <div class="help-section-header" onclick="toggleHelpSection('help-s2')">
+          <span class="help-section-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"/></svg>
+            Slack Notifications
+          </span>
+          <svg class="help-chevron" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="help-section-body">
+          <p style="font-size:.875rem;color:var(--muted);margin-bottom:16px;line-height:1.6">
+            Get a Slack message every time a packing error is submitted. You'll need to create an
+            <strong>Incoming Webhook</strong> in your Slack workspace — no coding required.
+          </p>
+          <ol class="step-list">
+            <li>
+              <div>
+                <strong>Create a Slack App.</strong><br>
+                Go to <a href="https://api.slack.com/apps" target="_blank" style="color:var(--primary)">api.slack.com/apps</a> and click <strong>Create New App → From scratch</strong>.
+                Give it a name (e.g. <em>Packing Errors</em>) and choose your workspace.
+              </div>
+            </li>
+            <li>
+              <div>
+                <strong>Enable Incoming Webhooks.</strong><br>
+                In your app settings, go to <strong>Incoming Webhooks</strong> and toggle it <strong>On</strong>.
+                Scroll down and click <strong>Add New Webhook to Workspace</strong>.
+                Choose the channel where errors should be posted, then click <strong>Allow</strong>.
+              </div>
+            </li>
+            <li>
+              <div>
+                <strong>Copy the Webhook URL.</strong><br>
+                After authorising, a Webhook URL will appear on the page — it starts with
+                <code>https://hooks.slack.com/services/…</code>. Copy it and paste it below.
+                <div class="field" style="margin:10px 0 4px">
+                  <input type="url" id="slackWebhookInput" placeholder="https://hooks.slack.com/services/…"
+                    oninput="saveSlackWebhook(this.value.trim())" />
+                  <div id="slackWebhookStatus" style="font-size:.75rem;margin-top:4px;color:var(--muted)"></div>
+                </div>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</main>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Lightbox -->
+<div id="lightbox">
+  <button onclick="closeLightbox()">✕</button>
+  <img id="lbImg" src="" alt="" />
+</div>
+
+<script>
+  // ── Theme ──────────────────────────────────────────────────────────────
+  const _sysDark = window.matchMedia('(prefers-color-scheme: dark)');
+
+  function setThemeAttr(isLight) {
+    document.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
+  }
+
+  function applyTheme(isLight) {
+    // Manual override
+    setThemeAttr(isLight);
+    localStorage.setItem('packingErrorTheme', isLight ? 'light' : 'dark');
+    syncThemeUI();
+  }
+
+  function resetTheme() {
+    // Remove manual override — follow system
+    localStorage.removeItem('packingErrorTheme');
+    setThemeAttr(!_sysDark.matches); // system says dark → isLight = false
+    syncThemeUI();
+    if (document.getElementById('themeToggle'))
+      document.getElementById('themeToggle').checked = !_sysDark.matches;
+  }
+
+  function syncThemeUI() {
+    const manual = localStorage.getItem('packingErrorTheme');
+    const note   = document.getElementById('themeSystemNote');
+    const btn    = document.getElementById('resetThemeBtn');
+    if (!note) return;
+    if (manual) {
+      note.textContent = 'Manual override';
+      if (btn) btn.style.display = 'inline';
+    } else {
+      note.textContent = 'Following system';
+      if (btn) btn.style.display = 'none';
+    }
+  }
+
+  // Init: use saved pref or fall back to system
+  (function initTheme() {
+    const saved = localStorage.getItem('packingErrorTheme');
+    setThemeAttr(saved ? saved === 'light' : !_sysDark.matches);
+  })();
+
+  // React to system changes when no manual override is set
+  _sysDark.addEventListener('change', e => {
+    if (!localStorage.getItem('packingErrorTheme')) {
+      setThemeAttr(!e.matches);
+      const toggle = document.getElementById('themeToggle');
+      if (toggle) toggle.checked = !e.matches;
+    }
+  });
+
+  // ── Config (loaded from localStorage) ────────────────────────────────
+  let SCRIPT_URL     = localStorage.getItem('packingErrorScriptUrl')   || '';
+  let SLACK_WEBHOOK  = localStorage.getItem('packingErrorSlackWebhook') || '';
+  // B2C live data source — set via Settings or hardcode below once GAS is deployed.
+  // When set, ALL instances of this file fetch live data from Google Sheets instead of static snapshot.
+  let B2C_DATA_URL   = localStorage.getItem('b2cDataUrl') || '';
+
+  let errors = [];
+  let photosBuffer = [];
+  let refreshTimer = null;
+
+  // ── Init ───────────────────────────────────────────────────────────────
+  (function init() {
+    if (SCRIPT_URL) {
+      document.getElementById('syncWrap').style.display = 'flex';
+      loadFromSheet();
+      refreshTimer = setInterval(loadFromSheet, 30000);
+    } else {
+      loadSampleData();
+      updateBadge();
+    }
+  })();
+
+  // ── Tab visibility ─────────────────────────────────────────────────────
+  const TAB_KEYS = [
+    { key: 'packingErrorTabB2c',  btnId: 'tab-btn-b2c',  view: 'b2c',   toggleId: 'tabToggleB2c'  },
+    { key: 'packingErrorTabDash', btnId: 'tab-btn-dash', view: 'dash',  toggleId: 'tabToggleDash' },
+    { key: 'packingErrorTabHelp', btnId: 'tab-btn-help', view: 'help',  toggleId: 'tabToggleHelp' },
+  ];
+
+  function applyTabVisibility() {
+    // Count how many are checked — prevent hiding all tabs
+    const checked = TAB_KEYS.map(t => document.getElementById(t.toggleId)?.checked ?? true);
+    if (checked.filter(Boolean).length === 0) {
+      // Re-check the one that was just unchecked
+      TAB_KEYS.forEach((t, i) => { if (!checked[i]) document.getElementById(t.toggleId).checked = true; });
+      return;
+    }
+    TAB_KEYS.forEach((t, i) => {
+      const visible = checked[i];
+      localStorage.setItem(t.key, visible ? '1' : '0');
+      const btn = document.getElementById(t.btnId);
+      if (btn) btn.style.display = visible ? '' : 'none';
+    });
+    // If current view's tab is now hidden, switch to first visible tab
+    const activeView = document.querySelector('.view.active')?.id?.replace('view-', '');
+    const activeTabHidden = TAB_KEYS.find(t => t.view === activeView && !document.getElementById(t.btnId)?.style.display !== 'none' && document.getElementById(t.btnId)?.style.display === 'none');
+    if (activeTabHidden) {
+      const first = TAB_KEYS.find(t => (localStorage.getItem(t.key) ?? '1') !== '0');
+      if (first) showView(first.view);
+    }
+  }
+
+  function initTabVisibility() {
+    TAB_KEYS.forEach(t => {
+      const visible = (localStorage.getItem(t.key) ?? '1') !== '0';
+      const btn = document.getElementById(t.btnId);
+      if (btn) btn.style.display = visible ? '' : 'none';
+    });
+  }
+  initTabVisibility();
+
+  // ── B2C Dashboard ─────────────────────────────────────────────────────
+  // Data is a snapshot. To refresh, ask Claude: "refresh B2C data".
+  let b2cData = [
+    { wh: 'LOCAD Bekasi FC',                    new: 248, rfp: 241,  picking: 2,  picked: 2146 },
+    { wh: 'LOCAD Cabuyao (LISP) FC',            new: 206, rfp: 2259, picking: 80, picked: 1323 },
+    { wh: 'LOCAD Hicom FC',                     new: 0,   rfp: 10,   picking: 0,  picked: 0    },
+    { wh: 'LOCAD Joo Koon FC',                  new: 2,   rfp: 1,    picking: 0,  picked: 0    },
+    { wh: 'LOCAD Lat Krabang FC',               new: 3,   rfp: 0,    picking: 0,  picked: 0    },
+    { wh: 'LOCAD Mesquite (TX-015) FC',         new: 0,   rfp: 0,    picking: 0,  picked: 0    },
+    { wh: 'LOCAD Santa Fe Springs FC (US-SAN)', new: 0,   rfp: 0,    picking: 0,  picked: 0    },
+    { wh: 'LOCAD Umm Ramool FC',                new: 2,   rfp: 0,    picking: 0,  picked: 0    },
+  ];
+
+  function renderB2C() {
+    const filter = document.getElementById('b2cWarehouseFilter').value;
+    const rows   = filter ? b2cData.filter(r => r.wh === filter) : b2cData;
+
+    const tot = rows.reduce((a, r) => ({
+      new:     a.new     + r.new,
+      rfp:     a.rfp     + r.rfp,
+      picking: a.picking + r.picking,
+      picked:  a.picked  + r.picked,
+    }), { new: 0, rfp: 0, picking: 0, picked: 0 });
+
+    const total = tot.new + tot.rfp + tot.picking + tot.picked;
+    const fmt   = n => n.toLocaleString();
+    const pct   = (n, d) => d ? (n / d * 100).toFixed(1) + '%' : '—';
+
+    // Status summary card
+    const statuses = [
+      { key: 'new',     label: 'Open',               count: tot.new,     color: '#fb923c', bg: '#431407' },
+      { key: 'rfp',     label: 'Ready for Picking',  count: tot.rfp,     color: '#fcd34d', bg: '#451a03' },
+      { key: 'picking', label: 'Picking Started',    count: tot.picking, color: '#93c5fd', bg: '#172554' },
+      { key: 'picked',  label: 'Ready to Pack',      count: tot.picked,  color: '#86efac', bg: '#14532d' },
+    ];
+
+    const kpiEl = document.getElementById('b2cKpis');
+    kpiEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
+      ${statuses.map(s => `
+        <div class="card" style="padding:16px 18px">
+          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px">${s.label}</div>
+          <div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${fmt(s.count)}</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${pct(s.count, total)} of total</div>
+        </div>`).join('')}
+    </div>`;
+
+    // Table rows
+    const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color||'var(--text)'};font-size:.82rem">${fmt(n)}</td>`;
+
+    const statusBadge = r => {
+      const t = r.new + r.rfp + r.picking + r.picked;
+      if (t === 0)               return { label: 'No Activity', bg: '#1f2937', color: '#6b7280' };
+      if (r.picked / t >= 0.7)   return { label: 'On Track',    bg: '#14532d', color: '#86efac' };
+      if (r.new    / t >= 0.6)   return { label: 'Not Started', bg: '#7f1d1d', color: '#fca5a5' };
+      if (r.picking > 0)         return { label: 'Picking Started', bg: '#172554', color: '#93c5fd' };
+      return                            { label: 'In Queue',    bg: '#451a03', color: '#fcd34d' };
+    };
+
+    const tdBadge = r => {
+      const s = statusBadge(r);
+      return `<td style="padding:10px 14px;text-align:center"><span style="display:inline-block;padding:2px 10px;border-radius:20px;font-size:.7rem;font-weight:700;background:${s.bg};color:${s.color};white-space:nowrap">${s.label}</span></td>`;
+    };
+
+    let html = rows.map(r => `
+      <tr style="border-top:1px solid var(--border)">
+        <td style="padding:10px 18px;color:var(--text);white-space:nowrap;font-size:.82rem">${r.wh}</td>
+        ${tdN(r.new,     '#fb923c')}
+        ${tdN(r.rfp,     '#fcd34d')}
+        ${tdN(r.picking, '#93c5fd')}
+        ${tdN(r.picked,  '#86efac')}
+      </tr>`).join('');
+
+    if (rows.length > 1) {
+      html += `<tr style="border-top:2px solid var(--border);background:var(--surface2)">
+        <td style="padding:10px 18px;color:var(--text);font-weight:700;font-size:.82rem">Total</td>
+        ${tdN(tot.new,     '#fb923c')}
+        ${tdN(tot.rfp,     '#fcd34d')}
+        ${tdN(tot.picking, '#93c5fd')}
+        ${tdN(tot.picked,  '#86efac')}
+      </tr>`;
+    }
+
+    document.getElementById('b2cWHTable').innerHTML = html;
+  }
+  (function restoreWarehouseFilter() {
+    const saved = localStorage.getItem('b2cWarehouseFilter');
+    if (saved) {
+      const el = document.getElementById('b2cWarehouseFilter');
+      if (el) el.value = saved;
+    }
+  })();
+  renderB2C();
+
+  // ── B2C Live Data Fetch ────────────────────────────────────────────────
+  async function fetchB2CData() {
+    const url = SCRIPT_URL; // uses the same Web App URL as error reports (Settings → Help tab)
+    if (!url) return; // no source — keep static snapshot
+    const modeEl = document.getElementById('b2cDataMode');
+    if (modeEl) { modeEl.textContent = 'Loading…'; modeEl.style.color = 'var(--muted)'; }
+    try {
+      const res  = await fetch(url + '?action=b2c_read', { cache: 'no-store' });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || 'read failed');
+      if (json.data && json.data.length) {
+        b2cData = json.data;
+        renderB2C();
+      }
+      if (json.sync_time) {
+        const st = document.getElementById('b2cSyncTime');
+        if (st) st.textContent = json.sync_time;
+      }
+      if (modeEl) { modeEl.textContent = 'Live ●'; modeEl.style.color = 'var(--success)'; }
+    } catch (err) {
+      console.error('B2C fetch error:', err);
+      if (modeEl) { modeEl.textContent = 'Offline — last snapshot'; modeEl.style.color = 'var(--danger)'; }
+    }
+  }
+
+  async function refreshB2C(btn) {
+    if (btn) { btn.disabled = true; btn.style.opacity = '.5'; }
+    await fetchB2CData();
+    if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+  }
+
+  // Fetch on load, then auto-refresh every 5 min if Web App URL is connected
+  fetchB2CData();
+  setInterval(() => { if (SCRIPT_URL) fetchB2CData(); }, 5 * 60 * 1000);
+
+  // ── Report Error modal ────────────────────────────────────────────────
+  function openReportModal() {
+    document.getElementById('reportModal').classList.add('open');
+  }
+  function closeReportModal() {
+    document.getElementById('reportModal').classList.remove('open');
+  }
+  document.getElementById('reportModal').addEventListener('click', function(e) {
+    if (e.target === this) closeReportModal();
+  });
+
+  // ── Settings group toggle ─────────────────────────────────────────────
+  function toggleSettingsGroup(id) {
+    document.getElementById(id).classList.toggle('open');
+  }
+
+  // ── Layout mode ────────────────────────────────────────────────────────
+  function applyLayout(isDesktop) {
+    document.querySelector('main').style.maxWidth = isDesktop ? '1200px' : '600px';
+    localStorage.setItem('packingErrorLayout', isDesktop ? 'desktop' : 'mobile');
+  }
+  (function initLayout() {
+    const saved = localStorage.getItem('packingErrorLayout') || 'desktop';
+    const isDesktop = saved === 'desktop';
+    applyLayout(isDesktop);
+    const el = document.getElementById('layoutToggle');
+    if (el) el.checked = isDesktop;
+  })();
+
+  // ── Settings modal ────────────────────────────────────────────────────
+  function openSettings() {
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    document.getElementById('themeToggle').checked = isLight;
+    syncThemeUI();
+    // Populate tab toggles
+    TAB_KEYS.forEach(t => {
+      const el = document.getElementById(t.toggleId);
+      if (el) el.checked = (localStorage.getItem(t.key) ?? '1') !== '0';
+    });
+    // Populate layout toggle
+    const layoutEl = document.getElementById('layoutToggle');
+    if (layoutEl) layoutEl.checked = (localStorage.getItem('packingErrorLayout') || 'desktop') === 'desktop';
+    // Show B2C live source status
+    const b2cStatusEl = document.getElementById('b2cLiveSourceStatus');
+    if (b2cStatusEl) {
+      if (SCRIPT_URL) { b2cStatusEl.textContent = '● Connected'; b2cStatusEl.style.color = 'var(--success)'; }
+      else { b2cStatusEl.textContent = 'Not set up'; b2cStatusEl.style.color = 'var(--muted)'; }
+    }
+    document.getElementById('settingsModal').classList.add('open');
+  }
+
+  function closeSettings() {
+    document.getElementById('settingsModal').classList.remove('open');
+  }
+
+  // Close modal on backdrop click
+  document.getElementById('settingsModal').addEventListener('click', function(e) {
+    if (e.target === this) closeSettings();
+  });
+
+  function saveSettings() {
+    closeSettings();
+    showToast('Settings saved.', true);
+  }
+
+  // ── Help tab — Slack webhook ───────────────────────────────────────────
+  function saveSlackWebhook(url) {
+    SLACK_WEBHOOK = url;
+    if (url) localStorage.setItem('packingErrorSlackWebhook', url);
+    else localStorage.removeItem('packingErrorSlackWebhook');
+    const status = document.getElementById('slackWebhookStatus');
+    if (!status) return;
+    if (url && url.startsWith('https://hooks.slack.com')) {
+      status.textContent = '✓ Webhook saved — notifications active';
+      status.style.color = 'var(--success, #4ade80)';
+    } else if (url) {
+      status.textContent = 'URL should start with https://hooks.slack.com/…';
+      status.style.color = '#f59e0b';
+    } else {
+      status.textContent = 'No webhook set — notifications disabled.';
+      status.style.color = 'var(--muted)';
+    }
+  }
+
+  // Populate Slack input on load
+  (function initSlackInput() {
+    const inp = document.getElementById('slackWebhookInput');
+    if (inp) { inp.value = SLACK_WEBHOOK; saveSlackWebhook(SLACK_WEBHOOK); }
+  })();
+
+  // ── Help tab — Web App URL ──────────────────────────────────────────────
+  function updateUrlStatus(url) {
+    const el = document.getElementById('urlStatus');
+    if (!el) return;
+    if (url && url.startsWith('https://script.google.com')) {
+      el.textContent = '✓ Valid Apps Script URL';
+      el.className = 'url-status connected';
+    } else if (url) {
+      el.textContent = 'URL should start with https://script.google.com/…';
+      el.className = 'url-status';
+      el.style.color = '#f59e0b';
+    } else {
+      el.textContent = 'No URL set — paste your deployed Web App URL above.';
+      el.className = 'url-status empty';
+    }
+  }
+
+  // ── Help accordion ────────────────────────────────────────────────────
+  function toggleHelpSection(id) {
+    document.getElementById(id).classList.toggle('open');
+  }
+
+  // Populate Help tab input on load
+  (function initScriptUrlInput() {
+    const inp = document.getElementById('scriptUrlInput');
+    if (inp) { inp.value = SCRIPT_URL; updateUrlStatus(SCRIPT_URL); }
+  })();
+
+  function saveScriptUrl() {
+    const url = document.getElementById('scriptUrlInput').value.trim();
+    SCRIPT_URL = url;
+    if (url) {
+      localStorage.setItem('packingErrorScriptUrl', url);
+    } else {
+      localStorage.removeItem('packingErrorScriptUrl');
+    }
+    updateUrlStatus(url);
+
+    // Apply immediately
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+    if (SCRIPT_URL) {
+      document.getElementById('syncWrap').style.display = 'flex';
+      errors.length = 0;
+      loadFromSheet();
+      refreshTimer = setInterval(loadFromSheet, 30000);
+    } else {
+      document.getElementById('syncWrap').style.display = 'none';
+      loadSampleData();
+      updateBadge();
+      if (document.getElementById('view-dash').classList.contains('active')) {
+        renderStats(); renderTable();
+      }
+    }
+    refreshOpenSheetBtn();
+    showToast(url ? 'Connected to Google Sheets!' : 'Disconnected — running in demo mode', !!url);
+  }
+
+  function loadSampleData() {
+    errors.length = 0;
+    [
+      { id:'s1', timestamp: new Date(Date.now()-1000*60*18),  orderId:'ORD-20240118', toteNum:'T-012', stationNum:'PS-03', errorType:'Wrong Item',   notes:'', photos:[], status:'Open' },
+      { id:'s2', timestamp: new Date(Date.now()-1000*60*47),  orderId:'ORD-20240117', toteNum:'T-007', stationNum:'PS-01', errorType:'Missing Item', notes:'', photos:[], status:'Open' },
+      { id:'s3', timestamp: new Date(Date.now()-1000*60*95),  orderId:'ORD-20240116', toteNum:'T-031', stationNum:'PS-05', errorType:'Damaged Item', notes:'', photos:[], status:'Open' },
+      { id:'s4', timestamp: new Date(Date.now()-1000*60*200), orderId:'ORD-20240115', toteNum:'T-019', stationNum:'PS-02', errorType:'Wrong Item',   notes:'', photos:[], status:'Open' },
+      { id:'s5', timestamp: new Date(Date.now()-1000*60*310), orderId:'ORD-20240114', toteNum:'T-004', stationNum:'PS-03', errorType:'AWB Error',    notes:'', photos:[], status:'Open' },
+      { id:'s6', timestamp: new Date(Date.now()-1000*60*430), orderId:'ORD-20240113', toteNum:'T-022', stationNum:'PS-04', errorType:'Extra Item',   notes:'', photos:[], status:'Open' },
+    ].forEach(r => errors.push(r));
+  }
+
+  // ── Google Sheets sync ─────────────────────────────────────────────────
+  function setSyncStatus(state, label) {
+    const dot = document.getElementById('syncDot');
+    const lbl = document.getElementById('syncLabel');
+    dot.className = 'sync-dot ' + state;
+    lbl.textContent = label || { ok:'Synced', syncing:'Syncing…', error:'Sync failed' }[state];
+  }
+
+  async function loadFromSheet() {
+    setSyncStatus('syncing');
+    try {
+      const res  = await fetch(SCRIPT_URL + '?action=read', { cache: 'no-store' });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || 'read failed');
+
+      errors.length = 0;
+      // Sheet returns oldest-first; reverse so newest is at top
+      [...json.data].reverse().forEach(row => {
+        errors.push({
+          id:              row.id,
+          timestamp:       new Date(row.timestamp),
+          orderId:         row.orderId        || '',
+          toteNum:         row.toteNum        || '',
+          stationNum:      row.stationNum     || '',
+          errorType:       row.errorType      || '',
+          notes:  row.notes  || '',
+          status: row.status || 'Open',
+          skus:   safeParseJson(row.skus),
+          photos:       []
+        });
+      });
+
+      updateBadge();
+      // Re-render dashboard if it's currently visible
+      if (document.getElementById('view-dash').classList.contains('active')) {
+        renderStats(); renderTable();
+      }
+      setSyncStatus('ok', `Synced ${new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`);
+    } catch (err) {
+      console.error('Sheet read error:', err);
+      setSyncStatus('error', 'Sync failed — retrying');
+    }
+  }
+
+  async function saveToSheet(record) {
+    if (!SCRIPT_URL) return;
+    const payload = encodeURIComponent(JSON.stringify({
+      id:             record.id,
+      timestamp:      record.timestamp.toISOString(),
+      orderId:        record.orderId,
+      toteNum:        record.toteNum,
+      stationNum:     record.stationNum,
+      errorType:      record.errorType,
+      notes:          record.notes,
+      status:         record.status || 'Open',
+      skus:  JSON.stringify(record.skus || []),
+      notes: record.notes || ''
+    }));
+    try {
+      await fetch(`${SCRIPT_URL}?action=write&data=${payload}`, { cache: 'no-store' });
+    } catch (err) {
+      console.error('Sheet write error:', err);
+      showToast('Saved locally — sheet sync failed', false);
+    }
+  }
+
+  // ── Unique ID helper ───────────────────────────────────────────────────
+  function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+
+  // ── View switching ─────────────────────────────────────────────────────
+  const VIEW_ORDER = ['b2c', 'dash', 'help'];
+  function showView(v) {
+    if (!document.getElementById('view-' + v)) return;
+    document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    document.getElementById('view-' + v).classList.add('active');
+    const idx = VIEW_ORDER.indexOf(v);
+    if (idx >= 0) document.querySelectorAll('.tab-btn')[idx].classList.add('active');
+    if (v === 'dash') { renderStats(); renderTable(); }
+  }
+
+  // ── Code.gs template & rendering ──────────────────────────────────────
+  const CODE_TEMPLATE = `// ─────────────────────────────────────────────────────────────────────────────
+// Packing Error Report — Google Apps Script backend
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SPREADSHEET_ID = '{{SPREADSHEET_ID}}';
+const SHEET_NAME     = 'PackingErrors';
+
+// Auto-creates the sheet + header row if it doesn't exist yet.
+function getSheet() {
+  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let   sheet = ss.getSheetByName(SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_NAME);
+    sheet.appendRow(['ID', 'Timestamp', 'OrderID', 'ToteNum', 'StationNum', 'ErrorType', 'Notes', 'Status', 'SKU']);
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, 9).setFontWeight('bold');
+  }
+  return sheet;
+}
+
+function doGet(e) {
+  const action = (e.parameter && e.parameter.action) || 'read';
+  if (action === 'write')     return handleWrite(e);
+  if (action === 'update')    return handleUpdate(e);
+  if (action === 'delete')    return handleDelete(e);
+  if (action === 'metabase')  return handleMetabase();
+  if (action === 'b2c_read')  return handleB2CRead();
+  if (action === 'b2c_write') return handleB2CWrite(e);
+  return handleRead();
+}
+
+function handleRead() {
+  try {
+    const sheet  = getSheet();
+    const values = sheet.getDataRange().getValues();
+    if (values.length <= 1) return ok({ data: [] });
+    const rows = values.slice(1).map(function(row) {
+      return {
+        id:              row[0],
+        timestamp:       row[1] instanceof Date ? row[1].toISOString() : row[1],
+        orderId:         row[2],
+        toteNum:         row[3],
+        stationNum:      row[4],
+        errorType:       row[5],
+        notes:  row[6] || '',
+        status: row[7] || 'Open',
+        skus:   row[8] || '[]'
+      };
+    });
+    return ok({ data: rows });
+  } catch (err) { return fail(err.toString()); }
+}
+
+function handleWrite(e) {
+  try {
+    if (!e.parameter || !e.parameter.data) return fail('Missing data parameter');
+    const data  = JSON.parse(decodeURIComponent(e.parameter.data));
+    const sheet = getSheet();
+    sheet.appendRow([
+      data.id        || '',
+      data.timestamp || new Date().toISOString(),
+      data.orderId   || '',
+      data.toteNum   || '',
+      data.stationNum || '',
+      data.errorType || '',
+      data.notes     || '',
+      data.status    || 'Open',
+      data.skus      || '[]'
+    ]);
+    return ok({ message: 'Row appended' });
+  } catch (err) { return fail(err.toString()); }
+}
+
+function handleUpdate(e) {
+  try {
+    if (!e.parameter || !e.parameter.data) return fail('Missing data parameter');
+    const data   = JSON.parse(decodeURIComponent(e.parameter.data));
+    const sheet  = getSheet();
+    const values = sheet.getDataRange().getValues();
+    for (let i = 1; i < values.length; i++) {
+      if (String(values[i][0]) === String(data.id)) {
+        sheet.getRange(i + 1, 1, 1, 9).setValues([[
+          data.id,
+          data.timestamp  || values[i][1],
+          data.orderId    || '',
+          data.toteNum    || '',
+          data.stationNum || '',
+          data.errorType  || '',
+          data.notes      || '',
+          data.status     || '',
+          data.skus       || values[i][8] || '[]'
+        ]]);
+        return ok({ message: 'Row updated' });
+      }
+    }
+    return fail('Row not found: ' + data.id);
+  } catch (err) { return fail(err.toString()); }
+}
+
+function handleDelete(e) {
+  try {
+    if (!e.parameter || !e.parameter.data) return fail('Missing data parameter');
+    const data   = JSON.parse(decodeURIComponent(e.parameter.data));
+    const sheet  = getSheet();
+    const values = sheet.getDataRange().getValues();
+    for (let i = 1; i < values.length; i++) {
+      if (String(values[i][0]) === String(data.id)) {
+        sheet.deleteRow(i + 1);
+        return ok({ message: 'Row deleted' });
+      }
+    }
+    return fail('Row not found: ' + data.id);
+  } catch (err) { return fail(err.toString()); }
+}
+
+// ── Metabase proxy ────────────────────────────────────────────────────────────
+// Requires METABASE_API_KEY to be set in Project Settings → Script Properties.
+// How to set it:
+//   1. Open the Apps Script editor → Project Settings (gear icon) → Script Properties
+//   2. Add a property named METABASE_API_KEY with your Metabase API key as the value
+//   3. Save and re-deploy as a new version.
+function handleMetabase() {
+  try {
+    var props  = PropertiesService.getScriptProperties();
+    var apiKey = props.getProperty('METABASE_API_KEY');
+    if (!apiKey) return fail('METABASE_API_KEY not set in Script Properties. See setup instructions in the Apps Script editor.');
+
+    var query = {
+      database: 2,
+      type: 'native',
+      native: {
+        query: "SELECT warehouse, warehouse_status, COUNT(*) AS count " +
+               "FROM \`athena__datamart.fct_priority_warehouse_performance\` " +
+               "WHERE adjusted_released_at_local = CURRENT_DATE('Asia/Singapore') " +
+               "AND warehouse_status IN ('01 OPEN','02 READY_FOR_PICKING','03 PICKING','04 PICKED') " +
+               "GROUP BY warehouse, warehouse_status " +
+               "ORDER BY warehouse, warehouse_status"
+      }
+    };
+
+    var response = UrlFetchApp.fetch('https://metabase.golocad.com/api/dataset', {
+      method: 'post',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+      payload: JSON.stringify(query),
+      muteHttpExceptions: true
+    });
+
+    var result = JSON.parse(response.getContentText());
+    if (result.error || result.status === 'failed') {
+      return fail('Metabase query failed: ' + (result.error || result.message || 'unknown'));
+    }
+
+    var rows = (result.data && result.data.rows) ? result.data.rows : [];
+    return ok({ rows: rows });
+  } catch (err) { return fail(err.toString()); }
+}
+
+// ── B2C Dashboard sheet ───────────────────────────────────────────────────────
+// Stores the latest B2C fulfillment snapshot so all webapp instances share the same data.
+function getB2CSheet() {
+  var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = ss.getSheetByName('B2CDashboard');
+  if (!sheet) {
+    sheet = ss.insertSheet('B2CDashboard');
+    sheet.appendRow(['warehouse', 'open', 'rfp', 'picking', 'picked', 'sync_time']);
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, 6).setFontWeight('bold');
+  }
+  return sheet;
+}
+
+function handleB2CRead() {
+  try {
+    var sheet  = getB2CSheet();
+    var values = sheet.getDataRange().getValues();
+    if (values.length <= 1) return ok({ data: [], sync_time: '' });
+    var sync_time = values[1][5] ? String(values[1][5]) : '';
+    var rows = values.slice(1).map(function(r) {
+      return { wh: r[0], new: Number(r[1]) || 0, rfp: Number(r[2]) || 0, picking: Number(r[3]) || 0, picked: Number(r[4]) || 0 };
+    });
+    return ok({ data: rows, sync_time: sync_time });
+  } catch (err) { return fail(err.toString()); }
+}
+
+function handleB2CWrite(e) {
+  try {
+    if (!e.parameter || !e.parameter.data) return fail('Missing data parameter');
+    var parsed    = JSON.parse(decodeURIComponent(e.parameter.data));
+    var rows      = parsed.rows      || [];
+    var sync_time = parsed.sync_time || new Date().toISOString();
+    var sheet = getB2CSheet();
+    // Overwrite all data rows (keep header row)
+    if (sheet.getLastRow() > 1) {
+      sheet.getRange(2, 1, sheet.getLastRow() - 1, 6).clearContent();
+    }
+    if (rows.length) {
+      var data = rows.map(function(r) {
+        return [r.wh, r.new || 0, r.rfp || 0, r.picking || 0, r.picked || 0, sync_time];
+      });
+      sheet.getRange(2, 1, data.length, 6).setValues(data);
+    }
+    return ok({ message: 'B2C data written', rows: rows.length });
+  } catch (err) { return fail(err.toString()); }
+}
+
+function ok(payload) {
+  return ContentService
+    .createTextOutput(JSON.stringify(Object.assign({ success: true }, payload)))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function fail(error) {
+  return ContentService
+    .createTextOutput(JSON.stringify({ success: false, error: error }))
+    .setMimeType(ContentService.MimeType.JSON);
+}`;
+
+  function renderCodeBlock(spreadsheetId) {
+    const id = spreadsheetId || 'YOUR_SPREADSHEET_ID_HERE';
+    document.getElementById('codeBlock').textContent = CODE_TEMPLATE.replace('{{SPREADSHEET_ID}}', id);
+  }
+
+  function extractSheetId(url) {
+    const m = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    return m ? m[1] : null;
+  }
+
+  function onSheetUrlInput(val) {
+    const statusEl = document.getElementById('sheetUrlStatus');
+    const id = extractSheetId(val.trim());
+    if (id) {
+      renderCodeBlock(id);
+      localStorage.setItem('packingErrorSheetId', id);
+      statusEl.textContent = '✓ Spreadsheet ID detected and inserted: ' + id;
+      statusEl.className = 'url-status connected';
+    } else if (val.trim()) {
+      statusEl.textContent = 'Could not find a Spreadsheet ID in that URL.';
+      statusEl.className = 'url-status';
+      statusEl.style.color = '#f59e0b';
+    } else {
+      statusEl.textContent = 'Paste your sheet URL above — the Spreadsheet ID will be filled in automatically.';
+      statusEl.className = 'url-status empty';
+      renderCodeBlock(null);
+      localStorage.removeItem('packingErrorSheetId');
+    }
+  }
+
+  // Init code block (restore saved ID if present)
+  (function initCodeBlock() {
+    const savedId  = localStorage.getItem('packingErrorSheetId');
+    const inputEl  = document.getElementById('sheetUrlInput');
+    if (savedId) {
+      inputEl.value = 'https://docs.google.com/spreadsheets/d/' + savedId + '/edit';
+      onSheetUrlInput(inputEl.value);
+    } else {
+      renderCodeBlock(null);
+    }
+  })();
+
+  // ── Copy Code.gs ───────────────────────────────────────────────────────
+  function copyCode(btn) {
+    const text = document.getElementById('codeBlock').textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 2000);
+    });
+  }
+
+  function updateBadge() {
+    const badge = document.getElementById('dashCount');
+    if (errors.length > 0) {
+      badge.textContent = errors.length;
+      badge.classList.add('visible');
+    } else {
+      badge.classList.remove('visible');
+    }
+  }
+
+  // ── Photo handling ─────────────────────────────────────────────────────
+  const photoInput = document.getElementById('photoInput');
+  const photoDrop  = document.getElementById('photoDrop');
+  const photoPrev  = document.getElementById('photoPreviews');
+
+  photoInput.addEventListener('change', () => handleFiles(photoInput.files));
+  photoDrop.addEventListener('dragover', e => { e.preventDefault(); photoDrop.classList.add('over'); });
+  photoDrop.addEventListener('dragleave', () => photoDrop.classList.remove('over'));
+  photoDrop.addEventListener('drop', e => {
+    e.preventDefault(); photoDrop.classList.remove('over');
+    handleFiles(e.dataTransfer.files);
+  });
+
+  function handleFiles(files) {
+    Array.from(files).forEach(f => {
+      if (!f.type.startsWith('image/')) return;
+      const reader = new FileReader();
+      reader.onload = ev => { photosBuffer.push(ev.target.result); renderPhotoPreview(); };
+      reader.readAsDataURL(f);
+    });
+  }
+
+  function renderPhotoPreview() {
+    photoPrev.innerHTML = '';
+    photosBuffer.forEach((src, i) => {
+      const div = document.createElement('div');
+      div.className = 'photo-thumb';
+      div.innerHTML = `<img src="${src}" /><button onclick="removePhoto(${i})">✕</button>`;
+      photoPrev.appendChild(div);
+    });
+  }
+
+  function removePhoto(i) { photosBuffer.splice(i, 1); renderPhotoPreview(); }
+
+  // ── Form submission ────────────────────────────────────────────────────
+  document.getElementById('errorForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const orderId       = document.getElementById('orderId').value.trim();
+    const toteNum       = document.getElementById('toteNum').value.trim();
+    const stationNum    = document.getElementById('stationNum').value.trim();
+    const errorType     = document.querySelector('input[name="errorType"]:checked')?.value;
+    const awbErrorCode = document.getElementById('awbErrorCode').value.trim();
+    const otherNotes   = document.getElementById('otherNotes').value.trim();
+    const notes        = errorType === 'AWB Error' ? awbErrorCode :
+                         errorType === 'Other'     ? otherNotes   : '';
+    const skus = errorType === 'Wrong Item'   ? getSkuRows('correctSkuList') :
+                 errorType === 'Missing Item' ? getSkuRows('missingSkuList') :
+                 errorType === 'Extra Item'   ? getSkuRows('extraSkuList')   :
+                 errorType === 'Damaged Item' ? getSkuRows('damagedSkuList') : [];
+
+    if (!orderId || !toteNum || !errorType) {
+      showToast('Please fill in all required fields and select an error type.', false);
+      return;
+    }
+
+    const skuTypes = ['Wrong Item','Missing Item','Extra Item','Damaged Item'];
+    if (skuTypes.includes(errorType)) {
+      const listId = errorType === 'Wrong Item'   ? 'correctSkuList' :
+                     errorType === 'Missing Item' ? 'missingSkuList' :
+                     errorType === 'Extra Item'   ? 'extraSkuList'   : 'damagedSkuList';
+      const rows = document.querySelectorAll(`#${listId} .sku-row-item`);
+      let hasEmpty = false;
+      rows.forEach(row => {
+        const inputs  = row.querySelectorAll('input');
+        const sel     = row.querySelector('select');
+        const skuVal  = inputs[0].value.trim();
+        const qtyVal  = inputs[1].value.trim();
+        const ptVal   = sel.value;
+        const empty   = !skuVal || !qtyVal || !ptVal;
+        [inputs[0], inputs[1]].forEach(inp => inp.style.borderColor = (!inp.value.trim()) ? 'var(--danger, #e05252)' : '');
+        sel.style.borderColor = !ptVal ? 'var(--danger, #e05252)' : '';
+        if (empty) hasEmpty = true;
+      });
+      if (hasEmpty) {
+        showToast('Please fill in all SKU fields (SKU, Qty, Pack Type) before submitting.', false);
+        return;
+      }
+    }
+
+    const submitBtn = e.target.querySelector('[type=submit]');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving…';
+
+    const record = {
+      id: uid(), timestamp: new Date(),
+      orderId, toteNum, stationNum, errorType,
+      notes, skus,
+      photos: [...photosBuffer],
+      status: 'Open'
+    };
+
+    // Optimistically add to local list
+    errors.unshift(record);
+    updateBadge();
+    resetForm();
+    showToast('Report submitted!', true);
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Submit Report';
+    closeReportModal();
+
+    // Persist to sheet, then reload to pick up any other changes
+    await saveToSheet(record);
+    if (SCRIPT_URL) await loadFromSheet();
+    sendSlackNotification(record);
+  });
+
+  function resetForm() {
+    document.getElementById('errorForm').reset();
+    photosBuffer = [];
+    renderPhotoPreview();
+    document.getElementById('wrongItemFields').style.display = 'none';
+    document.getElementById('missingItemFields').style.display = 'none';
+    document.getElementById('extraItemFields').style.display = 'none';
+    document.getElementById('damagedItemFields').style.display = 'none';
+    document.getElementById('awbErrorFields').style.display = 'none';
+    const awbEl = document.getElementById('awbErrorCode'); if (awbEl) awbEl.value = '';
+    document.getElementById('otherFields').style.display = 'none';
+    const otherEl = document.getElementById('otherNotes'); if (otherEl) otherEl.value = '';
+    resetSkuList('correctSkuList');
+    resetSkuList('missingSkuList');
+    resetSkuList('extraSkuList');
+    resetSkuList('damagedSkuList');
+  }
+
+  // ── Dynamic SKU list helpers ──────────────────────────────────────────
+  function addSkuRow(listId) {
+    const list = document.getElementById(listId);
+    const row  = document.createElement('div');
+    row.className = 'sku-row-item';
+    row.innerHTML = `
+      <div class="field" style="margin:0"><label>SKU</label><input type="text" placeholder="e.g. SKU-12345" /></div>
+      <div class="field" style="margin:0"><label>Qty</label><input type="number" placeholder="1" min="1" /></div>
+      <div class="field" style="margin:0"><label>Pack Type</label>
+        <select><option value="">Select…</option><option>Units</option><option>Pack L1</option></select>
+      </div>
+      <button type="button" class="btn-remove-sku" onclick="removeSkuRow(this)" title="Remove row">✕</button>`;
+    list.appendChild(row);
+    updateRemoveBtns(list);
+    // Clear error highlight as user fills each field
+    row.querySelectorAll('input').forEach(inp => inp.addEventListener('input', () => { inp.style.borderColor = ''; }));
+    row.querySelector('select').addEventListener('change', function() { this.style.borderColor = ''; });
+  }
+
+  function removeSkuRow(btn) {
+    const list = btn.closest('.sku-dynamic-list');
+    btn.closest('.sku-row-item').remove();
+    updateRemoveBtns(list);
+  }
+
+  function updateRemoveBtns(list) {
+    const rows = list.querySelectorAll('.sku-row-item');
+    rows.forEach(r => {
+      r.querySelector('.btn-remove-sku').style.display = rows.length > 1 ? '' : 'none';
+    });
+  }
+
+  function getSkuRows(listId) {
+    return Array.from(document.querySelectorAll(`#${listId} .sku-row-item`)).map(row => {
+      const inputs = row.querySelectorAll('input');
+      return { sku: inputs[0].value.trim(), qty: inputs[1].value.trim(), packType: row.querySelector('select').value };
+    }).filter(r => r.sku || r.qty);
+  }
+
+  function resetSkuList(listId) {
+    document.getElementById(listId).innerHTML = '';
+    addSkuRow(listId);
+  }
+
+  function safeParseJson(val) {
+    try { return JSON.parse(val) || []; } catch { return []; }
+  }
+
+  // Init all lists with one empty row on page load
+  addSkuRow('correctSkuList');
+  addSkuRow('missingSkuList');
+  addSkuRow('extraSkuList');
+  addSkuRow('damagedSkuList');
+
+  // ── Conditional fields by error type ─────────────────────────────────
+  document.querySelectorAll('input[name="errorType"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      const val = radio.checked ? radio.value : null;
+
+      const wrongPanel   = document.getElementById('wrongItemFields');
+      const missingPanel = document.getElementById('missingItemFields');
+
+      const extraPanel   = document.getElementById('extraItemFields');
+      const damagedPanel = document.getElementById('damagedItemFields');
+      const awbPanel     = document.getElementById('awbErrorFields');
+
+      wrongPanel.style.display   = val === 'Wrong Item'    ? 'block' : 'none';
+      missingPanel.style.display = val === 'Missing Item'  ? 'block' : 'none';
+      extraPanel.style.display   = val === 'Extra Item'    ? 'block' : 'none';
+      damagedPanel.style.display = val === 'Damaged Item'  ? 'block' : 'none';
+      awbPanel.style.display     = val === 'AWB Error'     ? 'block' : 'none';
+      document.getElementById('otherFields').style.display = val === 'Other' ? 'block' : 'none';
+
+      if (val !== 'Wrong Item')   resetSkuList('correctSkuList');
+      if (val !== 'Missing Item') resetSkuList('missingSkuList');
+      if (val !== 'Extra Item')   resetSkuList('extraSkuList');
+      if (val !== 'Damaged Item') resetSkuList('damagedSkuList');
+      if (val !== 'AWB Error') { const el = document.getElementById('awbErrorCode'); if (el) el.value = ''; }
+      if (val !== 'Other') { const el = document.getElementById('otherNotes'); if (el) el.value = ''; }
+    });
+  });
+
+  // ── Toast ──────────────────────────────────────────────────────────────
+  let toastTimer;
+  function showToast(msg, success = true) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'show' + (success ? ' success' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.className = '', 3000);
+  }
+
+  // ── Stats ──────────────────────────────────────────────────────────────
+  function renderStats() {
+    const row = document.getElementById('statsRow');
+    const total    = errors.length;
+    const today    = errors.filter(e => isToday(e.timestamp)).length;
+    const topType  = topErrorType();
+    const stations = new Set(errors.map(e => e.stationNum).filter(Boolean)).size;
+    row.innerHTML = `
+      <div class="stat-box"><div class="num">${total}</div><div class="lbl">Total Errors</div></div>
+      <div class="stat-box"><div class="num">${today}</div><div class="lbl">Today</div></div>
+      <div class="stat-box"><div class="num">${stations}</div><div class="lbl">Stations Affected</div></div>
+      <div class="stat-box" style="overflow:hidden"><div class="num" style="font-size:1rem;margin-top:4px">${topType}</div><div class="lbl">Top Error Type</div></div>
+    `;
+  }
+
+  function isToday(d) {
+    const n = new Date();
+    return d instanceof Date && !isNaN(d) &&
+      d.getDate()===n.getDate() && d.getMonth()===n.getMonth() && d.getFullYear()===n.getFullYear();
+  }
+
+  function topErrorType() {
+    if (!errors.length) return '—';
+    const counts = {};
+    errors.forEach(e => counts[e.errorType] = (counts[e.errorType]||0)+1);
+    return Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0];
+  }
+
+  // ── Table ──────────────────────────────────────────────────────────────
+  function renderTable() {
+    // Update sub-tab counts
+    const activeCount   = errors.filter(e => (e.status || 'Open') !== 'Resolved').length;
+    const resolvedCount = errors.filter(e => (e.status || 'Open') === 'Resolved').length;
+    document.getElementById('activeCount').textContent   = activeCount;
+    document.getElementById('resolvedCount').textContent = resolvedCount;
+
+    const q    = document.getElementById('searchInput').value.toLowerCase();
+    const rows = errors.filter(e => {
+      const isResolved = (e.status || 'Open') === 'Resolved';
+      if (dashTab === 'resolved' ? !isResolved : isResolved) return false;
+      if (!q) return true;
+      return [e.orderId, e.toteNum, e.stationNum, e.errorType, e.status || 'Open']
+        .some(v => (v||'').toLowerCase().includes(q));
+    });
+
+    const empty = document.getElementById('emptyState');
+    const table = document.getElementById('errorTable');
+    const tbody = document.getElementById('tableBody');
+
+    if (!rows.length) {
+      empty.style.display = 'block'; table.style.display = 'none';
+      empty.innerHTML = q
+        ? '<div class="icon">🔍</div><p>No results match your filter.</p>'
+        : dashTab === 'resolved'
+          ? '<div class="icon">✅</div><p>No resolved records yet.</p>'
+          : '<div class="icon">📋</div><p>No active errors. Submit your first report.</p>';
+      return;
+    }
+
+    empty.style.display = 'none'; table.style.display = 'table';
+    tbody.innerHTML = rows.map(e => {
+      const isOpen = String(expandedId) === String(e.id);
+      const renderSkuTable = items => (items||[]).length
+        ? `<div class="detail-item" style="grid-column:1/-1;padding:0">
+            <table style="width:100%;border-collapse:collapse;font-size:0.82rem">
+              <thead>
+                <tr>
+                  <th style="text-align:left;padding:5px 10px 5px 0;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border);width:50%">SKU</th>
+                  <th style="text-align:left;padding:5px 10px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border);width:20%">Qty</th>
+                  <th style="text-align:left;padding:5px 0 5px 10px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border);width:30%">Pack Type</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${items.map(r => `
+                <tr>
+                  <td style="padding:6px 10px 6px 0;font-family:monospace;color:var(--text)">${r.sku||'—'}</td>
+                  <td style="padding:6px 10px;color:var(--text)">${r.qty||'—'}</td>
+                  <td style="padding:6px 0 6px 10px;color:var(--text)">${r.packType||'—'}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+           </div>`
+        : '<div class="detail-item" style="grid-column:1/-1"><span class="detail-value" style="color:var(--muted)">—</span></div>';
+      const notesLabel = e.errorType === 'AWB Error' ? 'AWB Error Code' : 'Notes';
+      const notesCls   = e.errorType === 'AWB Error' ? ' td-mono' : '';
+      const notesRows  = (isOpen && ['AWB Error','Other'].includes(e.errorType) && e.notes) ? `
+              <div class="detail-item" style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
+                <span class="detail-label" style="color:var(--primary)">${notesLabel}</span>
+                <span class="detail-value${notesCls}" style="margin-top:4px;white-space:pre-wrap">${e.notes}</span>
+              </div>` : '';
+      const skuRows = (isOpen && e.skus && e.skus.length && ['Wrong Item','Missing Item','Extra Item','Damaged Item'].includes(e.errorType)) ? `
+              <div class="detail-item" style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
+                <span class="detail-label" style="color:var(--primary)">SKU</span>
+                ${renderSkuTable(e.skus)}
+              </div>` : '';
+      const damagedItemRows = '';
+      const extraItemRows   = '';
+      const missingItemRows = '';
+      const wrongItemRows   = '';
+      const expandedRow = isOpen ? `
+        <tr class="expanded-row">
+          <td colspan="5">
+            <div class="expanded-detail">
+              <div class="detail-item"><span class="detail-label">Order ID</span><span class="detail-value td-mono">${e.orderId||'—'}</span></div>
+              <div class="detail-item"><span class="detail-label">Tote Number</span><span class="detail-value">${e.toteNum||'—'}</span></div>
+              <div class="detail-item"><span class="detail-label">Packing Station</span><span class="detail-value">${e.stationNum||'—'}</span></div>
+              <div class="detail-item"><span class="detail-label">Reported</span><span class="detail-value">${formatTime(e.timestamp)}</span></div>
+              ${skuRows}
+              ${notesRows}
+            </div>
+          </td>
+        </tr>` : '';
+      const isChecked = selectedIds.has(String(e.id));
+      return `
+        <tr class="${isChecked ? 'row-selected' : ''}">
+          <td class="col-check"><input type="checkbox" class="row-check" ${isChecked ? 'checked' : ''} onchange="toggleSelectRow('${e.id}', this.checked)" /></td>
+          <td class="td-muted">${formatTime(e.timestamp)}</td>
+          <td><span class="order-id-link" onclick="toggleExpand('${e.id}')">${e.orderId}</span></td>
+          <td><span class="badge ${badgeClass(e.errorType)}">${e.errorType}</span></td>
+          <td><select class="status-select status-${statusCls(e.status)}" onchange="updateStatus('${e.id}', this.value)"><option ${e.status==='Open'?'selected':''}>Open</option><option ${e.status==='In Progress'?'selected':''}>In Progress</option><option ${e.status==='Resolved'?'selected':''}>Resolved</option></select></td>
+          <td style="text-align:center">${dashTab === 'resolved' ? `<button class="btn-delete-row" onclick="deleteRecord('${e.id}')" title="Delete record">🗑</button>` : ''}</td>
+        </tr>${expandedRow}`;
+    }).join('');
+
+    // Sync select-all checkbox state
+    const allChecked = rows.length > 0 && rows.every(e => selectedIds.has(String(e.id)));
+    const someChecked = rows.some(e => selectedIds.has(String(e.id)));
+    const selectAllEl = document.getElementById('selectAll');
+    if (selectAllEl) { selectAllEl.checked = allChecked; selectAllEl.indeterminate = !allChecked && someChecked; }
+
+    updateBulkBar();
+  }
+
+  function updateBulkBar() {
+    const bar = document.getElementById('bulkBar');
+    const count = selectedIds.size;
+    bar.classList.toggle('visible', count > 0);
+    document.getElementById('bulkCount').textContent = count;
+    document.getElementById('bulkStatusSelect').value = '';
+    // Delete button only in resolved tab
+    document.getElementById('bulkDeleteBtn').style.display = dashTab === 'resolved' ? '' : 'none';
+  }
+
+  function toggleSelectRow(id, checked) {
+    if (checked) selectedIds.add(String(id));
+    else selectedIds.delete(String(id));
+    updateBulkBar();
+    // Sync select-all
+    const visibleIds = Array.from(document.querySelectorAll('#tableBody .row-check')).map(cb => cb.closest('tr').querySelector('.row-check').getAttribute('onchange').match(/'([^']+)'/)[1]);
+    const allChecked = visibleIds.length > 0 && visibleIds.every(id => selectedIds.has(id));
+    const someChecked = visibleIds.some(id => selectedIds.has(id));
+    const selectAllEl = document.getElementById('selectAll');
+    if (selectAllEl) { selectAllEl.checked = allChecked; selectAllEl.indeterminate = !allChecked && someChecked; }
+  }
+
+  function toggleSelectAll(checked) {
+    document.querySelectorAll('#tableBody .row-check').forEach(cb => {
+      const id = cb.getAttribute('onchange').match(/'([^']+)'/)[1];
+      if (checked) selectedIds.add(id);
+      else selectedIds.delete(id);
+      cb.checked = checked;
+    });
+    updateBulkBar();
+  }
+
+  function clearSelection() {
+    selectedIds.clear();
+    document.querySelectorAll('#tableBody .row-check').forEach(cb => cb.checked = false);
+    const sa = document.getElementById('selectAll');
+    if (sa) { sa.checked = false; sa.indeterminate = false; }
+    updateBulkBar();
+  }
+
+  async function bulkUpdateStatus(status) {
+    if (!status) return;
+    const ids = [...selectedIds];
+    for (const id of ids) {
+      const idx = errors.findIndex(e => String(e.id) === id);
+      if (idx === -1) continue;
+      errors[idx].status = status;
+      updateInSheet(errors[idx]);
+    }
+    clearSelection();
+    if (status === 'Resolved' && dashTab !== 'resolved') setDashTab('resolved');
+    else if (status !== 'Resolved' && dashTab !== 'active') setDashTab('active');
+    else { renderStats(); renderTable(); }
+    showToast(`${ids.length} record${ids.length > 1 ? 's' : ''} updated to ${status}.`, true);
+  }
+
+  async function bulkDelete() {
+    const ids = [...selectedIds];
+    if (!confirm(`Delete ${ids.length} selected record${ids.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
+    errors = errors.filter(e => !ids.includes(String(e.id)));
+    if (ids.includes(String(expandedId))) expandedId = null;
+    clearSelection();
+    updateBadge();
+    renderStats(); renderTable();
+    for (const id of ids) await deleteFromSheet(id);
+    showToast(`${ids.length} record${ids.length > 1 ? 's' : ''} deleted.`, true);
+  }
+
+  function statusCls(s) {
+    return s === 'In Progress' ? 'inprogress' : s === 'Resolved' ? 'resolved' : 'open';
+  }
+
+  async function updateStatus(id, status) {
+    const idx = errors.findIndex(e => String(e.id) === String(id));
+    if (idx === -1) return;
+    errors[idx].status = status;
+    if (status === 'Resolved' && dashTab !== 'resolved') setDashTab('resolved');
+    else if (status !== 'Resolved' && dashTab !== 'active') setDashTab('active');
+    else renderTable();
+    await updateInSheet(errors[idx]);
+  }
+
+  function badgeClass(type) {
+    return { 'Wrong Item':'badge-wrong','Missing Item':'badge-missing','Extra Item':'badge-extra',
+      'Damaged Item':'badge-damaged','Wrong Label':'badge-label','AWB Error':'badge-label',
+      'Other':'badge-other' }[type] || 'badge-other';
+  }
+
+  function formatTime(d) {
+    if (!(d instanceof Date) || isNaN(d)) return '—';
+    return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+' '
+      +d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  }
+
+  // ── Lightbox ───────────────────────────────────────────────────────────
+  function openLightbox(src) {
+    document.getElementById('lbImg').src = src;
+    document.getElementById('lightbox').classList.add('open');
+  }
+  function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('open');
+    document.getElementById('lbImg').src = '';
+  }
+  document.getElementById('lightbox').addEventListener('click', function(e) {
+    if (e.target === this) closeLightbox();
+  });
+
+  // ── Search dropdown ───────────────────────────────────────────────────
+  function openSearchDrop() {
+    const q = document.getElementById('searchInput').value;
+    if (!q) document.getElementById('searchDropdown').classList.add('open');
+  }
+
+  function closeSearchDrop() {
+    document.getElementById('searchDropdown').classList.remove('open');
+  }
+
+  function pickFilter(value) {
+    document.getElementById('searchInput').value = value;
+    closeSearchDrop();
+    renderTable();
+    document.getElementById('searchInput').focus();
+  }
+
+  function searchKeyDown(e) {
+    if (e.key === 'Escape') { closeSearchDrop(); }
+    else { document.getElementById('searchDropdown').classList.remove('open'); }
+  }
+
+  // Close dropdown when clicking outside
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.search-wrap')) closeSearchDrop();
+  });
+
+  // Hide dropdown while typing (show only on empty focus)
+  document.getElementById('searchInput').addEventListener('input', function() {
+    if (this.value) closeSearchDrop();
+    else openSearchDrop();
+  });
+
+  // ── Dashboard multi-select ────────────────────────────────────────────
+  let selectedIds = new Set();
+
+  // ── Dashboard sub-tabs ────────────────────────────────────────────────
+  let dashTab = 'active';
+
+  function setDashTab(tab) {
+    dashTab = tab;
+    expandedId = null;
+    selectedIds.clear();
+    document.getElementById('subtab-active').classList.toggle('active', tab === 'active');
+    document.getElementById('subtab-resolved').classList.toggle('active', tab === 'resolved');
+    renderTable();
+  }
+
+  // ── Expandable rows ───────────────────────────────────────────────────
+  let expandedId = null;
+
+  function toggleExpand(id) {
+    expandedId = String(expandedId) === String(id) ? null : id;
+    renderTable();
+  }
+
+  async function updateInSheet(record) {
+    if (!SCRIPT_URL) return;
+    const payload = encodeURIComponent(JSON.stringify({
+      id:              record.id,
+      timestamp:       record.timestamp instanceof Date ? record.timestamp.toISOString() : record.timestamp,
+      orderId:         record.orderId,
+      toteNum:         record.toteNum,
+      stationNum:      record.stationNum,
+      errorType:       record.errorType,
+      notes:  record.notes  || '',
+      status: record.status || '',
+      skus:   JSON.stringify(record.skus || [])
+    }));
+    try {
+      await fetch(`${SCRIPT_URL}?action=update&data=${payload}`, { cache: 'no-store' });
+    } catch (err) {
+      console.error('Sheet update error:', err);
+      showToast('Updated locally — sheet sync failed', false);
+    }
+  }
+
+  async function deleteRecord(id) {
+    if (!confirm('Delete this record? This cannot be undone.')) return;
+    errors = errors.filter(e => String(e.id) !== String(id));
+    if (String(expandedId) === String(id)) expandedId = null;
+    updateBadge();
+    renderStats(); renderTable();
+    await deleteFromSheet(id);
+  }
+
+  async function deleteFromSheet(id) {
+    if (!SCRIPT_URL) return;
+    const payload = encodeURIComponent(JSON.stringify({ id }));
+    try {
+      const res  = await fetch(`${SCRIPT_URL}?action=delete&data=${payload}`, { cache: 'no-store' });
+      const json = await res.json().catch(() => null);
+      if (json && json.status === 'error') {
+        console.error('Sheet delete failed:', json.message);
+        showToast('Sheet sync failed: ' + (json.message || 'unknown error'), false);
+      } else if (json && json.status === 'ok') {
+        showToast('Deleted and synced to sheet.', true);
+      } else {
+        // Unexpected response — Apps Script may be outdated (missing handleDelete)
+        console.warn('Unexpected delete response:', json);
+        showToast('Sheet sync issue — please re-deploy your Apps Script.', false);
+      }
+    } catch (err) {
+      console.error('Sheet delete error:', err);
+      showToast('Deleted locally — sheet sync failed (network error)', false);
+    }
+  }
+
+  // ── Slack notification ────────────────────────────────────────────────
+  function sendSlackNotification(record) {
+    if (!SLACK_WEBHOOK) return;
+
+    const errorEmoji = {
+      'Wrong Item':   '📦', 'Missing Item': '❌', 'Extra Item':   '➕',
+      'Damaged Item': '⚠️', 'AWB Error':    '📋', 'Other':        '💬'
+    }[record.errorType] || '🔔';
+
+    const ts = record.timestamp instanceof Date
+      ? record.timestamp.toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
+      : record.timestamp || '—';
+
+    // ── Main info table (fixed-width monospace) ──
+    function pad(str, len) { return String(str || '—').padEnd(len); }
+    const col1 = 14;
+    const divider = '─'.repeat(30);
+    let table = '```\n';
+    table += `${pad('Order ID',    col1)}  ${record.orderId   || '—'}\n`;
+    table += `${pad('Error Type',  col1)}  ${errorEmoji} ${record.errorType}\n`;
+    table += `${pad('Tote',        col1)}  ${record.toteNum   || '—'}\n`;
+    table += `${pad('Station',     col1)}  ${record.stationNum|| '—'}\n`;
+    table += `${pad('Reported',    col1)}  ${ts}\n`;
+    table += '```';
+
+    const blocks = [
+      {
+        type: 'header',
+        text: { type: 'plain_text', text: `${errorEmoji} New Packing Error Reported`, emoji: true }
+      },
+      { type: 'section', text: { type: 'mrkdwn', text: table } },
+    ];
+
+    // ── SKU table ──
+    const skus = record.skus || [];
+    if (skus.length) {
+      const c1 = Math.max(3, ...skus.map(s => (s.sku||'').length));
+      const c2 = 4;
+      const c3 = Math.max(9, ...skus.map(s => (s.packType||'').length));
+      const header = `${'SKU'.padEnd(c1)}  ${'Qty'.padEnd(c2)}  Pack Type`;
+      const sep    = `${'─'.repeat(c1)}  ${'─'.repeat(c2)}  ${'─'.repeat(c3)}`;
+      const rows   = skus.map(s =>
+        `${(s.sku||'—').padEnd(c1)}  ${(s.qty||'—').padEnd(c2)}  ${s.packType||'—'}`
+      ).join('\n');
+      blocks.push({
+        type: 'section',
+        text: { type: 'mrkdwn', text: `*SKU Details*\n\`\`\`\n${header}\n${sep}\n${rows}\n\`\`\`` }
+      });
+    }
+
+    // ── Notes / AWB ──
+    if (record.notes) {
+      const label = record.errorType === 'AWB Error' ? 'AWB Error Code' : 'Notes';
+      blocks.push({
+        type: 'section',
+        text: { type: 'mrkdwn', text: `*${label}*\n\`\`\`\n${record.notes}\n\`\`\`` }
+      });
+    }
+
+    blocks.push({ type: 'divider' });
+
+    // Use no-cors + text/plain to avoid CORS preflight —
+    // Slack parses the JSON body regardless of Content-Type.
+    fetch(SLACK_WEBHOOK, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ blocks })
+    }).catch(err => console.error('Slack notification failed:', err));
+  }
+
+  // ── Manual refresh ────────────────────────────────────────────────────
+  async function manualRefresh() {
+    if (!SCRIPT_URL) { showToast('No sheet connected — configure in Settings.', false); return; }
+    const btn = document.getElementById('refreshBtn');
+    btn.disabled = true;
+    btn.style.opacity = '.5';
+    await loadFromSheet();
+    renderStats(); renderTable();
+    btn.disabled = false;
+    btn.style.opacity = '';
+  }
+
+  // ── Open Sheet ─────────────────────────────────────────────────────────
+  function openSheet() {
+    const id = localStorage.getItem('packingErrorSheetId');
+    if (id) window.open('https://docs.google.com/spreadsheets/d/' + id + '/edit', '_blank');
+  }
+
+  function refreshOpenSheetBtn() {
+    const btn = document.getElementById('openSheetBtn');
+    if (btn) btn.style.display = localStorage.getItem('packingErrorSheetId') ? 'inline-flex' : 'none';
+  }
+  refreshOpenSheetBtn();
+
+  // ── CSV Export ─────────────────────────────────────────────────────────
+  function exportCSV() {
+    if (!errors.length) { showToast('No data to export.', false); return; }
+    const headers = ['ID','Timestamp','Order ID','Tote','Station','Error Type','Notes','Status'];
+    const rows = errors.map(e => [
+      e.id, e.timestamp instanceof Date ? e.timestamp.toISOString() : e.timestamp,
+      e.orderId, e.toteNum, e.stationNum, e.errorType,
+      `"${(e.notes||'').replace(/"/g,'""')}"`,
+      e.status || 'Open'
+    ]);
+    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+    a.download = `packing-errors-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+  }
+</script>
+</body>
+</html>
