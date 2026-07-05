@@ -1245,7 +1245,7 @@
       <div>
         <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Ops — B2C Fulfillment</div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:2px">
-          <span id="b2cDataMode">Snapshot</span> · <span id="b2cSyncTime">5 Jul 2026, 09:54 SGT</span> · <span style="color:var(--primary);cursor:pointer" onclick="openSettings()">Change warehouse ↗</span>
+          <span id="b2cDataMode">Snapshot</span> · <span id="b2cSyncTime">5 Jul 2026, 10:44 SGT</span> · <span style="color:var(--primary);cursor:pointer" onclick="openSettings()">Change warehouse ↗</span>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -1394,6 +1394,63 @@
               </div>
             </li>
           </ol>
+        </div>
+      </div>
+
+      <!-- Section: Connect to Metabase -->
+      <div class="help-section" id="help-s4">
+        <div class="help-section-header" onclick="toggleHelpSection('help-s4')">
+          <span class="help-section-title">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+            Connect to Metabase
+          </span>
+          <svg class="help-chevron" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="help-section-body">
+          <p style="font-size:.875rem;color:var(--muted);margin-bottom:16px;line-height:1.6">
+            Connects the B2C Dashboard to live Metabase data. The API key is embedded into
+            <strong>Code.gs</strong> when you copy it — no need to set Script Properties manually.
+          </p>
+
+          <!-- API Key input -->
+          <div style="margin-bottom:18px">
+            <label style="display:block;font-size:.8rem;font-weight:600;color:var(--text);margin-bottom:6px">Metabase API Key</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input id="metabaseApiKeyInput" type="password"
+                placeholder="Paste your Metabase API key here…"
+                oninput="onMetabaseApiKeyInput(this.value)"
+                style="flex:1;padding:8px 12px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:.875rem;font-family:monospace" />
+              <button id="metabaseKeyToggle" onclick="toggleMetabaseKeyVisibility()"
+                class="btn btn-ghost btn-sm" style="font-size:.8rem;white-space:nowrap">Show</button>
+            </div>
+            <div id="metabaseKeyStatus" style="font-size:.78rem;margin-top:6px;color:var(--muted)">
+              Enter your Metabase API key above to embed it in Code.gs.
+            </div>
+          </div>
+
+          <!-- Open Metabase link -->
+          <div style="margin-bottom:18px;display:flex;align-items:center;gap:10px">
+            <span style="font-size:.8rem;color:var(--muted)">Don't have an API key?</span>
+            <a href="https://metabase.golocad.com" target="_blank"
+              style="display:inline-flex;align-items:center;gap:6px;font-size:.82rem;color:var(--primary);text-decoration:none;font-weight:500">
+              <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              Open Metabase
+            </a>
+          </div>
+
+          <!-- Steps -->
+          <p style="font-size:.8rem;font-weight:600;color:var(--text);margin-bottom:8px">How to get your API key:</p>
+          <ol class="step-list">
+            <li><div><strong>Log in to Metabase.</strong><br>Go to <a href="https://metabase.golocad.com" target="_blank" style="color:var(--primary)">metabase.golocad.com</a> and sign in with your Locad account.</div></li>
+            <li><div><strong>Open API Keys settings.</strong><br>Click your avatar (top-right) → <strong>Settings</strong> → <strong>API Keys</strong> → <strong>Create API Key</strong>. Give it a name (e.g. <code>daily-ops-webapp</code>) and copy the key shown.</div></li>
+            <li><div><strong>Paste the key above.</strong><br>It will be automatically embedded in Code.gs when you click <strong>Copy Code</strong> in the Connect to Google Sheets section. Paste and deploy a new version of your Apps Script.</div></li>
+            <li><div><strong>Schedule automatic syncs.</strong><br>In the Apps Script editor, run <code>setupSyncTrigger()</code> once. It will sync B2C data from Metabase every 30 minutes so all webapp instances stay updated.</div></li>
+          </ol>
+
+          <div style="background:var(--tag-bg);border:1px solid #3b5098;border-radius:8px;padding:12px 14px;margin-top:14px;font-size:.82rem;color:var(--muted);line-height:1.6">
+            💡 <strong style="color:var(--text)">Tip:</strong> You can also set <code>METABASE_API_KEY</code> directly in
+            Apps Script → Project Settings → Script Properties as a fallback, without pasting the key into Code.gs.
+          </div>
         </div>
       </div>
 
@@ -1962,7 +2019,14 @@
 
   // ── Code.gs template & rendering ──────────────────────────────────────
   const CODE_TEMPLATE = `// ─────────────────────────────────────────────────────────────────────────────
-// Packing Error Report — Google Apps Script backend
+// Packing Error Report + Metabase Sync — Google Apps Script backend
+//
+// SETUP:
+//   1. Paste this entire file into Extensions → Apps Script → Save.
+//   2. Add Script Properties (Project Settings ⚙ → Script Properties):
+//        METABASE_API_KEY  → your Metabase API key
+//   3. Run syncB2CDashboard() once to test, then setupSyncTrigger() to schedule.
+//   4. Deploy → New deployment → Web app (Execute as: Me, Anyone can access).
 // ─────────────────────────────────────────────────────────────────────────────
 
 const SPREADSHEET_ID = '{{SPREADSHEET_ID}}';
@@ -2085,8 +2149,8 @@ function handleDelete(e) {
 function handleMetabase() {
   try {
     var props  = PropertiesService.getScriptProperties();
-    var apiKey = props.getProperty('METABASE_API_KEY');
-    if (!apiKey) return fail('METABASE_API_KEY not set in Script Properties. See setup instructions in the Apps Script editor.');
+    var apiKey = '{{METABASE_API_KEY}}' || props.getProperty('METABASE_API_KEY');
+    if (!apiKey) return fail('METABASE_API_KEY not set. Add it in Script Properties or via Help → Connect to Metabase in the webapp.');
 
     var query = {
       database: 2,
@@ -2176,11 +2240,97 @@ function fail(error) {
   return ContentService
     .createTextOutput(JSON.stringify({ success: false, error: error }))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// METABASE AUTO-SYNC — scheduled function that keeps B2CDashboard sheet fresh
+// Run setupSyncTrigger() once to schedule this every 30 minutes automatically.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function syncB2CDashboard() {
+  var props  = PropertiesService.getScriptProperties();
+  var apiKey = '{{METABASE_API_KEY}}' || props.getProperty('METABASE_API_KEY');
+  if (!apiKey) throw new Error('METABASE_API_KEY not set. Add it in Script Properties or via Help → Connect to Metabase in the webapp.');
+
+  var query = {
+    database: 2,
+    type: 'native',
+    native: {
+      query: "SELECT warehouse, warehouse_status, COUNT(*) AS count " +
+             "FROM \`athena__datamart.fct_priority_warehouse_performance\` " +
+             "WHERE adjusted_released_at_local = CURRENT_DATE('Asia/Singapore') " +
+             "AND warehouse_status IN ('01 OPEN','02 READY_FOR_PICKING','03 PICKING','04 PICKED') " +
+             "GROUP BY warehouse, warehouse_status " +
+             "ORDER BY warehouse, warehouse_status"
+    }
+  };
+
+  var response = UrlFetchApp.fetch('https://metabase.golocad.com/api/dataset', {
+    method:             'post',
+    headers:            { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+    payload:            JSON.stringify(query),
+    muteHttpExceptions: true
+  });
+
+  var result = JSON.parse(response.getContentText());
+  if (result.error || result.status === 'failed') {
+    throw new Error('Metabase query failed: ' + (result.error || result.message || 'unknown'));
+  }
+
+  var rawRows = (result.data && result.data.rows) ? result.data.rows : [];
+
+  // Transform [warehouse, warehouse_status, count] → {wh, new, rfp, picking, picked}
+  var warehouseMap = {};
+  rawRows.forEach(function(row) {
+    var wh = row[0], status = row[1], count = Number(row[2]) || 0;
+    if (!warehouseMap[wh]) warehouseMap[wh] = { wh: wh, new: 0, rfp: 0, picking: 0, picked: 0 };
+    if (status === '01 OPEN')              warehouseMap[wh].new     = count;
+    if (status === '02 READY_FOR_PICKING') warehouseMap[wh].rfp     = count;
+    if (status === '03 PICKING')           warehouseMap[wh].picking = count;
+    if (status === '04 PICKED')            warehouseMap[wh].picked  = count;
+  });
+
+  var rows      = Object.values(warehouseMap);
+  var sync_time = new Date().toISOString();
+  var sheet     = getB2CSheet();
+
+  if (sheet.getLastRow() > 1) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, 6).clearContent();
+  }
+  if (rows.length) {
+    var data = rows.map(function(r) {
+      return [r.wh, r.new, r.rfp, r.picking, r.picked, sync_time];
+    });
+    sheet.getRange(2, 1, data.length, 6).setValues(data);
+  }
+
+  Logger.log('Synced ' + rows.length + ' warehouses at ' + sync_time);
+}
+
+// Run once to schedule syncB2CDashboard every 30 minutes
+function setupSyncTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'syncB2CDashboard') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('syncB2CDashboard').timeBased().everyMinutes(30).create();
+  Logger.log('Trigger set: syncB2CDashboard every 30 minutes.');
+}
+
+// Run to pause automatic syncing
+function removeSyncTrigger() {
+  var removed = 0;
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'syncB2CDashboard') { ScriptApp.deleteTrigger(t); removed++; }
+  });
+  Logger.log('Removed ' + removed + ' sync trigger(s).');
 }`;
 
   function renderCodeBlock(spreadsheetId) {
-    const id = spreadsheetId || 'YOUR_SPREADSHEET_ID_HERE';
-    document.getElementById('codeBlock').textContent = CODE_TEMPLATE.replace('{{SPREADSHEET_ID}}', id);
+    const id     = spreadsheetId || 'YOUR_SPREADSHEET_ID_HERE';
+    const apiKey = localStorage.getItem('metabaseApiKey') || '';
+    document.getElementById('codeBlock').textContent = CODE_TEMPLATE
+      .replace('{{SPREADSHEET_ID}}', id)
+      .replace(/\{\{METABASE_API_KEY\}\}/g, apiKey);
   }
 
   function extractSheetId(url) {
@@ -2217,6 +2367,42 @@ function fail(error) {
       onSheetUrlInput(inputEl.value);
     } else {
       renderCodeBlock(null);
+    }
+  })();
+
+  // ── Metabase API key ──────────────────────────────────────────────────
+  function onMetabaseApiKeyInput(val) {
+    const statusEl = document.getElementById('metabaseKeyStatus');
+    if (val.trim()) {
+      localStorage.setItem('metabaseApiKey', val.trim());
+      renderCodeBlock(localStorage.getItem('packingErrorSheetId'));
+      statusEl.textContent = '✓ API key saved — Code.gs updated. Copy it again to include the key.';
+      statusEl.style.color = 'var(--success)';
+    } else {
+      localStorage.removeItem('metabaseApiKey');
+      renderCodeBlock(localStorage.getItem('packingErrorSheetId'));
+      statusEl.textContent = 'Enter your Metabase API key above to embed it in Code.gs.';
+      statusEl.style.color = 'var(--muted)';
+    }
+  }
+
+  function toggleMetabaseKeyVisibility() {
+    const inp = document.getElementById('metabaseApiKeyInput');
+    const btn = document.getElementById('metabaseKeyToggle');
+    if (inp.type === 'password') { inp.type = 'text';     btn.textContent = 'Hide'; }
+    else                         { inp.type = 'password'; btn.textContent = 'Show'; }
+  }
+
+  // Init Metabase key field on load
+  (function initMetabaseKey() {
+    const saved = localStorage.getItem('metabaseApiKey');
+    if (saved) {
+      const inp = document.getElementById('metabaseApiKeyInput');
+      if (inp) {
+        inp.value = saved;
+        const statusEl = document.getElementById('metabaseKeyStatus');
+        if (statusEl) { statusEl.textContent = '✓ API key loaded from saved settings.'; statusEl.style.color = 'var(--success)'; }
+      }
     }
   })();
 
