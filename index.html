@@ -1414,6 +1414,10 @@
 
           <!-- Auth method tabs -->
           <div style="display:flex;gap:0;margin-bottom:16px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+            <button id="mb-tab-google" onclick="switchMbTab('google')"
+              style="flex:1;padding:7px 0;font-size:.8rem;font-weight:600;border:none;cursor:pointer;background:var(--surface2);color:var(--muted);transition:background .15s">
+              Google
+            </button>
             <button id="mb-tab-apikey" onclick="switchMbTab('apikey')"
               style="flex:1;padding:7px 0;font-size:.8rem;font-weight:600;border:none;cursor:pointer;background:var(--primary);color:#fff;transition:background .15s">
               API Key
@@ -1422,6 +1426,28 @@
               style="flex:1;padding:7px 0;font-size:.8rem;font-weight:600;border:none;cursor:pointer;background:var(--surface2);color:var(--muted);transition:background .15s">
               Username &amp; Password
             </button>
+          </div>
+
+          <!-- Google Sign-In panel -->
+          <div id="mb-panel-google" style="display:none">
+            <div id="mb-google-status" style="font-size:.8rem;color:var(--muted);margin-bottom:14px;line-height:1.5">
+              Checking if Google Sign-In is enabled on Metabase…
+            </div>
+            <!-- Google button rendered here by GSI library -->
+            <div id="mb-google-btn" style="margin-bottom:14px"></div>
+            <!-- Signed-in state -->
+            <div id="mb-google-signed-in" style="display:none;align-items:center;gap:10px;padding:10px 12px;background:var(--tag-bg);border:1px solid var(--border);border-radius:8px;margin-bottom:14px">
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--success);flex-shrink:0"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+              <div>
+                <div id="mb-google-email" style="font-size:.82rem;font-weight:600;color:var(--text)"></div>
+                <div style="font-size:.75rem;color:var(--muted)">Session token saved — re-copy Code.gs to embed it.</div>
+              </div>
+              <button onclick="mbGoogleSignOut()" class="btn btn-ghost btn-sm" style="margin-left:auto;font-size:.75rem">Sign out</button>
+            </div>
+            <div style="font-size:.78rem;color:var(--muted);line-height:1.55">
+              Signs in with your Google account linked to Metabase. The session token is embedded in Code.gs automatically.
+              Tokens are valid for ~2 weeks — re-sign-in and redeploy if the sync stops working.
+            </div>
           </div>
 
           <!-- API Key panel -->
@@ -2179,6 +2205,10 @@ function getMetabaseHeaders_() {
   var apiKey   = '{{METABASE_API_KEY}}' || props.getProperty('METABASE_API_KEY');
   if (apiKey) return { 'Content-Type': 'application/json', 'x-api-key': apiKey };
 
+  // Try Google-auth session token
+  var sessionToken = '{{METABASE_SESSION_TOKEN}}' || props.getProperty('METABASE_SESSION_TOKEN');
+  if (sessionToken) return { 'Content-Type': 'application/json', 'X-Metabase-Session': sessionToken };
+
   // Fall back to username + password session auth
   var username = '{{METABASE_USERNAME}}' || props.getProperty('METABASE_USERNAME');
   var password = props.getProperty('METABASE_PASSWORD'); // always from Script Properties — never embedded
@@ -2372,13 +2402,15 @@ function removeSyncTrigger() {
 }`;
 
   function renderCodeBlock(spreadsheetId) {
-    const id       = spreadsheetId || 'YOUR_SPREADSHEET_ID_HERE';
-    const apiKey   = localStorage.getItem('metabaseApiKey')  || '';
-    const username = localStorage.getItem('metabaseUsername') || '';
+    const id           = spreadsheetId || 'YOUR_SPREADSHEET_ID_HERE';
+    const apiKey       = localStorage.getItem('metabaseApiKey')      || '';
+    const username     = localStorage.getItem('metabaseUsername')    || '';
+    const sessionToken = localStorage.getItem('metabaseSessionToken') || '';
     document.getElementById('codeBlock').textContent = CODE_TEMPLATE
       .replace('{{SPREADSHEET_ID}}', id)
-      .replace(/\{\{METABASE_API_KEY\}\}/g,   apiKey)
-      .replace(/\{\{METABASE_USERNAME\}\}/g,  username);
+      .replace(/\{\{METABASE_API_KEY\}\}/g,       apiKey)
+      .replace(/\{\{METABASE_USERNAME\}\}/g,      username)
+      .replace(/\{\{METABASE_SESSION_TOKEN\}\}/g, sessionToken);
   }
 
   function extractSheetId(url) {
@@ -2420,14 +2452,139 @@ function removeSyncTrigger() {
 
   // ── Metabase auth tab switcher ────────────────────────────────────────
   function switchMbTab(tab) {
-    const isKey = tab === 'apikey';
-    document.getElementById('mb-panel-apikey').style.display = isKey ? '' : 'none';
-    document.getElementById('mb-panel-login').style.display  = isKey ? 'none' : '';
-    document.getElementById('mb-tab-apikey').style.background = isKey ? 'var(--primary)' : 'var(--surface2)';
-    document.getElementById('mb-tab-apikey').style.color      = isKey ? '#fff' : 'var(--muted)';
-    document.getElementById('mb-tab-login').style.background  = isKey ? 'var(--surface2)' : 'var(--primary)';
-    document.getElementById('mb-tab-login').style.color       = isKey ? 'var(--muted)' : '#fff';
+    ['google','apikey','login'].forEach(function(t) {
+      const panel = document.getElementById('mb-panel-' + t);
+      const btn   = document.getElementById('mb-tab-' + t);
+      if (!panel || !btn) return;
+      const active = t === tab;
+      panel.style.display      = active ? '' : 'none';
+      btn.style.background     = active ? 'var(--primary)' : 'var(--surface2)';
+      btn.style.color          = active ? '#fff' : 'var(--muted)';
+    });
     localStorage.setItem('metabaseAuthTab', tab);
+    if (tab === 'google') initGoogleSignIn();
+  }
+
+  // ── Metabase Google Sign-In ───────────────────────────────────────────
+  let _gsiLoaded = false;
+  let _gsiClientId = null;
+
+  async function initGoogleSignIn() {
+    const statusEl = document.getElementById('mb-google-status');
+
+    // Restore signed-in state from localStorage
+    const saved = localStorage.getItem('metabaseSessionToken');
+    const email = localStorage.getItem('metabaseGoogleEmail');
+    if (saved && email) {
+      showGoogleSignedIn(email);
+      if (statusEl) statusEl.style.display = 'none';
+    }
+
+    if (_gsiLoaded) return;
+
+    // Fetch Metabase's public settings to get the Google Client ID
+    try {
+      statusEl.textContent = 'Checking if Google Sign-In is enabled on Metabase…';
+      const resp = await fetch('https://metabase.golocad.com/api/session/properties');
+      if (!resp.ok) throw new Error('Could not reach Metabase (' + resp.status + ')');
+      const settings = await resp.json();
+      _gsiClientId = settings['google-auth-client-id'];
+
+      if (!_gsiClientId) {
+        statusEl.textContent = 'Google Sign-In is not enabled on this Metabase instance. Use API Key or Username & Password instead.';
+        statusEl.style.color = 'var(--danger)';
+        document.getElementById('mb-google-btn').style.display = 'none';
+        return;
+      }
+
+      statusEl.textContent = 'Google Sign-In is available. Click below to authenticate.';
+      statusEl.style.color = 'var(--success)';
+
+      // Load Google Identity Services script
+      await loadScript('https://accounts.google.com/gsi/client');
+      _gsiLoaded = true;
+
+      google.accounts.id.initialize({
+        client_id: _gsiClientId,
+        callback:  handleGoogleCredential,
+        ux_mode:   'popup'
+      });
+      google.accounts.id.renderButton(document.getElementById('mb-google-btn'), {
+        theme: 'outline', size: 'large', text: 'signin_with', shape: 'rectangular',
+        logo_alignment: 'left', width: 260
+      });
+    } catch (err) {
+      statusEl.textContent = 'Could not connect to Metabase: ' + err.message;
+      statusEl.style.color = 'var(--danger)';
+    }
+  }
+
+  async function handleGoogleCredential(response) {
+    const statusEl = document.getElementById('mb-google-status');
+    statusEl.style.display = '';
+    statusEl.style.color   = 'var(--muted)';
+    statusEl.textContent   = 'Authenticating with Metabase…';
+    try {
+      const mbResp = await fetch('https://metabase.golocad.com/api/session/google_auth', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ token: response.credential })
+      });
+      if (!mbResp.ok) {
+        const err = await mbResp.json().catch(() => ({}));
+        throw new Error(err.message || 'Metabase rejected the Google token (' + mbResp.status + ')');
+      }
+      const data         = await mbResp.json();
+      const sessionToken = data.id;
+      const email        = parseGoogleEmail(response.credential);
+
+      localStorage.setItem('metabaseSessionToken',  sessionToken);
+      localStorage.setItem('metabaseGoogleEmail',   email || 'Google account');
+      renderCodeBlock(localStorage.getItem('packingErrorSheetId'));
+
+      showGoogleSignedIn(email || 'Google account');
+      statusEl.style.display = 'none';
+    } catch (err) {
+      statusEl.textContent = 'Sign-in failed: ' + err.message;
+      statusEl.style.color = 'var(--danger)';
+    }
+  }
+
+  function showGoogleSignedIn(email) {
+    const box = document.getElementById('mb-google-signed-in');
+    if (box) { box.style.display = 'flex'; document.getElementById('mb-google-email').textContent = email; }
+    const btn = document.getElementById('mb-google-btn');
+    if (btn) btn.style.display = 'none';
+  }
+
+  function mbGoogleSignOut() {
+    localStorage.removeItem('metabaseSessionToken');
+    localStorage.removeItem('metabaseGoogleEmail');
+    renderCodeBlock(localStorage.getItem('packingErrorSheetId'));
+    document.getElementById('mb-google-signed-in').style.display = 'none';
+    document.getElementById('mb-google-btn').style.display = '';
+    const statusEl = document.getElementById('mb-google-status');
+    statusEl.style.display = '';
+    statusEl.style.color   = 'var(--muted)';
+    statusEl.textContent   = 'Signed out. Click Sign in with Google to reconnect.';
+    if (_gsiLoaded) google.accounts.id.renderButton(document.getElementById('mb-google-btn'), {
+      theme: 'outline', size: 'large', text: 'signin_with', shape: 'rectangular',
+      logo_alignment: 'left', width: 260
+    });
+  }
+
+  function parseGoogleEmail(credential) {
+    try { return JSON.parse(atob(credential.split('.')[1])).email; } catch(e) { return null; }
+  }
+
+  function loadScript(src) {
+    return new Promise(function(resolve, reject) {
+      if (document.querySelector('script[src="' + src + '"]')) { resolve(); return; }
+      const s = document.createElement('script');
+      s.src = src; s.async = true;
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
   }
 
   // ── Metabase username ─────────────────────────────────────────────────
@@ -2473,7 +2630,7 @@ function removeSyncTrigger() {
   (function initMetabaseKey() {
     // Restore auth tab
     const savedTab = localStorage.getItem('metabaseAuthTab');
-    if (savedTab === 'login') switchMbTab('login');
+    if (savedTab === 'login' || savedTab === 'google') switchMbTab(savedTab);
 
     // Restore API key
     const savedKey = localStorage.getItem('metabaseApiKey');
