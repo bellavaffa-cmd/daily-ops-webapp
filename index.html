@@ -1408,12 +1408,24 @@
         </div>
         <div class="help-section-body">
           <p style="font-size:.875rem;color:var(--muted);margin-bottom:16px;line-height:1.6">
-            Connects the B2C Dashboard to live Metabase data. The API key is embedded into
-            <strong>Code.gs</strong> when you copy it — no need to set Script Properties manually.
+            Choose how Code.gs authenticates with Metabase. Credentials are saved locally and embedded
+            into <strong>Code.gs</strong> when you copy it.
           </p>
 
-          <!-- API Key input -->
-          <div style="margin-bottom:18px">
+          <!-- Auth method tabs -->
+          <div style="display:flex;gap:0;margin-bottom:16px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+            <button id="mb-tab-apikey" onclick="switchMbTab('apikey')"
+              style="flex:1;padding:7px 0;font-size:.8rem;font-weight:600;border:none;cursor:pointer;background:var(--primary);color:#fff;transition:background .15s">
+              API Key
+            </button>
+            <button id="mb-tab-login" onclick="switchMbTab('login')"
+              style="flex:1;padding:7px 0;font-size:.8rem;font-weight:600;border:none;cursor:pointer;background:var(--surface2);color:var(--muted);transition:background .15s">
+              Username &amp; Password
+            </button>
+          </div>
+
+          <!-- API Key panel -->
+          <div id="mb-panel-apikey">
             <label style="display:block;font-size:.8rem;font-weight:600;color:var(--text);margin-bottom:6px">Metabase API Key</label>
             <div style="display:flex;gap:8px;align-items:center">
               <input id="metabaseApiKeyInput" type="password"
@@ -1426,30 +1438,46 @@
             <div id="metabaseKeyStatus" style="font-size:.78rem;margin-top:6px;color:var(--muted)">
               Enter your Metabase API key above to embed it in Code.gs.
             </div>
+            <p style="font-size:.78rem;color:var(--muted);margin-top:10px;line-height:1.5">
+              To generate a key: log in to Metabase → click your avatar → <strong>Settings → API Keys → Create API Key</strong>.
+              If you don't see this option, your admin hasn't granted API access — use Username &amp; Password instead.
+            </p>
           </div>
 
-          <!-- Open Metabase link -->
-          <div style="margin-bottom:18px;display:flex;align-items:center;gap:10px">
-            <span style="font-size:.8rem;color:var(--muted)">Don't have an API key?</span>
+          <!-- Username + Password panel -->
+          <div id="mb-panel-login" style="display:none">
+            <div style="margin-bottom:12px">
+              <label style="display:block;font-size:.8rem;font-weight:600;color:var(--text);margin-bottom:6px">Metabase Username (email)</label>
+              <input id="metabaseUsernameInput" type="email"
+                placeholder="your.email@golocad.com"
+                oninput="onMetabaseUsernameInput(this.value)"
+                style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:.875rem" />
+              <div id="metabaseUsernameStatus" style="font-size:.78rem;margin-top:4px;color:var(--muted)">
+                Your username is saved locally and embedded in Code.gs.
+              </div>
+            </div>
+            <div style="margin-bottom:4px">
+              <label style="display:block;font-size:.8rem;font-weight:600;color:var(--text);margin-bottom:6px">Metabase Password</label>
+              <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+                <input id="metabasePasswordInput" type="password" placeholder="Enter password…" disabled
+                  style="flex:1;padding:8px 12px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:.875rem;cursor:not-allowed" />
+              </div>
+              <div style="background:var(--tag-bg);border:1px solid var(--border);border-radius:7px;padding:10px 12px;font-size:.78rem;color:var(--muted);line-height:1.55">
+                🔒 <strong style="color:var(--text)">Password stays out of Code.gs for security.</strong><br>
+                After copying and pasting Code.gs into Apps Script, go to <strong>Project Settings (⚙) → Script Properties</strong>
+                and add: <code>METABASE_PASSWORD</code> → your password. It never leaves your Apps Script environment.
+              </div>
+            </div>
+          </div>
+
+          <!-- Open Metabase -->
+          <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:.78rem;color:var(--muted)">After saving, re-copy Code.gs and redeploy.</span>
             <a href="https://metabase.golocad.com" target="_blank"
-              style="display:inline-flex;align-items:center;gap:6px;font-size:.82rem;color:var(--primary);text-decoration:none;font-weight:500">
+              style="display:inline-flex;align-items:center;gap:5px;font-size:.82rem;color:var(--primary);text-decoration:none;font-weight:500">
               <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-              Open Metabase
+              Open Metabase ↗
             </a>
-          </div>
-
-          <!-- Steps -->
-          <p style="font-size:.8rem;font-weight:600;color:var(--text);margin-bottom:8px">How to get your API key:</p>
-          <ol class="step-list">
-            <li><div><strong>Log in to Metabase.</strong><br>Go to <a href="https://metabase.golocad.com" target="_blank" style="color:var(--primary)">metabase.golocad.com</a> and sign in with your Locad account.</div></li>
-            <li><div><strong>Open API Keys settings.</strong><br>Click your avatar (top-right) → <strong>Settings</strong> → <strong>API Keys</strong> → <strong>Create API Key</strong>. Give it a name (e.g. <code>daily-ops-webapp</code>) and copy the key shown.</div></li>
-            <li><div><strong>Paste the key above.</strong><br>It will be automatically embedded in Code.gs when you click <strong>Copy Code</strong> in the Connect to Google Sheets section. Paste and deploy a new version of your Apps Script.</div></li>
-            <li><div><strong>Schedule automatic syncs.</strong><br>In the Apps Script editor, run <code>setupSyncTrigger()</code> once. It will sync B2C data from Metabase every 30 minutes so all webapp instances stay updated.</div></li>
-          </ol>
-
-          <div style="background:var(--tag-bg);border:1px solid #3b5098;border-radius:8px;padding:12px 14px;margin-top:14px;font-size:.82rem;color:var(--muted);line-height:1.6">
-            💡 <strong style="color:var(--text)">Tip:</strong> You can also set <code>METABASE_API_KEY</code> directly in
-            Apps Script → Project Settings → Script Properties as a fallback, without pasting the key into Code.gs.
           </div>
         </div>
       </div>
@@ -2146,11 +2174,31 @@ function handleDelete(e) {
 //   1. Open the Apps Script editor → Project Settings (gear icon) → Script Properties
 //   2. Add a property named METABASE_API_KEY with your Metabase API key as the value
 //   3. Save and re-deploy as a new version.
+function getMetabaseHeaders_() {
+  var props    = PropertiesService.getScriptProperties();
+  var apiKey   = '{{METABASE_API_KEY}}' || props.getProperty('METABASE_API_KEY');
+  if (apiKey) return { 'Content-Type': 'application/json', 'x-api-key': apiKey };
+
+  // Fall back to username + password session auth
+  var username = '{{METABASE_USERNAME}}' || props.getProperty('METABASE_USERNAME');
+  var password = props.getProperty('METABASE_PASSWORD'); // always from Script Properties — never embedded
+  if (!username || !password) throw new Error(
+    'No Metabase credentials found. Set METABASE_API_KEY or METABASE_USERNAME + METABASE_PASSWORD in Script Properties, ' +
+    'or use Help → Connect to Metabase in the webapp.'
+  );
+  var res = UrlFetchApp.fetch('https://metabase.golocad.com/api/session', {
+    method: 'post', contentType: 'application/json',
+    payload: JSON.stringify({ username: username, password: password }),
+    muteHttpExceptions: true
+  });
+  if (res.getResponseCode() !== 200) throw new Error('Metabase login failed (' + res.getResponseCode() + ')');
+  var token = JSON.parse(res.getContentText()).id;
+  return { 'Content-Type': 'application/json', 'X-Metabase-Session': token };
+}
+
 function handleMetabase() {
   try {
-    var props  = PropertiesService.getScriptProperties();
-    var apiKey = '{{METABASE_API_KEY}}' || props.getProperty('METABASE_API_KEY');
-    if (!apiKey) return fail('METABASE_API_KEY not set. Add it in Script Properties or via Help → Connect to Metabase in the webapp.');
+    var headers = getMetabaseHeaders_();
 
     var query = {
       database: 2,
@@ -2167,7 +2215,7 @@ function handleMetabase() {
 
     var response = UrlFetchApp.fetch('https://metabase.golocad.com/api/dataset', {
       method: 'post',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+      headers: headers,
       payload: JSON.stringify(query),
       muteHttpExceptions: true
     });
@@ -2248,9 +2296,7 @@ function fail(error) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function syncB2CDashboard() {
-  var props  = PropertiesService.getScriptProperties();
-  var apiKey = '{{METABASE_API_KEY}}' || props.getProperty('METABASE_API_KEY');
-  if (!apiKey) throw new Error('METABASE_API_KEY not set. Add it in Script Properties or via Help → Connect to Metabase in the webapp.');
+  var headers = getMetabaseHeaders_();
 
   var query = {
     database: 2,
@@ -2267,7 +2313,7 @@ function syncB2CDashboard() {
 
   var response = UrlFetchApp.fetch('https://metabase.golocad.com/api/dataset', {
     method:             'post',
-    headers:            { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+    headers:            headers,
     payload:            JSON.stringify(query),
     muteHttpExceptions: true
   });
@@ -2326,11 +2372,13 @@ function removeSyncTrigger() {
 }`;
 
   function renderCodeBlock(spreadsheetId) {
-    const id     = spreadsheetId || 'YOUR_SPREADSHEET_ID_HERE';
-    const apiKey = localStorage.getItem('metabaseApiKey') || '';
+    const id       = spreadsheetId || 'YOUR_SPREADSHEET_ID_HERE';
+    const apiKey   = localStorage.getItem('metabaseApiKey')  || '';
+    const username = localStorage.getItem('metabaseUsername') || '';
     document.getElementById('codeBlock').textContent = CODE_TEMPLATE
       .replace('{{SPREADSHEET_ID}}', id)
-      .replace(/\{\{METABASE_API_KEY\}\}/g, apiKey);
+      .replace(/\{\{METABASE_API_KEY\}\}/g,   apiKey)
+      .replace(/\{\{METABASE_USERNAME\}\}/g,  username);
   }
 
   function extractSheetId(url) {
@@ -2370,6 +2418,34 @@ function removeSyncTrigger() {
     }
   })();
 
+  // ── Metabase auth tab switcher ────────────────────────────────────────
+  function switchMbTab(tab) {
+    const isKey = tab === 'apikey';
+    document.getElementById('mb-panel-apikey').style.display = isKey ? '' : 'none';
+    document.getElementById('mb-panel-login').style.display  = isKey ? 'none' : '';
+    document.getElementById('mb-tab-apikey').style.background = isKey ? 'var(--primary)' : 'var(--surface2)';
+    document.getElementById('mb-tab-apikey').style.color      = isKey ? '#fff' : 'var(--muted)';
+    document.getElementById('mb-tab-login').style.background  = isKey ? 'var(--surface2)' : 'var(--primary)';
+    document.getElementById('mb-tab-login').style.color       = isKey ? 'var(--muted)' : '#fff';
+    localStorage.setItem('metabaseAuthTab', tab);
+  }
+
+  // ── Metabase username ─────────────────────────────────────────────────
+  function onMetabaseUsernameInput(val) {
+    const statusEl = document.getElementById('metabaseUsernameStatus');
+    if (val.trim()) {
+      localStorage.setItem('metabaseUsername', val.trim());
+      renderCodeBlock(localStorage.getItem('packingErrorSheetId'));
+      statusEl.textContent = '✓ Username saved — Code.gs updated.';
+      statusEl.style.color = 'var(--success)';
+    } else {
+      localStorage.removeItem('metabaseUsername');
+      renderCodeBlock(localStorage.getItem('packingErrorSheetId'));
+      statusEl.textContent = 'Your username is saved locally and embedded in Code.gs.';
+      statusEl.style.color = 'var(--muted)';
+    }
+  }
+
   // ── Metabase API key ──────────────────────────────────────────────────
   function onMetabaseApiKeyInput(val) {
     const statusEl = document.getElementById('metabaseKeyStatus');
@@ -2393,16 +2469,28 @@ function removeSyncTrigger() {
     else                         { inp.type = 'password'; btn.textContent = 'Show'; }
   }
 
-  // Init Metabase key field on load
+  // Init Metabase fields on load
   (function initMetabaseKey() {
-    const saved = localStorage.getItem('metabaseApiKey');
-    if (saved) {
+    // Restore auth tab
+    const savedTab = localStorage.getItem('metabaseAuthTab');
+    if (savedTab === 'login') switchMbTab('login');
+
+    // Restore API key
+    const savedKey = localStorage.getItem('metabaseApiKey');
+    if (savedKey) {
       const inp = document.getElementById('metabaseApiKeyInput');
-      if (inp) {
-        inp.value = saved;
-        const statusEl = document.getElementById('metabaseKeyStatus');
-        if (statusEl) { statusEl.textContent = '✓ API key loaded from saved settings.'; statusEl.style.color = 'var(--success)'; }
-      }
+      if (inp) inp.value = savedKey;
+      const statusEl = document.getElementById('metabaseKeyStatus');
+      if (statusEl) { statusEl.textContent = '✓ API key loaded from saved settings.'; statusEl.style.color = 'var(--success)'; }
+    }
+
+    // Restore username
+    const savedUser = localStorage.getItem('metabaseUsername');
+    if (savedUser) {
+      const inp = document.getElementById('metabaseUsernameInput');
+      if (inp) inp.value = savedUser;
+      const statusEl = document.getElementById('metabaseUsernameStatus');
+      if (statusEl) { statusEl.textContent = '✓ Username loaded from saved settings.'; statusEl.style.color = 'var(--success)'; }
     }
   })();
 
