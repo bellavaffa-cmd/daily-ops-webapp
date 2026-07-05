@@ -12,7 +12,6 @@
       --surface: #1a1d27;
       --surface2: #22263a;
       --border: #2e3347;
-      <!-- v2 -->
       --primary: #4f8ef7;
       --primary-hover: #3b7af0;
       --danger: #f87171;
@@ -1246,7 +1245,7 @@
       <div>
         <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Ops — B2C Fulfillment</div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:2px">
-          <span id="b2cDataMode">Snapshot</span> · <span id="b2cSyncTime">4 Jul 2026, 16:50 SGT</span> · <span style="color:var(--primary);cursor:pointer" onclick="openSettings()">Change warehouse ↗</span>
+          <span id="b2cDataMode">Snapshot</span> · <span id="b2cSyncTime">5 Jul 2026, 09:54 SGT</span> · <span style="color:var(--primary);cursor:pointer" onclick="openSettings()">Change warehouse ↗</span>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -1319,13 +1318,19 @@
             <li>
               <div>
                 <strong>Open Apps Script &amp; paste the code.</strong><br>
-                Inside the spreadsheet, go to <strong>Extensions → Apps Script</strong>. Delete any existing code, paste the block below, then click <strong>Save</strong> (Ctrl+S).
-                <div class="code-block-wrap" style="margin-top:10px">
-                  <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
-                    <button class="copy-btn" style="position:static" onclick="copyCode(this)">Copy</button>
-                  </div>
-                  <div class="code-block" id="codeBlock"></div>
+                Inside the spreadsheet, go to <strong>Extensions → Apps Script</strong>. Delete any existing code, click <strong>Copy Code</strong> below to copy it, paste it in, then click <strong>Save</strong> (Ctrl+S).
+                <div style="margin-top:10px">
+                  <button class="btn btn-ghost btn-sm" onclick="copyCode(this)"
+                    style="display:inline-flex;align-items:center;gap:7px;font-size:.82rem">
+                    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2"/>
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                    </svg>
+                    <span>Copy Code</span>
+                  </button>
                 </div>
+                <!-- hidden; populated by onSheetUrlInput so copyCode() can read it -->
+                <div class="code-block" id="codeBlock" style="display:none"></div>
               </div>
             </li>
             <li>
@@ -1389,6 +1394,69 @@
               </div>
             </li>
           </ol>
+        </div>
+      </div>
+
+      <!-- Section: Make Available Online (GitHub Pages) -->
+      <div class="help-section" id="help-s3">
+        <div class="help-section-header" onclick="toggleHelpSection('help-s3')">
+          <span class="help-section-title">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path stroke-linecap="round" d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+            Make Available Online (GitHub Pages)
+          </span>
+          <svg class="help-chevron" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="help-section-body">
+          <p style="font-size:.875rem;color:var(--muted);margin-bottom:16px;line-height:1.6">
+            Host this webapp at a free public URL using GitHub Pages — no server required.
+            Anyone with the link can open it from any device.
+          </p>
+          <ol class="step-list">
+            <li>
+              <div>
+                <strong>Create a GitHub account.</strong><br>
+                Go to <a href="https://github.com" target="_blank" style="color:var(--primary)">github.com</a>
+                and sign up (free). If you already have an account, sign in.
+              </div>
+            </li>
+            <li>
+              <div>
+                <strong>Create a new public repository.</strong><br>
+                Click <strong>+ → New repository</strong>. Give it a name (e.g. <code>daily-ops-webapp</code>).
+                Set visibility to <strong>Public</strong>, then click <strong>Create repository</strong>.
+              </div>
+            </li>
+            <li>
+              <div>
+                <strong>Upload this file renamed as <code>index.html</code>.</strong><br>
+                On the repo page, click <strong>uploading an existing file</strong>.
+                Rename <code>packing-error-report.html</code> to <code>index.html</code> before uploading —
+                GitHub Pages serves <code>index.html</code> as the default page.
+                Click <strong>Commit changes</strong>.
+              </div>
+            </li>
+            <li>
+              <div>
+                <strong>Enable GitHub Pages via GitHub Actions.</strong><br>
+                Go to <strong>Settings → Pages</strong>. Under <em>Source</em>, open the dropdown
+                and select <strong>GitHub Actions</strong>. Two templates appear — click
+                <strong>Configure</strong> on <strong>Static HTML</strong>.
+                Click <strong>Commit changes</strong> to save the workflow.
+              </div>
+            </li>
+            <li>
+              <div>
+                <strong>Wait ~30 s, then open your site.</strong><br>
+                GitHub runs the workflow automatically. Once it shows a green checkmark in the
+                <strong>Actions</strong> tab, your site is live at:<br>
+                <code style="word-break:break-all">https://&lt;your-username&gt;.github.io/&lt;repo-name&gt;</code>
+              </div>
+            </li>
+          </ol>
+          <div style="background:var(--tag-bg);border:1px solid #3b5098;border-radius:8px;padding:12px 14px;margin-top:14px;font-size:.82rem;color:var(--muted);line-height:1.6">
+            💡 <strong style="color:var(--text)">Tip:</strong> Bookmark the URL and share it with your team.
+            Everyone who opens it will always get the latest version of the webapp.
+          </div>
         </div>
       </div>
 
@@ -1524,14 +1592,14 @@
   // ── B2C Dashboard ─────────────────────────────────────────────────────
   // Data is a snapshot. To refresh, ask Claude: "refresh B2C data".
   let b2cData = [
-    { wh: 'LOCAD Bekasi FC',                    new: 248, rfp: 241,  picking: 2,  picked: 2146 },
-    { wh: 'LOCAD Cabuyao (LISP) FC',            new: 206, rfp: 2259, picking: 80, picked: 1323 },
-    { wh: 'LOCAD Hicom FC',                     new: 0,   rfp: 10,   picking: 0,  picked: 0    },
-    { wh: 'LOCAD Joo Koon FC',                  new: 2,   rfp: 1,    picking: 0,  picked: 0    },
-    { wh: 'LOCAD Lat Krabang FC',               new: 3,   rfp: 0,    picking: 0,  picked: 0    },
-    { wh: 'LOCAD Mesquite (TX-015) FC',         new: 0,   rfp: 0,    picking: 0,  picked: 0    },
-    { wh: 'LOCAD Santa Fe Springs FC (US-SAN)', new: 0,   rfp: 0,    picking: 0,  picked: 0    },
-    { wh: 'LOCAD Umm Ramool FC',                new: 2,   rfp: 0,    picking: 0,  picked: 0    },
+    { wh: 'LOCAD Bekasi FC',                    new: 0,   rfp: 0,    picking: 0,  picked: 0    },
+    { wh: 'LOCAD Cabuyao (LISP) FC',            new: 0,   rfp: 0,    picking: 0,  picked: 0    },
+    { wh: 'LOCAD Hicom FC',                     new: 0,   rfp: 0,    picking: 0,  picked: 0    },
+    { wh: 'LOCAD Joo Koon FC',                  new: 0,   rfp: 0,    picking: 0,  picked: 0    },
+    { wh: 'LOCAD Lat Krabang FC',               new: 0,   rfp: 0,    picking: 0,  picked: 0    },
+    { wh: 'LOCAD Mesquite (TX-015) FC',         new: 0,   rfp: 58,   picking: 0,  picked: 0    },
+    { wh: 'LOCAD Santa Fe Springs FC (US-SAN)', new: 7,   rfp: 0,    picking: 0,  picked: 0    },
+    { wh: 'LOCAD Umm Ramool FC',                new: 0,   rfp: 0,    picking: 0,  picked: 0    },
   ];
 
   function renderB2C() {
@@ -2154,10 +2222,13 @@ function fail(error) {
 
   // ── Copy Code.gs ───────────────────────────────────────────────────────
   function copyCode(btn) {
-    const text = document.getElementById('codeBlock').textContent;
+    // Use hidden codeBlock if populated (sheet URL entered), else raw template
+    const stored = document.getElementById('codeBlock').textContent.trim();
+    const text = stored || CODE_TEMPLATE.replace('{{SPREADSHEET_ID}}', 'YOUR_SPREADSHEET_ID_HERE');
+    const label = btn.querySelector('span');
     navigator.clipboard.writeText(text).then(() => {
-      btn.textContent = 'Copied!';
-      setTimeout(() => btn.textContent = 'Copy', 2000);
+      if (label) label.textContent = 'Copied!';
+      setTimeout(() => { if (label) label.textContent = 'Copy Code'; }, 2000);
     });
   }
 
