@@ -13,7 +13,7 @@
 //       No Metabase credentials are needed here.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SPREADSHEET_ID = 'YOUR_SPREADSHEET_ID_HERE'; // ← replace this
+const SPREADSHEET_ID = '16KkpVrGUvqjScWPrleXfMNy2f_y1k8A7mvs1FrikxGg';
 const SHEET_NAME     = 'PackingErrors';
 
 
