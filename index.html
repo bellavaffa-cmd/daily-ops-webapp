@@ -488,6 +488,16 @@
     .url-status.connected { color: var(--success); }
     .url-status.empty     { color: var(--muted); }
 
+    /* ── Warehouse picker ── */
+    .wh-pick-btn {
+      display: block; width: 100%; text-align: left;
+      padding: 11px 14px; margin: 0;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-size: .85rem;
+      cursor: pointer; transition: background .12s, border-color .12s;
+    }
+    .wh-pick-btn:hover { background: var(--surface); border-color: var(--primary); }
+
     /* ── Setup banner ── */
     .setup-banner {
       background: #1e2a47;
@@ -1020,7 +1030,7 @@
         <div class="theme-toggle-row" style="align-items:center">
           <div>
             <div style="font-size:.85rem;color:var(--text);font-weight:500">Live Data Source</div>
-            <div style="font-size:.75rem;color:var(--muted);margin-top:2px" id="b2cLiveSourceNote">Uses your Web App URL from Help → Connect to Google Sheets</div>
+            <div style="font-size:.75rem;color:var(--muted);margin-top:2px" id="b2cLiveSourceNote">Syncs to shared Google Sheet via Apps Script</div>
           </div>
           <span id="b2cLiveSourceStatus" style="font-size:.75rem;font-weight:600;color:var(--muted)">—</span>
         </div>
@@ -1033,6 +1043,20 @@
 </div>
 
 <main>
+  <!-- ── WAREHOUSE PICKER MODAL ── -->
+  <div class="modal-overlay" id="warehousePickerModal">
+    <div class="modal" style="max-width:500px;max-height:90vh;overflow-y:auto">
+      <div style="text-align:center;margin-bottom:22px">
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text);margin-bottom:5px">Select your warehouse</div>
+        <div style="font-size:.82rem;color:var(--muted)">Choose which warehouse to track, or view all</div>
+      </div>
+      <div id="warehousePickerList"></div>
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);text-align:center">
+        <button class="btn btn-ghost" onclick="selectWarehouse('')" style="font-size:.82rem">View All Warehouses</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── REPORT ERROR MODAL ── -->
   <div class="modal-overlay" id="reportModal">
     <div class="modal" style="max-width:620px;max-height:90vh;overflow-y:auto">
@@ -1044,6 +1068,13 @@
 
       <form id="errorForm" novalidate>
         <div class="form-grid">
+
+          <div class="field full">
+            <label>Warehouse *</label>
+            <select id="reportWarehouse" required>
+              <option value="">Select warehouse…</option>
+            </select>
+          </div>
 
           <div class="field">
             <label>Order ID *</label>
@@ -1245,7 +1276,7 @@
       <div>
         <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Ops — B2C Fulfillment</div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:2px">
-          <span id="b2cDataMode">Snapshot</span> · <span id="b2cSyncTime">5 Jul 2026, 10:44 SGT</span> · <span style="color:var(--primary);cursor:pointer" onclick="openSettings()">Change warehouse ↗</span>
+          <span id="b2cDataMode">Snapshot</span> · <span id="b2cSyncTime">5 Jul 2026, 10:44 SGT</span> · <span style="color:var(--primary);cursor:pointer" onclick="showWarehousePicker()">Change warehouse ↗</span>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -1277,6 +1308,7 @@
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:#fcd34d;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Ready for Picking</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:#93c5fd;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Picking Started</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:#86efac;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Ready to Pack</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--text);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Total</th>
             </tr>
           </thead>
           <tbody id="b2cWHTable"></tbody>
@@ -1289,67 +1321,6 @@
   <!-- ── HELP VIEW ── -->
   <div class="view" id="view-help">
     <div class="card">
-
-      <!-- Section: Connect to Google Sheets (unified) -->
-      <div class="help-section" id="help-s1">
-        <div class="help-section-header" onclick="toggleHelpSection('help-s1')">
-          <span class="help-section-title">
-            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-            Connect to Google Sheets
-          </span>
-          <svg class="help-chevron" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-        </div>
-        <div class="help-section-body">
-          <p style="font-size:.875rem;color:var(--muted);margin-bottom:16px;line-height:1.6">
-            Follow these steps to sync error reports across all devices in real time.
-          </p>
-          <ol class="step-list">
-            <li>
-              <div>
-                <strong>Create a Google Sheet.</strong><br>
-                Go to <a href="https://sheets.google.com" target="_blank" style="color:var(--primary)">sheets.google.com</a> and create a new spreadsheet.
-                Paste the URL below — the Spreadsheet ID will be extracted and inserted into the code automatically.
-                <div class="field" style="margin:10px 0 0">
-                  <input type="url" id="sheetUrlInput" placeholder="https://docs.google.com/spreadsheets/d/…/edit" oninput="onSheetUrlInput(this.value)" />
-                  <div class="url-status" id="sheetUrlStatus">Paste your sheet URL above — the Spreadsheet ID will be filled in automatically.</div>
-                </div>
-              </div>
-            </li>
-            <li>
-              <div>
-                <strong>Open Apps Script &amp; paste the code.</strong><br>
-                Inside the spreadsheet, go to <strong>Extensions → Apps Script</strong>. Delete any existing code, click <strong>Copy Code</strong> below to copy it, paste it in, then click <strong>Save</strong> (Ctrl+S).
-                <div style="margin-top:10px">
-                  <button class="btn btn-ghost btn-sm" onclick="copyCode(this)"
-                    style="display:inline-flex;align-items:center;gap:7px;font-size:.82rem">
-                    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                      <rect x="9" y="9" width="13" height="13" rx="2"/>
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-                    </svg>
-                    <span>Copy Code</span>
-                  </button>
-                </div>
-                <!-- hidden; populated by onSheetUrlInput so copyCode() can read it -->
-                <div class="code-block" id="codeBlock" style="display:none"></div>
-              </div>
-            </li>
-            <li>
-              <div>
-                <strong>Deploy as a Web App.</strong><br>
-                Click <strong>Deploy → New deployment</strong>. Choose type <em>Web app</em>.
-                Set <em>Execute as: <strong>Me</strong></em> and <em>Who has access: <strong>Anyone</strong></em>.
-                Click <strong>Deploy</strong>, copy the Web App URL, and paste it below.
-                <div class="field" style="margin:10px 0 4px">
-                  <input type="url" id="scriptUrlInput" placeholder="https://script.google.com/macros/s/…/exec"
-                    oninput="updateUrlStatus(this.value.trim())" />
-                  <div class="url-status" id="urlStatus"></div>
-                </div>
-                <button class="btn btn-primary" onclick="saveScriptUrl()">Save &amp; Connect</button>
-              </div>
-            </li>
-          </ol>
-        </div>
-      </div>
 
       <!-- Section: Slack Notifications -->
       <div class="help-section" id="help-s2">
@@ -1397,14 +1368,10 @@
         </div>
       </div>
 
-      <!-- Section: Connect to Metabase -->
-      <div class="help-section" id="help-s4">
-        <div class="help-section-header" onclick="toggleHelpSection('help-s4')">
-          <span class="help-section-title">
-            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
-            Connect to Metabase
-          </span>
-          <svg class="help-chevron" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      <!-- Section: Connect to Metabase removed — sync handled by Cowork connector -->
+      <div class="help-section" id="help-s4" style="display:none">
+        <div class="help-section-header">
+          <span class="help-section-title">Connect to Metabase</span>
         </div>
         <div class="help-section-body">
           <p style="font-size:.875rem;color:var(--muted);margin-bottom:16px;line-height:1.6">
@@ -1639,7 +1606,7 @@
   });
 
   // ── Config (loaded from localStorage) ────────────────────────────────
-  let SCRIPT_URL     = localStorage.getItem('packingErrorScriptUrl')   || '';
+  let SCRIPT_URL     = localStorage.getItem('packingErrorScriptUrl')   || 'https://script.google.com/macros/s/AKfycbwtCXoxcN2gTL8s2rv13Ekb4GI-okMOr_fgeQ-xhUOSV2mMcDl3uhXpK9r_JVo1TjmYWQ/exec';
   let SLACK_WEBHOOK  = localStorage.getItem('packingErrorSlackWebhook') || '';
   // B2C live data source — set via Settings or hardcode below once GAS is deployed.
   // When set, ALL instances of this file fetch live data from Google Sheets instead of static snapshot.
@@ -1715,9 +1682,16 @@
 
   function renderB2C() {
     const filter = document.getElementById('b2cWarehouseFilter').value;
-    const rows   = filter ? b2cData.filter(r => r.wh === filter) : b2cData;
 
-    const tot = rows.reduce((a, r) => ({
+    // Separate warehouse rows from country-total rows (new schema has type field)
+    const whRows  = b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh);
+    const cRows   = b2cData.filter(r => r.type === 'country');
+    const hasCountry = cRows.length > 0;
+
+    const filtered = filter ? whRows.filter(r => r.wh === filter) : whRows;
+
+    // Grand totals from warehouse rows
+    const tot = filtered.reduce((a, r) => ({
       new:     a.new     + r.new,
       rfp:     a.rfp     + r.rfp,
       picking: a.picking + r.picking,
@@ -1728,12 +1702,13 @@
     const fmt   = n => n.toLocaleString();
     const pct   = (n, d) => d ? (n / d * 100).toFixed(1) + '%' : '—';
 
-    // Status summary card
+    // KPI cards
     const statuses = [
       { key: 'new',     label: 'Open',               count: tot.new,     color: '#fb923c', bg: '#431407' },
       { key: 'rfp',     label: 'Ready for Picking',  count: tot.rfp,     color: '#fcd34d', bg: '#451a03' },
       { key: 'picking', label: 'Picking Started',    count: tot.picking, color: '#93c5fd', bg: '#172554' },
       { key: 'picked',  label: 'Ready to Pack',      count: tot.picked,  color: '#86efac', bg: '#14532d' },
+      { key: 'total',   label: 'Total Orders',       count: total,       color: 'var(--text)', bg: 'var(--surface2)' },
     ];
 
     const kpiEl = document.getElementById('b2cKpis');
@@ -1742,44 +1717,59 @@
         <div class="card" style="padding:16px 18px">
           <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px">${s.label}</div>
           <div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${fmt(s.count)}</div>
-          <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${pct(s.count, total)} of total</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${s.key === 'total' ? 'across all statuses' : pct(s.count, total) + ' of total'}</div>
         </div>`).join('')}
     </div>`;
 
-    // Table rows
+    // Table helpers
     const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color||'var(--text)'};font-size:.82rem">${fmt(n)}</td>`;
-
-    const statusBadge = r => {
+    const whRow = (r, indent) => {
       const t = r.new + r.rfp + r.picking + r.picked;
-      if (t === 0)               return { label: 'No Activity', bg: '#1f2937', color: '#6b7280' };
-      if (r.picked / t >= 0.7)   return { label: 'On Track',    bg: '#14532d', color: '#86efac' };
-      if (r.new    / t >= 0.6)   return { label: 'Not Started', bg: '#7f1d1d', color: '#fca5a5' };
-      if (r.picking > 0)         return { label: 'Picking Started', bg: '#172554', color: '#93c5fd' };
-      return                            { label: 'In Queue',    bg: '#451a03', color: '#fcd34d' };
-    };
-
-    const tdBadge = r => {
-      const s = statusBadge(r);
-      return `<td style="padding:10px 14px;text-align:center"><span style="display:inline-block;padding:2px 10px;border-radius:20px;font-size:.7rem;font-weight:700;background:${s.bg};color:${s.color};white-space:nowrap">${s.label}</span></td>`;
-    };
-
-    let html = rows.map(r => `
-      <tr style="border-top:1px solid var(--border)">
-        <td style="padding:10px 18px;color:var(--text);white-space:nowrap;font-size:.82rem">${r.wh}</td>
+      const pad = indent ? 'padding:9px 18px 9px 28px' : 'padding:10px 18px';
+      return `<tr style="border-top:1px solid var(--border)">
+        <td style="${pad};color:var(--text);white-space:nowrap;font-size:.82rem">${r.wh}</td>
         ${tdN(r.new,     '#fb923c')}
         ${tdN(r.rfp,     '#fcd34d')}
         ${tdN(r.picking, '#93c5fd')}
         ${tdN(r.picked,  '#86efac')}
-      </tr>`).join('');
-
-    if (rows.length > 1) {
-      html += `<tr style="border-top:2px solid var(--border);background:var(--surface2)">
-        <td style="padding:10px 18px;color:var(--text);font-weight:700;font-size:.82rem">Total</td>
-        ${tdN(tot.new,     '#fb923c')}
-        ${tdN(tot.rfp,     '#fcd34d')}
-        ${tdN(tot.picking, '#93c5fd')}
-        ${tdN(tot.picked,  '#86efac')}
+        ${tdN(t,         'var(--text)')}
       </tr>`;
+    };
+
+    let html = '';
+
+    if (hasCountry && !filter) {
+      // Grouped view: country header row → warehouse rows per country
+      const countries = [...new Set(whRows.map(r => r.country).filter(Boolean))];
+      for (const country of countries) {
+        const cRow = cRows.find(c => c.country === country);
+        const whs  = whRows.filter(r => r.country === country);
+        if (cRow) {
+          const ct = cRow.new + cRow.rfp + cRow.picking + cRow.picked;
+          html += `<tr style="border-top:2px solid var(--border);background:var(--surface2)">
+            <td style="padding:9px 18px;color:var(--text);font-weight:700;font-size:.8rem">${country}</td>
+            ${tdN(cRow.new,     '#fb923c')}
+            ${tdN(cRow.rfp,     '#fcd34d')}
+            ${tdN(cRow.picking, '#93c5fd')}
+            ${tdN(cRow.picked,  '#86efac')}
+            ${tdN(ct,           'var(--text)')}
+          </tr>`;
+        }
+        html += whs.map(r => whRow(r, true)).join('');
+      }
+    } else {
+      // Flat view (no country data or filter applied)
+      html += filtered.map(r => whRow(r, false)).join('');
+      if (filtered.length > 1) {
+        html += `<tr style="border-top:2px solid var(--border);background:var(--surface2)">
+          <td style="padding:10px 18px;color:var(--text);font-weight:700;font-size:.82rem">Total</td>
+          ${tdN(tot.new,     '#fb923c')}
+          ${tdN(tot.rfp,     '#fcd34d')}
+          ${tdN(tot.picking, '#93c5fd')}
+          ${tdN(tot.picked,  '#86efac')}
+          ${tdN(total,       'var(--text)')}
+        </tr>`;
+      }
     }
 
     document.getElementById('b2cWHTable').innerHTML = html;
@@ -1806,6 +1796,10 @@
       if (json.data && json.data.length) {
         b2cData = json.data;
         renderB2C();
+        // Show warehouse picker on first open (no prior selection saved)
+        if (localStorage.getItem('b2cWarehousePicked') === null) {
+          showWarehousePicker();
+        }
       }
       if (json.sync_time) {
         const st = document.getElementById('b2cSyncTime');
@@ -1828,8 +1822,56 @@
   fetchB2CData();
   setInterval(() => { if (SCRIPT_URL) fetchB2CData(); }, 5 * 60 * 1000);
 
+  // ── Warehouse Picker ──────────────────────────────────────────────────
+  function showWarehousePicker() {
+    const whRows = b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh);
+    const cRows  = b2cData.filter(r => r.type === 'country');
+
+    const list = document.getElementById('warehousePickerList');
+    if (cRows.length > 0) {
+      // Grouped by country
+      const countries = [...new Set(whRows.map(r => r.country).filter(Boolean))];
+      list.innerHTML = countries.map(country => {
+        const whs = whRows.filter(r => r.country === country);
+        return `<div style="margin-bottom:18px">
+          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:7px">${country}</div>
+          <div style="display:flex;flex-direction:column;gap:5px">
+            ${whs.map(w => `<button class="wh-pick-btn" onclick="selectWarehouse(${JSON.stringify(w.wh)})">${w.wh}</button>`).join('')}
+          </div>
+        </div>`;
+      }).join('');
+    } else {
+      // Flat list (fallback)
+      const warehouses = [...new Set(whRows.map(r => r.wh))];
+      list.innerHTML = `<div style="display:flex;flex-direction:column;gap:5px">
+        ${warehouses.map(wh => `<button class="wh-pick-btn" onclick="selectWarehouse(${JSON.stringify(wh)})">${wh}</button>`).join('')}
+      </div>`;
+    }
+    document.getElementById('warehousePickerModal').classList.add('open');
+  }
+
+  function selectWarehouse(value) {
+    localStorage.setItem('b2cWarehousePicked', '1');
+    localStorage.setItem('b2cWarehouseFilter', value);
+    const sel = document.getElementById('b2cWarehouseFilter');
+    if (sel) sel.value = value;
+    document.getElementById('warehousePickerModal').classList.remove('open');
+    renderB2C();
+  }
+
   // ── Report Error modal ────────────────────────────────────────────────
   function openReportModal() {
+    const sel = document.getElementById('reportWarehouse');
+    const whRows = b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh);
+    const current = sel.value || localStorage.getItem('b2cWarehouseFilter') || '';
+    sel.innerHTML = '<option value="">Select warehouse…</option>';
+    whRows.forEach(r => {
+      const opt = document.createElement('option');
+      opt.value = r.wh;
+      opt.textContent = r.wh;
+      sel.appendChild(opt);
+    });
+    sel.value = current;
     document.getElementById('reportModal').classList.add('open');
   }
   function closeReportModal() {
@@ -2037,14 +2079,14 @@
     const payload = encodeURIComponent(JSON.stringify({
       id:             record.id,
       timestamp:      record.timestamp.toISOString(),
+      warehouse:      record.warehouse || '',
       orderId:        record.orderId,
       toteNum:        record.toteNum,
       stationNum:     record.stationNum,
       errorType:      record.errorType,
-      notes:          record.notes,
+      notes:          record.notes || '',
       status:         record.status || 'Open',
-      skus:  JSON.stringify(record.skus || []),
-      notes: record.notes || ''
+      skus:           JSON.stringify(record.skus || [])
     }));
     try {
       await fetch(`${SCRIPT_URL}?action=write&data=${payload}`, { cache: 'no-store' });
@@ -2073,17 +2115,15 @@
 
   // ── Code.gs template & rendering ──────────────────────────────────────
   const CODE_TEMPLATE = `// ─────────────────────────────────────────────────────────────────────────────
-// Packing Error Report + Metabase Sync — Google Apps Script backend
+// Packing Error Report — Google Apps Script backend
 //
 // SETUP:
 //   1. Paste this entire file into Extensions → Apps Script → Save.
-//   2. Add Script Properties (Project Settings ⚙ → Script Properties):
-//        METABASE_API_KEY  → your Metabase API key
-//   3. Run syncB2CDashboard() once to test, then setupSyncTrigger() to schedule.
-//   4. Deploy → New deployment → Web app (Execute as: Me, Anyone can access).
+//   2. Deploy → New deployment → Web app (Execute as: Me, Anyone can access).
+//   3. Copy the Web App URL and paste it into the webapp (Connect to Google Sheets).
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SPREADSHEET_ID = '{{SPREADSHEET_ID}}';
+const SPREADSHEET_ID = '16KkpVrGUvqjScWPrleXfMNy2f_y1k8A7mvs1FrikxGg';
 const SHEET_NAME     = 'PackingErrors';
 
 // Auto-creates the sheet + header row if it doesn't exist yet.
@@ -2092,9 +2132,9 @@ function getSheet() {
   let   sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
-    sheet.appendRow(['ID', 'Timestamp', 'OrderID', 'ToteNum', 'StationNum', 'ErrorType', 'Notes', 'Status', 'SKU']);
+    sheet.appendRow(['ID', 'Timestamp', 'Warehouse', 'OrderID', 'ToteNum', 'StationNum', 'ErrorType', 'Notes', 'Status', 'SKU']);
     sheet.setFrozenRows(1);
-    sheet.getRange(1, 1, 1, 9).setFontWeight('bold');
+    sheet.getRange(1, 1, 1, 10).setFontWeight('bold');
   }
   return sheet;
 }
@@ -2104,7 +2144,6 @@ function doGet(e) {
   if (action === 'write')     return handleWrite(e);
   if (action === 'update')    return handleUpdate(e);
   if (action === 'delete')    return handleDelete(e);
-  if (action === 'metabase')  return handleMetabase();
   if (action === 'b2c_read')  return handleB2CRead();
   if (action === 'b2c_write') return handleB2CWrite(e);
   return handleRead();
@@ -2117,15 +2156,16 @@ function handleRead() {
     if (values.length <= 1) return ok({ data: [] });
     const rows = values.slice(1).map(function(row) {
       return {
-        id:              row[0],
-        timestamp:       row[1] instanceof Date ? row[1].toISOString() : row[1],
-        orderId:         row[2],
-        toteNum:         row[3],
-        stationNum:      row[4],
-        errorType:       row[5],
-        notes:  row[6] || '',
-        status: row[7] || 'Open',
-        skus:   row[8] || '[]'
+        id:        row[0],
+        timestamp: row[1] instanceof Date ? row[1].toISOString() : row[1],
+        warehouse: row[2] || '',
+        orderId:   row[3],
+        toteNum:   row[4],
+        stationNum: row[5],
+        errorType: row[6],
+        notes:     row[7] || '',
+        status:    row[8] || 'Open',
+        skus:      row[9] || '[]'
       };
     });
     return ok({ data: rows });
@@ -2138,15 +2178,16 @@ function handleWrite(e) {
     const data  = JSON.parse(decodeURIComponent(e.parameter.data));
     const sheet = getSheet();
     sheet.appendRow([
-      data.id        || '',
-      data.timestamp || new Date().toISOString(),
-      data.orderId   || '',
-      data.toteNum   || '',
-      data.stationNum || '',
-      data.errorType || '',
-      data.notes     || '',
-      data.status    || 'Open',
-      data.skus      || '[]'
+      data.id          || '',
+      data.timestamp   || new Date().toISOString(),
+      data.warehouse   || '',
+      data.orderId     || '',
+      data.toteNum     || '',
+      data.stationNum  || '',
+      data.errorType   || '',
+      data.notes       || '',
+      data.status      || 'Open',
+      data.skus        || '[]'
     ]);
     return ok({ message: 'Row appended' });
   } catch (err) { return fail(err.toString()); }
@@ -2160,16 +2201,17 @@ function handleUpdate(e) {
     const values = sheet.getDataRange().getValues();
     for (let i = 1; i < values.length; i++) {
       if (String(values[i][0]) === String(data.id)) {
-        sheet.getRange(i + 1, 1, 1, 9).setValues([[
+        sheet.getRange(i + 1, 1, 1, 10).setValues([[
           data.id,
-          data.timestamp  || values[i][1],
-          data.orderId    || '',
-          data.toteNum    || '',
-          data.stationNum || '',
-          data.errorType  || '',
-          data.notes      || '',
-          data.status     || '',
-          data.skus       || values[i][8] || '[]'
+          data.timestamp   || values[i][1],
+          data.warehouse   || values[i][2] || '',
+          data.orderId     || '',
+          data.toteNum     || '',
+          data.stationNum  || '',
+          data.errorType   || '',
+          data.notes       || '',
+          data.status      || '',
+          data.skus        || values[i][9] || '[]'
         ]]);
         return ok({ message: 'Row updated' });
       }
@@ -2191,72 +2233,6 @@ function handleDelete(e) {
       }
     }
     return fail('Row not found: ' + data.id);
-  } catch (err) { return fail(err.toString()); }
-}
-
-// ── Metabase proxy ────────────────────────────────────────────────────────────
-// Requires METABASE_API_KEY to be set in Project Settings → Script Properties.
-// How to set it:
-//   1. Open the Apps Script editor → Project Settings (gear icon) → Script Properties
-//   2. Add a property named METABASE_API_KEY with your Metabase API key as the value
-//   3. Save and re-deploy as a new version.
-function getMetabaseHeaders_() {
-  var props    = PropertiesService.getScriptProperties();
-  var apiKey   = '{{METABASE_API_KEY}}' || props.getProperty('METABASE_API_KEY');
-  if (apiKey) return { 'Content-Type': 'application/json', 'x-api-key': apiKey };
-
-  // Try Google-auth session token
-  var sessionToken = '{{METABASE_SESSION_TOKEN}}' || props.getProperty('METABASE_SESSION_TOKEN');
-  if (sessionToken) return { 'Content-Type': 'application/json', 'X-Metabase-Session': sessionToken };
-
-  // Fall back to username + password session auth
-  var username = '{{METABASE_USERNAME}}' || props.getProperty('METABASE_USERNAME');
-  var password = props.getProperty('METABASE_PASSWORD'); // always from Script Properties — never embedded
-  if (!username || !password) throw new Error(
-    'No Metabase credentials found. Set METABASE_API_KEY or METABASE_USERNAME + METABASE_PASSWORD in Script Properties, ' +
-    'or use Help → Connect to Metabase in the webapp.'
-  );
-  var res = UrlFetchApp.fetch('https://metabase.golocad.com/api/session', {
-    method: 'post', contentType: 'application/json',
-    payload: JSON.stringify({ username: username, password: password }),
-    muteHttpExceptions: true
-  });
-  if (res.getResponseCode() !== 200) throw new Error('Metabase login failed (' + res.getResponseCode() + ')');
-  var token = JSON.parse(res.getContentText()).id;
-  return { 'Content-Type': 'application/json', 'X-Metabase-Session': token };
-}
-
-function handleMetabase() {
-  try {
-    var headers = getMetabaseHeaders_();
-
-    var query = {
-      database: 2,
-      type: 'native',
-      native: {
-        query: "SELECT warehouse, warehouse_status, COUNT(*) AS count " +
-               "FROM \`athena__datamart.fct_priority_warehouse_performance\` " +
-               "WHERE adjusted_released_at_local = CURRENT_DATE('Asia/Singapore') " +
-               "AND warehouse_status IN ('01 OPEN','02 READY_FOR_PICKING','03 PICKING','04 PICKED') " +
-               "GROUP BY warehouse, warehouse_status " +
-               "ORDER BY warehouse, warehouse_status"
-      }
-    };
-
-    var response = UrlFetchApp.fetch('https://metabase.golocad.com/api/dataset', {
-      method: 'post',
-      headers: headers,
-      payload: JSON.stringify(query),
-      muteHttpExceptions: true
-    });
-
-    var result = JSON.parse(response.getContentText());
-    if (result.error || result.status === 'failed') {
-      return fail('Metabase query failed: ' + (result.error || result.message || 'unknown'));
-    }
-
-    var rows = (result.data && result.data.rows) ? result.data.rows : [];
-    return ok({ rows: rows });
   } catch (err) { return fail(err.toString()); }
 }
 
@@ -2320,97 +2296,13 @@ function fail(error) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// METABASE AUTO-SYNC — scheduled function that keeps B2CDashboard sheet fresh
-// Run setupSyncTrigger() once to schedule this every 30 minutes automatically.
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function syncB2CDashboard() {
-  var headers = getMetabaseHeaders_();
-
-  var query = {
-    database: 2,
-    type: 'native',
-    native: {
-      query: "SELECT warehouse, warehouse_status, COUNT(*) AS count " +
-             "FROM \`athena__datamart.fct_priority_warehouse_performance\` " +
-             "WHERE adjusted_released_at_local = CURRENT_DATE('Asia/Singapore') " +
-             "AND warehouse_status IN ('01 OPEN','02 READY_FOR_PICKING','03 PICKING','04 PICKED') " +
-             "GROUP BY warehouse, warehouse_status " +
-             "ORDER BY warehouse, warehouse_status"
-    }
-  };
-
-  var response = UrlFetchApp.fetch('https://metabase.golocad.com/api/dataset', {
-    method:             'post',
-    headers:            headers,
-    payload:            JSON.stringify(query),
-    muteHttpExceptions: true
-  });
-
-  var result = JSON.parse(response.getContentText());
-  if (result.error || result.status === 'failed') {
-    throw new Error('Metabase query failed: ' + (result.error || result.message || 'unknown'));
-  }
-
-  var rawRows = (result.data && result.data.rows) ? result.data.rows : [];
-
-  // Transform [warehouse, warehouse_status, count] → {wh, new, rfp, picking, picked}
-  var warehouseMap = {};
-  rawRows.forEach(function(row) {
-    var wh = row[0], status = row[1], count = Number(row[2]) || 0;
-    if (!warehouseMap[wh]) warehouseMap[wh] = { wh: wh, new: 0, rfp: 0, picking: 0, picked: 0 };
-    if (status === '01 OPEN')              warehouseMap[wh].new     = count;
-    if (status === '02 READY_FOR_PICKING') warehouseMap[wh].rfp     = count;
-    if (status === '03 PICKING')           warehouseMap[wh].picking = count;
-    if (status === '04 PICKED')            warehouseMap[wh].picked  = count;
-  });
-
-  var rows      = Object.values(warehouseMap);
-  var sync_time = new Date().toISOString();
-  var sheet     = getB2CSheet();
-
-  if (sheet.getLastRow() > 1) {
-    sheet.getRange(2, 1, sheet.getLastRow() - 1, 6).clearContent();
-  }
-  if (rows.length) {
-    var data = rows.map(function(r) {
-      return [r.wh, r.new, r.rfp, r.picking, r.picked, sync_time];
-    });
-    sheet.getRange(2, 1, data.length, 6).setValues(data);
-  }
-
-  Logger.log('Synced ' + rows.length + ' warehouses at ' + sync_time);
-}
-
-// Run once to schedule syncB2CDashboard every 30 minutes
-function setupSyncTrigger() {
-  ScriptApp.getProjectTriggers().forEach(function(t) {
-    if (t.getHandlerFunction() === 'syncB2CDashboard') ScriptApp.deleteTrigger(t);
-  });
-  ScriptApp.newTrigger('syncB2CDashboard').timeBased().everyMinutes(30).create();
-  Logger.log('Trigger set: syncB2CDashboard every 30 minutes.');
-}
-
-// Run to pause automatic syncing
-function removeSyncTrigger() {
-  var removed = 0;
-  ScriptApp.getProjectTriggers().forEach(function(t) {
-    if (t.getHandlerFunction() === 'syncB2CDashboard') { ScriptApp.deleteTrigger(t); removed++; }
-  });
-  Logger.log('Removed ' + removed + ' sync trigger(s).');
-}`;
+// B2CDashboard is updated externally by the Cowork connector every 30 minutes.
+// No Metabase credentials or sync functions are needed here.`;
 
   function renderCodeBlock(spreadsheetId) {
-    const id           = spreadsheetId || 'YOUR_SPREADSHEET_ID_HERE';
-    const apiKey       = localStorage.getItem('metabaseApiKey')      || '';
-    const username     = localStorage.getItem('metabaseUsername')    || '';
-    const sessionToken = localStorage.getItem('metabaseSessionToken') || '';
+    const id = spreadsheetId || 'YOUR_SPREADSHEET_ID_HERE';
     document.getElementById('codeBlock').textContent = CODE_TEMPLATE
-      .replace('{{SPREADSHEET_ID}}', id)
-      .replace(/\{\{METABASE_API_KEY\}\}/g,       apiKey)
-      .replace(/\{\{METABASE_USERNAME\}\}/g,      username)
-      .replace(/\{\{METABASE_SESSION_TOKEN\}\}/g, sessionToken);
+      .replace('{{SPREADSHEET_ID}}', id);
   }
 
   function extractSheetId(url) {
@@ -2450,206 +2342,6 @@ function removeSyncTrigger() {
     }
   })();
 
-  // ── Metabase auth tab switcher ────────────────────────────────────────
-  function switchMbTab(tab) {
-    ['google','apikey','login'].forEach(function(t) {
-      const panel = document.getElementById('mb-panel-' + t);
-      const btn   = document.getElementById('mb-tab-' + t);
-      if (!panel || !btn) return;
-      const active = t === tab;
-      panel.style.display      = active ? '' : 'none';
-      btn.style.background     = active ? 'var(--primary)' : 'var(--surface2)';
-      btn.style.color          = active ? '#fff' : 'var(--muted)';
-    });
-    localStorage.setItem('metabaseAuthTab', tab);
-    if (tab === 'google') initGoogleSignIn();
-  }
-
-  // ── Metabase Google Sign-In ───────────────────────────────────────────
-  let _gsiLoaded = false;
-  let _gsiClientId = null;
-
-  async function initGoogleSignIn() {
-    const statusEl = document.getElementById('mb-google-status');
-
-    // Restore signed-in state from localStorage
-    const saved = localStorage.getItem('metabaseSessionToken');
-    const email = localStorage.getItem('metabaseGoogleEmail');
-    if (saved && email) {
-      showGoogleSignedIn(email);
-      if (statusEl) statusEl.style.display = 'none';
-    }
-
-    if (_gsiLoaded) return;
-
-    // Fetch Metabase's public settings to get the Google Client ID
-    try {
-      statusEl.textContent = 'Checking if Google Sign-In is enabled on Metabase…';
-      const resp = await fetch('https://metabase.golocad.com/api/session/properties');
-      if (!resp.ok) throw new Error('Could not reach Metabase (' + resp.status + ')');
-      const settings = await resp.json();
-      _gsiClientId = settings['google-auth-client-id'];
-
-      if (!_gsiClientId) {
-        statusEl.textContent = 'Google Sign-In is not enabled on this Metabase instance. Use API Key or Username & Password instead.';
-        statusEl.style.color = 'var(--danger)';
-        document.getElementById('mb-google-btn').style.display = 'none';
-        return;
-      }
-
-      statusEl.textContent = 'Google Sign-In is available. Click below to authenticate.';
-      statusEl.style.color = 'var(--success)';
-
-      // Load Google Identity Services script
-      await loadScript('https://accounts.google.com/gsi/client');
-      _gsiLoaded = true;
-
-      google.accounts.id.initialize({
-        client_id: _gsiClientId,
-        callback:  handleGoogleCredential,
-        ux_mode:   'popup'
-      });
-      google.accounts.id.renderButton(document.getElementById('mb-google-btn'), {
-        theme: 'outline', size: 'large', text: 'signin_with', shape: 'rectangular',
-        logo_alignment: 'left', width: 260
-      });
-    } catch (err) {
-      statusEl.textContent = 'Could not connect to Metabase: ' + err.message;
-      statusEl.style.color = 'var(--danger)';
-    }
-  }
-
-  async function handleGoogleCredential(response) {
-    const statusEl = document.getElementById('mb-google-status');
-    statusEl.style.display = '';
-    statusEl.style.color   = 'var(--muted)';
-    statusEl.textContent   = 'Authenticating with Metabase…';
-    try {
-      const mbResp = await fetch('https://metabase.golocad.com/api/session/google_auth', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ token: response.credential })
-      });
-      if (!mbResp.ok) {
-        const err = await mbResp.json().catch(() => ({}));
-        throw new Error(err.message || 'Metabase rejected the Google token (' + mbResp.status + ')');
-      }
-      const data         = await mbResp.json();
-      const sessionToken = data.id;
-      const email        = parseGoogleEmail(response.credential);
-
-      localStorage.setItem('metabaseSessionToken',  sessionToken);
-      localStorage.setItem('metabaseGoogleEmail',   email || 'Google account');
-      renderCodeBlock(localStorage.getItem('packingErrorSheetId'));
-
-      showGoogleSignedIn(email || 'Google account');
-      statusEl.style.display = 'none';
-    } catch (err) {
-      statusEl.textContent = 'Sign-in failed: ' + err.message;
-      statusEl.style.color = 'var(--danger)';
-    }
-  }
-
-  function showGoogleSignedIn(email) {
-    const box = document.getElementById('mb-google-signed-in');
-    if (box) { box.style.display = 'flex'; document.getElementById('mb-google-email').textContent = email; }
-    const btn = document.getElementById('mb-google-btn');
-    if (btn) btn.style.display = 'none';
-  }
-
-  function mbGoogleSignOut() {
-    localStorage.removeItem('metabaseSessionToken');
-    localStorage.removeItem('metabaseGoogleEmail');
-    renderCodeBlock(localStorage.getItem('packingErrorSheetId'));
-    document.getElementById('mb-google-signed-in').style.display = 'none';
-    document.getElementById('mb-google-btn').style.display = '';
-    const statusEl = document.getElementById('mb-google-status');
-    statusEl.style.display = '';
-    statusEl.style.color   = 'var(--muted)';
-    statusEl.textContent   = 'Signed out. Click Sign in with Google to reconnect.';
-    if (_gsiLoaded) google.accounts.id.renderButton(document.getElementById('mb-google-btn'), {
-      theme: 'outline', size: 'large', text: 'signin_with', shape: 'rectangular',
-      logo_alignment: 'left', width: 260
-    });
-  }
-
-  function parseGoogleEmail(credential) {
-    try { return JSON.parse(atob(credential.split('.')[1])).email; } catch(e) { return null; }
-  }
-
-  function loadScript(src) {
-    return new Promise(function(resolve, reject) {
-      if (document.querySelector('script[src="' + src + '"]')) { resolve(); return; }
-      const s = document.createElement('script');
-      s.src = src; s.async = true;
-      s.onload = resolve; s.onerror = reject;
-      document.head.appendChild(s);
-    });
-  }
-
-  // ── Metabase username ─────────────────────────────────────────────────
-  function onMetabaseUsernameInput(val) {
-    const statusEl = document.getElementById('metabaseUsernameStatus');
-    if (val.trim()) {
-      localStorage.setItem('metabaseUsername', val.trim());
-      renderCodeBlock(localStorage.getItem('packingErrorSheetId'));
-      statusEl.textContent = '✓ Username saved — Code.gs updated.';
-      statusEl.style.color = 'var(--success)';
-    } else {
-      localStorage.removeItem('metabaseUsername');
-      renderCodeBlock(localStorage.getItem('packingErrorSheetId'));
-      statusEl.textContent = 'Your username is saved locally and embedded in Code.gs.';
-      statusEl.style.color = 'var(--muted)';
-    }
-  }
-
-  // ── Metabase API key ──────────────────────────────────────────────────
-  function onMetabaseApiKeyInput(val) {
-    const statusEl = document.getElementById('metabaseKeyStatus');
-    if (val.trim()) {
-      localStorage.setItem('metabaseApiKey', val.trim());
-      renderCodeBlock(localStorage.getItem('packingErrorSheetId'));
-      statusEl.textContent = '✓ API key saved — Code.gs updated. Copy it again to include the key.';
-      statusEl.style.color = 'var(--success)';
-    } else {
-      localStorage.removeItem('metabaseApiKey');
-      renderCodeBlock(localStorage.getItem('packingErrorSheetId'));
-      statusEl.textContent = 'Enter your Metabase API key above to embed it in Code.gs.';
-      statusEl.style.color = 'var(--muted)';
-    }
-  }
-
-  function toggleMetabaseKeyVisibility() {
-    const inp = document.getElementById('metabaseApiKeyInput');
-    const btn = document.getElementById('metabaseKeyToggle');
-    if (inp.type === 'password') { inp.type = 'text';     btn.textContent = 'Hide'; }
-    else                         { inp.type = 'password'; btn.textContent = 'Show'; }
-  }
-
-  // Init Metabase fields on load
-  (function initMetabaseKey() {
-    // Restore auth tab
-    const savedTab = localStorage.getItem('metabaseAuthTab');
-    if (savedTab === 'login' || savedTab === 'google') switchMbTab(savedTab);
-
-    // Restore API key
-    const savedKey = localStorage.getItem('metabaseApiKey');
-    if (savedKey) {
-      const inp = document.getElementById('metabaseApiKeyInput');
-      if (inp) inp.value = savedKey;
-      const statusEl = document.getElementById('metabaseKeyStatus');
-      if (statusEl) { statusEl.textContent = '✓ API key loaded from saved settings.'; statusEl.style.color = 'var(--success)'; }
-    }
-
-    // Restore username
-    const savedUser = localStorage.getItem('metabaseUsername');
-    if (savedUser) {
-      const inp = document.getElementById('metabaseUsernameInput');
-      if (inp) inp.value = savedUser;
-      const statusEl = document.getElementById('metabaseUsernameStatus');
-      if (statusEl) { statusEl.textContent = '✓ Username loaded from saved settings.'; statusEl.style.color = 'var(--success)'; }
-    }
-  })();
 
   // ── Copy Code.gs ───────────────────────────────────────────────────────
   function copyCode(btn) {
@@ -2710,6 +2402,7 @@ function removeSyncTrigger() {
   // ── Form submission ────────────────────────────────────────────────────
   document.getElementById('errorForm').addEventListener('submit', async e => {
     e.preventDefault();
+    const warehouse     = document.getElementById('reportWarehouse').value;
     const orderId       = document.getElementById('orderId').value.trim();
     const toteNum       = document.getElementById('toteNum').value.trim();
     const stationNum    = document.getElementById('stationNum').value.trim();
@@ -2723,7 +2416,7 @@ function removeSyncTrigger() {
                  errorType === 'Extra Item'   ? getSkuRows('extraSkuList')   :
                  errorType === 'Damaged Item' ? getSkuRows('damagedSkuList') : [];
 
-    if (!orderId || !toteNum || !errorType) {
+    if (!warehouse || !orderId || !toteNum || !errorType) {
       showToast('Please fill in all required fields and select an error type.', false);
       return;
     }
@@ -2758,6 +2451,7 @@ function removeSyncTrigger() {
 
     const record = {
       id: uid(), timestamp: new Date(),
+      warehouse,
       orderId, toteNum, stationNum, errorType,
       notes, skus,
       photos: [...photosBuffer],
@@ -2781,6 +2475,8 @@ function removeSyncTrigger() {
 
   function resetForm() {
     document.getElementById('errorForm').reset();
+    const whSel = document.getElementById('reportWarehouse');
+    if (whSel) whSel.value = localStorage.getItem('b2cWarehouseFilter') || '';
     photosBuffer = [];
     renderPhotoPreview();
     document.getElementById('wrongItemFields').style.display = 'none';
