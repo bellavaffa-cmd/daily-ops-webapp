@@ -1276,7 +1276,7 @@
       <div>
         <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Ops — B2C Fulfillment</div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:2px">
-          <span id="b2cDataMode">Snapshot</span> · <span id="b2cSyncTime">5 Jul 2026, 10:44 SGT</span> · <span style="color:var(--primary);cursor:pointer" onclick="showWarehousePicker()">Change warehouse ↗</span>
+          <span id="b2cDataMode">Snapshot</span> · <span id="b2cSyncTime">6 Jul 2026, 09:47 SGT</span> · <span style="color:var(--primary);cursor:pointer" onclick="showWarehousePicker()">Change warehouse ↗</span>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -1670,14 +1670,14 @@
   // ── B2C Dashboard ─────────────────────────────────────────────────────
   // Data is a snapshot. To refresh, ask Claude: "refresh B2C data".
   let b2cData = [
-    { wh: 'LOCAD Bekasi FC',                    new: 0,   rfp: 0,    picking: 0,  picked: 0    },
-    { wh: 'LOCAD Cabuyao (LISP) FC',            new: 0,   rfp: 0,    picking: 0,  picked: 0    },
-    { wh: 'LOCAD Hicom FC',                     new: 0,   rfp: 0,    picking: 0,  picked: 0    },
-    { wh: 'LOCAD Joo Koon FC',                  new: 0,   rfp: 0,    picking: 0,  picked: 0    },
-    { wh: 'LOCAD Lat Krabang FC',               new: 0,   rfp: 0,    picking: 0,  picked: 0    },
-    { wh: 'LOCAD Mesquite (TX-015) FC',         new: 0,   rfp: 58,   picking: 0,  picked: 0    },
-    { wh: 'LOCAD Santa Fe Springs FC (US-SAN)', new: 7,   rfp: 0,    picking: 0,  picked: 0    },
-    { wh: 'LOCAD Umm Ramool FC',                new: 0,   rfp: 0,    picking: 0,  picked: 0    },
+    { wh: 'LOCAD Bekasi FC',                    new: 460, rfp: 1627, picking: 44, picked: 5222 },
+    { wh: 'LOCAD Cabuyao (LISP) FC',            new: 907, rfp: 2036, picking: 63, picked: 2865 },
+    { wh: 'LOCAD Hicom FC',                     new: 0,   rfp: 0,    picking: 0,  picked: 4    },
+    { wh: 'LOCAD Joo Koon FC',                  new: 199, rfp: 236,  picking: 4,  picked: 249  },
+    { wh: 'LOCAD Lat Krabang FC',               new: 4,   rfp: 34,   picking: 0,  picked: 105  },
+    { wh: 'LOCAD Mesquite (TX-015) FC',         new: 28,  rfp: 73,   picking: 0,  picked: 0    },
+    { wh: 'LOCAD Santa Fe Springs FC (US-SAN)', new: 0,   rfp: 0,    picking: 0,  picked: 0    },
+    { wh: 'LOCAD Umm Ramool FC',                new: 2,   rfp: 1,    picking: 0,  picked: 0    },
   ];
 
   function renderB2C() {
@@ -1827,25 +1827,29 @@
     const whRows = b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh);
     const cRows  = b2cData.filter(r => r.type === 'country');
 
+    // Use data-wh + this.dataset.wh to avoid HTML attribute quoting issues
+    const btnHTML = wh => `<button class="wh-pick-btn" data-wh="${wh.replace(/"/g,'&quot;').replace(/'/g,'&#39;')}" onclick="selectWarehouse(this.dataset.wh)">${wh}</button>`;
+
     const list = document.getElementById('warehousePickerList');
-    if (cRows.length > 0) {
+    const countries = [...new Set(whRows.map(r => r.country).filter(Boolean))];
+
+    if (cRows.length > 0 && countries.length > 0) {
       // Grouped by country
-      const countries = [...new Set(whRows.map(r => r.country).filter(Boolean))];
       list.innerHTML = countries.map(country => {
         const whs = whRows.filter(r => r.country === country);
         return `<div style="margin-bottom:18px">
           <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:7px">${country}</div>
           <div style="display:flex;flex-direction:column;gap:5px">
-            ${whs.map(w => `<button class="wh-pick-btn" onclick="selectWarehouse(${JSON.stringify(w.wh)})">${w.wh}</button>`).join('')}
+            ${whs.map(w => btnHTML(w.wh)).join('')}
           </div>
         </div>`;
       }).join('');
     } else {
-      // Flat list (fallback)
+      // Flat list (initial data or no country grouping available)
       const warehouses = [...new Set(whRows.map(r => r.wh))];
-      list.innerHTML = `<div style="display:flex;flex-direction:column;gap:5px">
-        ${warehouses.map(wh => `<button class="wh-pick-btn" onclick="selectWarehouse(${JSON.stringify(wh)})">${wh}</button>`).join('')}
-      </div>`;
+      list.innerHTML = warehouses.length
+        ? `<div style="display:flex;flex-direction:column;gap:5px">${warehouses.map(btnHTML).join('')}</div>`
+        : `<div style="color:var(--muted);font-size:.85rem;padding:12px 0">Loading warehouse data…</div>`;
     }
     document.getElementById('warehousePickerModal').classList.add('open');
   }
@@ -1861,6 +1865,7 @@
 
   // ── Report Error modal ────────────────────────────────────────────────
   function openReportModal() {
+    // Populate warehouse dropdown from b2cData
     const sel = document.getElementById('reportWarehouse');
     const whRows = b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh);
     const current = sel.value || localStorage.getItem('b2cWarehouseFilter') || '';
@@ -2475,6 +2480,7 @@ function fail(error) {
 
   function resetForm() {
     document.getElementById('errorForm').reset();
+    // Restore warehouse default (form.reset() clears it)
     const whSel = document.getElementById('reportWarehouse');
     if (whSel) whSel.value = localStorage.getItem('b2cWarehouseFilter') || '';
     photosBuffer = [];
