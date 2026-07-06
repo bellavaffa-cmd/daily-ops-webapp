@@ -1667,7 +1667,7 @@
   });
 
   // ── Config (loaded from localStorage) ────────────────────────────────
-  let SCRIPT_URL     = localStorage.getItem('packingErrorScriptUrl')   || '';
+  let SCRIPT_URL     = localStorage.getItem('packingErrorScriptUrl')   || 'https://script.google.com/macros/s/AKfycbwtCXoxcN2gTL8s2rv13Ekb4GI-okMOr_fgeQ-xhUOSV2mMcDl3uhXpK9r_JVo1TjmYWQ/exec';
   let SLACK_WEBHOOK  = localStorage.getItem('packingErrorSlackWebhook') || '';
   // B2C live data source — set via Settings or hardcode below once GAS is deployed.
   // When set, ALL instances of this file fetch live data from Google Sheets instead of static snapshot.
@@ -2184,7 +2184,7 @@
 //   3. Copy the Web App URL and paste it into the webapp (Connect to Google Sheets).
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SPREADSHEET_ID = '{{SPREADSHEET_ID}}';
+const SPREADSHEET_ID = '16KkpVrGUvqjScWPrleXfMNy2f_y1k8A7mvs1FrikxGg';
 const SHEET_NAME     = 'PackingErrors';
 
 // Auto-creates the sheet + header row if it doesn't exist yet.
