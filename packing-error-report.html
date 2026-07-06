@@ -1030,7 +1030,7 @@
         <div class="theme-toggle-row" style="align-items:center">
           <div>
             <div style="font-size:.85rem;color:var(--text);font-weight:500">Live Data Source</div>
-            <div style="font-size:.75rem;color:var(--muted);margin-top:2px" id="b2cLiveSourceNote">Uses your Web App URL from Help → Connect to Google Sheets</div>
+            <div style="font-size:.75rem;color:var(--muted);margin-top:2px" id="b2cLiveSourceNote">Syncs to shared Google Sheet via Apps Script</div>
           </div>
           <span id="b2cLiveSourceStatus" style="font-size:.75rem;font-weight:600;color:var(--muted)">—</span>
         </div>
@@ -1321,67 +1321,6 @@
   <!-- ── HELP VIEW ── -->
   <div class="view" id="view-help">
     <div class="card">
-
-      <!-- Section: Connect to Google Sheets (unified) -->
-      <div class="help-section" id="help-s1">
-        <div class="help-section-header" onclick="toggleHelpSection('help-s1')">
-          <span class="help-section-title">
-            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-            Connect to Google Sheets
-          </span>
-          <svg class="help-chevron" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-        </div>
-        <div class="help-section-body">
-          <p style="font-size:.875rem;color:var(--muted);margin-bottom:16px;line-height:1.6">
-            Follow these steps to sync error reports across all devices in real time.
-          </p>
-          <ol class="step-list">
-            <li>
-              <div>
-                <strong>Create a Google Sheet.</strong><br>
-                Go to <a href="https://sheets.google.com" target="_blank" style="color:var(--primary)">sheets.google.com</a> and create a new spreadsheet.
-                Paste the URL below — the Spreadsheet ID will be extracted and inserted into the code automatically.
-                <div class="field" style="margin:10px 0 0">
-                  <input type="url" id="sheetUrlInput" placeholder="https://docs.google.com/spreadsheets/d/…/edit" oninput="onSheetUrlInput(this.value)" />
-                  <div class="url-status" id="sheetUrlStatus">Paste your sheet URL above — the Spreadsheet ID will be filled in automatically.</div>
-                </div>
-              </div>
-            </li>
-            <li>
-              <div>
-                <strong>Open Apps Script &amp; paste the code.</strong><br>
-                Inside the spreadsheet, go to <strong>Extensions → Apps Script</strong>. Delete any existing code, click <strong>Copy Code</strong> below to copy it, paste it in, then click <strong>Save</strong> (Ctrl+S).
-                <div style="margin-top:10px">
-                  <button class="btn btn-ghost btn-sm" onclick="copyCode(this)"
-                    style="display:inline-flex;align-items:center;gap:7px;font-size:.82rem">
-                    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                      <rect x="9" y="9" width="13" height="13" rx="2"/>
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-                    </svg>
-                    <span>Copy Code</span>
-                  </button>
-                </div>
-                <!-- hidden; populated by onSheetUrlInput so copyCode() can read it -->
-                <div class="code-block" id="codeBlock" style="display:none"></div>
-              </div>
-            </li>
-            <li>
-              <div>
-                <strong>Deploy as a Web App.</strong><br>
-                Click <strong>Deploy → New deployment</strong>. Choose type <em>Web app</em>.
-                Set <em>Execute as: <strong>Me</strong></em> and <em>Who has access: <strong>Anyone</strong></em>.
-                Click <strong>Deploy</strong>, copy the Web App URL, and paste it below.
-                <div class="field" style="margin:10px 0 4px">
-                  <input type="url" id="scriptUrlInput" placeholder="https://script.google.com/macros/s/…/exec"
-                    oninput="updateUrlStatus(this.value.trim())" />
-                  <div class="url-status" id="urlStatus"></div>
-                </div>
-                <button class="btn btn-primary" onclick="saveScriptUrl()">Save &amp; Connect</button>
-              </div>
-            </li>
-          </ol>
-        </div>
-      </div>
 
       <!-- Section: Slack Notifications -->
       <div class="help-section" id="help-s2">
