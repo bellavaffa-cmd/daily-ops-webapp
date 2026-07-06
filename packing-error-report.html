@@ -488,6 +488,16 @@
     .url-status.connected { color: var(--success); }
     .url-status.empty     { color: var(--muted); }
 
+    /* ── Warehouse picker ── */
+    .wh-pick-btn {
+      display: block; width: 100%; text-align: left;
+      padding: 11px 14px; margin: 0;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-size: .85rem;
+      cursor: pointer; transition: background .12s, border-color .12s;
+    }
+    .wh-pick-btn:hover { background: var(--surface); border-color: var(--primary); }
+
     /* ── Setup banner ── */
     .setup-banner {
       background: #1e2a47;
@@ -1033,6 +1043,20 @@
 </div>
 
 <main>
+  <!-- ── WAREHOUSE PICKER MODAL ── -->
+  <div class="modal-overlay" id="warehousePickerModal">
+    <div class="modal" style="max-width:500px;max-height:90vh;overflow-y:auto">
+      <div style="text-align:center;margin-bottom:22px">
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text);margin-bottom:5px">Select your warehouse</div>
+        <div style="font-size:.82rem;color:var(--muted)">Choose which warehouse to track, or view all</div>
+      </div>
+      <div id="warehousePickerList"></div>
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);text-align:center">
+        <button class="btn btn-ghost" onclick="selectWarehouse('')" style="font-size:.82rem">View All Warehouses</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── REPORT ERROR MODAL ── -->
   <div class="modal-overlay" id="reportModal">
     <div class="modal" style="max-width:620px;max-height:90vh;overflow-y:auto">
@@ -1245,7 +1269,7 @@
       <div>
         <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Ops — B2C Fulfillment</div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:2px">
-          <span id="b2cDataMode">Snapshot</span> · <span id="b2cSyncTime">5 Jul 2026, 10:44 SGT</span> · <span style="color:var(--primary);cursor:pointer" onclick="openSettings()">Change warehouse ↗</span>
+          <span id="b2cDataMode">Snapshot</span> · <span id="b2cSyncTime">5 Jul 2026, 10:44 SGT</span> · <span style="color:var(--primary);cursor:pointer" onclick="showWarehousePicker()">Change warehouse ↗</span>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -1826,6 +1850,10 @@
       if (json.data && json.data.length) {
         b2cData = json.data;
         renderB2C();
+        // Show warehouse picker on first open (no prior selection saved)
+        if (localStorage.getItem('b2cWarehousePicked') === null) {
+          showWarehousePicker();
+        }
       }
       if (json.sync_time) {
         const st = document.getElementById('b2cSyncTime');
@@ -1847,6 +1875,43 @@
   // Fetch on load, then auto-refresh every 5 min if Web App URL is connected
   fetchB2CData();
   setInterval(() => { if (SCRIPT_URL) fetchB2CData(); }, 5 * 60 * 1000);
+
+  // ── Warehouse Picker ──────────────────────────────────────────────────
+  function showWarehousePicker() {
+    const whRows = b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh);
+    const cRows  = b2cData.filter(r => r.type === 'country');
+
+    const list = document.getElementById('warehousePickerList');
+    if (cRows.length > 0) {
+      // Grouped by country
+      const countries = [...new Set(whRows.map(r => r.country).filter(Boolean))];
+      list.innerHTML = countries.map(country => {
+        const whs = whRows.filter(r => r.country === country);
+        return `<div style="margin-bottom:18px">
+          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:7px">${country}</div>
+          <div style="display:flex;flex-direction:column;gap:5px">
+            ${whs.map(w => `<button class="wh-pick-btn" onclick="selectWarehouse(${JSON.stringify(w.wh)})">${w.wh}</button>`).join('')}
+          </div>
+        </div>`;
+      }).join('');
+    } else {
+      // Flat list (fallback)
+      const warehouses = [...new Set(whRows.map(r => r.wh))];
+      list.innerHTML = `<div style="display:flex;flex-direction:column;gap:5px">
+        ${warehouses.map(wh => `<button class="wh-pick-btn" onclick="selectWarehouse(${JSON.stringify(wh)})">${wh}</button>`).join('')}
+      </div>`;
+    }
+    document.getElementById('warehousePickerModal').classList.add('open');
+  }
+
+  function selectWarehouse(value) {
+    localStorage.setItem('b2cWarehousePicked', '1');
+    localStorage.setItem('b2cWarehouseFilter', value);
+    const sel = document.getElementById('b2cWarehouseFilter');
+    if (sel) sel.value = value;
+    document.getElementById('warehousePickerModal').classList.remove('open');
+    renderB2C();
+  }
 
   // ── Report Error modal ────────────────────────────────────────────────
   function openReportModal() {
