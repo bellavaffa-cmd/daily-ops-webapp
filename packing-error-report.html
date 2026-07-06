@@ -1277,6 +1277,7 @@
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:#fcd34d;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Ready for Picking</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:#93c5fd;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Picking Started</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:#86efac;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Ready to Pack</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--text);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Total</th>
             </tr>
           </thead>
           <tbody id="b2cWHTable"></tbody>
@@ -1711,9 +1712,16 @@
 
   function renderB2C() {
     const filter = document.getElementById('b2cWarehouseFilter').value;
-    const rows   = filter ? b2cData.filter(r => r.wh === filter) : b2cData;
 
-    const tot = rows.reduce((a, r) => ({
+    // Separate warehouse rows from country-total rows (new schema has type field)
+    const whRows  = b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh);
+    const cRows   = b2cData.filter(r => r.type === 'country');
+    const hasCountry = cRows.length > 0;
+
+    const filtered = filter ? whRows.filter(r => r.wh === filter) : whRows;
+
+    // Grand totals from warehouse rows
+    const tot = filtered.reduce((a, r) => ({
       new:     a.new     + r.new,
       rfp:     a.rfp     + r.rfp,
       picking: a.picking + r.picking,
@@ -1724,12 +1732,13 @@
     const fmt   = n => n.toLocaleString();
     const pct   = (n, d) => d ? (n / d * 100).toFixed(1) + '%' : '—';
 
-    // Status summary card
+    // KPI cards
     const statuses = [
       { key: 'new',     label: 'Open',               count: tot.new,     color: '#fb923c', bg: '#431407' },
       { key: 'rfp',     label: 'Ready for Picking',  count: tot.rfp,     color: '#fcd34d', bg: '#451a03' },
       { key: 'picking', label: 'Picking Started',    count: tot.picking, color: '#93c5fd', bg: '#172554' },
       { key: 'picked',  label: 'Ready to Pack',      count: tot.picked,  color: '#86efac', bg: '#14532d' },
+      { key: 'total',   label: 'Total Orders',       count: total,       color: 'var(--text)', bg: 'var(--surface2)' },
     ];
 
     const kpiEl = document.getElementById('b2cKpis');
@@ -1738,44 +1747,59 @@
         <div class="card" style="padding:16px 18px">
           <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px">${s.label}</div>
           <div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${fmt(s.count)}</div>
-          <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${pct(s.count, total)} of total</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${s.key === 'total' ? 'across all statuses' : pct(s.count, total) + ' of total'}</div>
         </div>`).join('')}
     </div>`;
 
-    // Table rows
+    // Table helpers
     const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color||'var(--text)'};font-size:.82rem">${fmt(n)}</td>`;
-
-    const statusBadge = r => {
+    const whRow = (r, indent) => {
       const t = r.new + r.rfp + r.picking + r.picked;
-      if (t === 0)               return { label: 'No Activity', bg: '#1f2937', color: '#6b7280' };
-      if (r.picked / t >= 0.7)   return { label: 'On Track',    bg: '#14532d', color: '#86efac' };
-      if (r.new    / t >= 0.6)   return { label: 'Not Started', bg: '#7f1d1d', color: '#fca5a5' };
-      if (r.picking > 0)         return { label: 'Picking Started', bg: '#172554', color: '#93c5fd' };
-      return                            { label: 'In Queue',    bg: '#451a03', color: '#fcd34d' };
-    };
-
-    const tdBadge = r => {
-      const s = statusBadge(r);
-      return `<td style="padding:10px 14px;text-align:center"><span style="display:inline-block;padding:2px 10px;border-radius:20px;font-size:.7rem;font-weight:700;background:${s.bg};color:${s.color};white-space:nowrap">${s.label}</span></td>`;
-    };
-
-    let html = rows.map(r => `
-      <tr style="border-top:1px solid var(--border)">
-        <td style="padding:10px 18px;color:var(--text);white-space:nowrap;font-size:.82rem">${r.wh}</td>
+      const pad = indent ? 'padding:9px 18px 9px 28px' : 'padding:10px 18px';
+      return `<tr style="border-top:1px solid var(--border)">
+        <td style="${pad};color:var(--text);white-space:nowrap;font-size:.82rem">${r.wh}</td>
         ${tdN(r.new,     '#fb923c')}
         ${tdN(r.rfp,     '#fcd34d')}
         ${tdN(r.picking, '#93c5fd')}
         ${tdN(r.picked,  '#86efac')}
-      </tr>`).join('');
-
-    if (rows.length > 1) {
-      html += `<tr style="border-top:2px solid var(--border);background:var(--surface2)">
-        <td style="padding:10px 18px;color:var(--text);font-weight:700;font-size:.82rem">Total</td>
-        ${tdN(tot.new,     '#fb923c')}
-        ${tdN(tot.rfp,     '#fcd34d')}
-        ${tdN(tot.picking, '#93c5fd')}
-        ${tdN(tot.picked,  '#86efac')}
+        ${tdN(t,         'var(--text)')}
       </tr>`;
+    };
+
+    let html = '';
+
+    if (hasCountry && !filter) {
+      // Grouped view: country header row → warehouse rows per country
+      const countries = [...new Set(whRows.map(r => r.country).filter(Boolean))];
+      for (const country of countries) {
+        const cRow = cRows.find(c => c.country === country);
+        const whs  = whRows.filter(r => r.country === country);
+        if (cRow) {
+          const ct = cRow.new + cRow.rfp + cRow.picking + cRow.picked;
+          html += `<tr style="border-top:2px solid var(--border);background:var(--surface2)">
+            <td style="padding:9px 18px;color:var(--text);font-weight:700;font-size:.8rem">${country}</td>
+            ${tdN(cRow.new,     '#fb923c')}
+            ${tdN(cRow.rfp,     '#fcd34d')}
+            ${tdN(cRow.picking, '#93c5fd')}
+            ${tdN(cRow.picked,  '#86efac')}
+            ${tdN(ct,           'var(--text)')}
+          </tr>`;
+        }
+        html += whs.map(r => whRow(r, true)).join('');
+      }
+    } else {
+      // Flat view (no country data or filter applied)
+      html += filtered.map(r => whRow(r, false)).join('');
+      if (filtered.length > 1) {
+        html += `<tr style="border-top:2px solid var(--border);background:var(--surface2)">
+          <td style="padding:10px 18px;color:var(--text);font-weight:700;font-size:.82rem">Total</td>
+          ${tdN(tot.new,     '#fb923c')}
+          ${tdN(tot.rfp,     '#fcd34d')}
+          ${tdN(tot.picking, '#93c5fd')}
+          ${tdN(tot.picked,  '#86efac')}
+          ${tdN(total,       'var(--text)')}
+        </tr>`;
+      }
     }
 
     document.getElementById('b2cWHTable').innerHTML = html;
