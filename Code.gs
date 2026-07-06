@@ -38,9 +38,9 @@ function getSheet() {
   let   sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
-    sheet.appendRow(['ID', 'Timestamp', 'OrderID', 'ToteNum', 'StationNum', 'ErrorType', 'Notes', 'Status', 'SKU']);
+    sheet.appendRow(['ID', 'Timestamp', 'Warehouse', 'OrderID', 'ToteNum', 'StationNum', 'ErrorType', 'Notes', 'Status', 'SKU']);
     sheet.setFrozenRows(1);
-    sheet.getRange(1, 1, 1, 9).setFontWeight('bold');
+    sheet.getRange(1, 1, 1, 10).setFontWeight('bold');
   }
   return sheet;
 }
@@ -54,13 +54,14 @@ function handleRead() {
       return {
         id:         row[0],
         timestamp:  row[1] instanceof Date ? row[1].toISOString() : row[1],
-        orderId:    row[2],
-        toteNum:    row[3],
-        stationNum: row[4],
-        errorType:  row[5],
-        notes:      row[6] || '',
-        status:     row[7] || 'Open',
-        skus:       row[8] || '[]'
+        warehouse:  row[2] || '',
+        orderId:    row[3],
+        toteNum:    row[4],
+        stationNum: row[5],
+        errorType:  row[6],
+        notes:      row[7] || '',
+        status:     row[8] || 'Open',
+        skus:       row[9] || '[]'
       };
     });
     return ok({ data: rows });
@@ -73,15 +74,16 @@ function handleWrite(e) {
     const data  = JSON.parse(decodeURIComponent(e.parameter.data));
     const sheet = getSheet();
     sheet.appendRow([
-      data.id         || '',
-      data.timestamp  || new Date().toISOString(),
-      data.orderId    || '',
-      data.toteNum    || '',
-      data.stationNum || '',
-      data.errorType  || '',
-      data.notes      || '',
-      data.status     || 'Open',
-      data.skus       || '[]'
+      data.id          || '',
+      data.timestamp   || new Date().toISOString(),
+      data.warehouse   || '',
+      data.orderId     || '',
+      data.toteNum     || '',
+      data.stationNum  || '',
+      data.errorType   || '',
+      data.notes       || '',
+      data.status      || 'Open',
+      data.skus        || '[]'
     ]);
     return ok({ message: 'Row appended' });
   } catch (err) { return fail(err.toString()); }
@@ -95,16 +97,17 @@ function handleUpdate(e) {
     const values = sheet.getDataRange().getValues();
     for (let i = 1; i < values.length; i++) {
       if (String(values[i][0]) === String(data.id)) {
-        sheet.getRange(i + 1, 1, 1, 9).setValues([[
+        sheet.getRange(i + 1, 1, 1, 10).setValues([[
           data.id,
-          data.timestamp  || values[i][1],
-          data.orderId    || '',
-          data.toteNum    || '',
-          data.stationNum || '',
-          data.errorType  || '',
-          data.notes      || '',
-          data.status     || '',
-          data.skus       || values[i][8] || '[]'
+          data.timestamp   || values[i][1],
+          data.warehouse   || values[i][2] || '',
+          data.orderId     || '',
+          data.toteNum     || '',
+          data.stationNum  || '',
+          data.errorType   || '',
+          data.notes       || '',
+          data.status      || '',
+          data.skus        || values[i][9] || '[]'
         ]]);
         return ok({ message: 'Row updated' });
       }
