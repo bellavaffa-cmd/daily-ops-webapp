@@ -1069,6 +1069,13 @@
       <form id="errorForm" novalidate>
         <div class="form-grid">
 
+          <div class="field full">
+            <label>Warehouse *</label>
+            <select id="reportWarehouse" required>
+              <option value="">Select warehouse…</option>
+            </select>
+          </div>
+
           <div class="field">
             <label>Order ID *</label>
             <input type="text" id="orderId" placeholder="e.g. ORD-20240001" required />
@@ -1915,6 +1922,17 @@
 
   // ── Report Error modal ────────────────────────────────────────────────
   function openReportModal() {
+    const sel = document.getElementById('reportWarehouse');
+    const whRows = b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh);
+    const current = sel.value || localStorage.getItem('b2cWarehouseFilter') || '';
+    sel.innerHTML = '<option value="">Select warehouse…</option>';
+    whRows.forEach(r => {
+      const opt = document.createElement('option');
+      opt.value = r.wh;
+      opt.textContent = r.wh;
+      sel.appendChild(opt);
+    });
+    sel.value = current;
     document.getElementById('reportModal').classList.add('open');
   }
   function closeReportModal() {
@@ -2122,14 +2140,14 @@
     const payload = encodeURIComponent(JSON.stringify({
       id:             record.id,
       timestamp:      record.timestamp.toISOString(),
+      warehouse:      record.warehouse || '',
       orderId:        record.orderId,
       toteNum:        record.toteNum,
       stationNum:     record.stationNum,
       errorType:      record.errorType,
-      notes:          record.notes,
+      notes:          record.notes || '',
       status:         record.status || 'Open',
-      skus:  JSON.stringify(record.skus || []),
-      notes: record.notes || ''
+      skus:           JSON.stringify(record.skus || [])
     }));
     try {
       await fetch(`${SCRIPT_URL}?action=write&data=${payload}`, { cache: 'no-store' });
@@ -2175,9 +2193,9 @@ function getSheet() {
   let   sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
-    sheet.appendRow(['ID', 'Timestamp', 'OrderID', 'ToteNum', 'StationNum', 'ErrorType', 'Notes', 'Status', 'SKU']);
+    sheet.appendRow(['ID', 'Timestamp', 'Warehouse', 'OrderID', 'ToteNum', 'StationNum', 'ErrorType', 'Notes', 'Status', 'SKU']);
     sheet.setFrozenRows(1);
-    sheet.getRange(1, 1, 1, 9).setFontWeight('bold');
+    sheet.getRange(1, 1, 1, 10).setFontWeight('bold');
   }
   return sheet;
 }
@@ -2199,15 +2217,16 @@ function handleRead() {
     if (values.length <= 1) return ok({ data: [] });
     const rows = values.slice(1).map(function(row) {
       return {
-        id:              row[0],
-        timestamp:       row[1] instanceof Date ? row[1].toISOString() : row[1],
-        orderId:         row[2],
-        toteNum:         row[3],
-        stationNum:      row[4],
-        errorType:       row[5],
-        notes:  row[6] || '',
-        status: row[7] || 'Open',
-        skus:   row[8] || '[]'
+        id:        row[0],
+        timestamp: row[1] instanceof Date ? row[1].toISOString() : row[1],
+        warehouse: row[2] || '',
+        orderId:   row[3],
+        toteNum:   row[4],
+        stationNum: row[5],
+        errorType: row[6],
+        notes:     row[7] || '',
+        status:    row[8] || 'Open',
+        skus:      row[9] || '[]'
       };
     });
     return ok({ data: rows });
@@ -2220,15 +2239,16 @@ function handleWrite(e) {
     const data  = JSON.parse(decodeURIComponent(e.parameter.data));
     const sheet = getSheet();
     sheet.appendRow([
-      data.id        || '',
-      data.timestamp || new Date().toISOString(),
-      data.orderId   || '',
-      data.toteNum   || '',
-      data.stationNum || '',
-      data.errorType || '',
-      data.notes     || '',
-      data.status    || 'Open',
-      data.skus      || '[]'
+      data.id          || '',
+      data.timestamp   || new Date().toISOString(),
+      data.warehouse   || '',
+      data.orderId     || '',
+      data.toteNum     || '',
+      data.stationNum  || '',
+      data.errorType   || '',
+      data.notes       || '',
+      data.status      || 'Open',
+      data.skus        || '[]'
     ]);
     return ok({ message: 'Row appended' });
   } catch (err) { return fail(err.toString()); }
@@ -2242,16 +2262,17 @@ function handleUpdate(e) {
     const values = sheet.getDataRange().getValues();
     for (let i = 1; i < values.length; i++) {
       if (String(values[i][0]) === String(data.id)) {
-        sheet.getRange(i + 1, 1, 1, 9).setValues([[
+        sheet.getRange(i + 1, 1, 1, 10).setValues([[
           data.id,
-          data.timestamp  || values[i][1],
-          data.orderId    || '',
-          data.toteNum    || '',
-          data.stationNum || '',
-          data.errorType  || '',
-          data.notes      || '',
-          data.status     || '',
-          data.skus       || values[i][8] || '[]'
+          data.timestamp   || values[i][1],
+          data.warehouse   || values[i][2] || '',
+          data.orderId     || '',
+          data.toteNum     || '',
+          data.stationNum  || '',
+          data.errorType   || '',
+          data.notes       || '',
+          data.status      || '',
+          data.skus        || values[i][9] || '[]'
         ]]);
         return ok({ message: 'Row updated' });
       }
@@ -2442,6 +2463,7 @@ function fail(error) {
   // ── Form submission ────────────────────────────────────────────────────
   document.getElementById('errorForm').addEventListener('submit', async e => {
     e.preventDefault();
+    const warehouse     = document.getElementById('reportWarehouse').value;
     const orderId       = document.getElementById('orderId').value.trim();
     const toteNum       = document.getElementById('toteNum').value.trim();
     const stationNum    = document.getElementById('stationNum').value.trim();
@@ -2455,7 +2477,7 @@ function fail(error) {
                  errorType === 'Extra Item'   ? getSkuRows('extraSkuList')   :
                  errorType === 'Damaged Item' ? getSkuRows('damagedSkuList') : [];
 
-    if (!orderId || !toteNum || !errorType) {
+    if (!warehouse || !orderId || !toteNum || !errorType) {
       showToast('Please fill in all required fields and select an error type.', false);
       return;
     }
@@ -2490,6 +2512,7 @@ function fail(error) {
 
     const record = {
       id: uid(), timestamp: new Date(),
+      warehouse,
       orderId, toteNum, stationNum, errorType,
       notes, skus,
       photos: [...photosBuffer],
@@ -2513,6 +2536,8 @@ function fail(error) {
 
   function resetForm() {
     document.getElementById('errorForm').reset();
+    const whSel = document.getElementById('reportWarehouse');
+    if (whSel) whSel.value = localStorage.getItem('b2cWarehouseFilter') || '';
     photosBuffer = [];
     renderPhotoPreview();
     document.getElementById('wrongItemFields').style.display = 'none';
