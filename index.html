@@ -2780,6 +2780,10 @@ function fail(error) {
     return Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0];
   }
 
+  // ── Dashboard sub-tabs (declared before renderTable to avoid TDZ) ──────
+  let dashTab = 'active';
+  let selectedIds = new Set();
+
   // ── Table ──────────────────────────────────────────────────────────────
   function renderTable() {
     // Update sub-tab counts
@@ -3025,12 +3029,7 @@ function fail(error) {
     else openSearchDrop();
   });
 
-  // ── Dashboard multi-select ────────────────────────────────────────────
-  let selectedIds = new Set();
-
   // ── Dashboard sub-tabs ────────────────────────────────────────────────
-  let dashTab = 'active';
-
   function setDashTab(tab) {
     dashTab = tab;
     expandedId = null;
