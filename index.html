@@ -752,6 +752,8 @@
       width: 15px; height: 15px; cursor: pointer; accent-color: var(--primary);
     }
     th.col-check, td.col-check { width: 36px; padding: 0 0 0 12px; text-align: center; }
+    th.col-wh, td.col-wh { max-width: 130px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .8rem; color: var(--muted); }
+    @media (max-width: 600px) { th.col-wh, td.col-wh { display: none; } }
 
     /* ── Bulk action bar ── */
     .bulk-bar {
@@ -1407,6 +1409,10 @@
               <div class="search-option" onclick="pickFilter('Other')">💬 Other</div>
             </div>
           </div>
+          <select id="warehouseFilter" onchange="renderTable()"
+            style="font-size:.82rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);max-width:160px">
+            <option value="">All warehouses</option>
+          </select>
           <button class="btn btn-ghost btn-sm" id="refreshBtn" onclick="manualRefresh()" title="Sync now">
             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" style="vertical-align:middle;margin-right:4px"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.36-3.36L23 10M1 14l5.13 4.36A9 9 0 0020.49 15"/></svg>
             Refresh
@@ -1447,6 +1453,7 @@
             <tr>
               <th class="col-check"><input type="checkbox" class="row-check" id="selectAll" onchange="toggleSelectAll(this.checked)" /></th>
               <th>Time</th>
+              <th class="col-wh">Warehouse</th>
               <th>Order ID</th>
               <th>Error Type</th>
               <th>Status</th>
@@ -2307,7 +2314,7 @@
       updateBadge();
       // Re-render dashboard if it's currently visible
       if (document.getElementById('view-dash').classList.contains('active')) {
-        renderStats(); renderTable();
+        initWarehouseFilter(); renderStats(); renderTable();
       }
       setSyncStatus('ok', `Synced ${new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`);
     } catch (err) {
@@ -2369,7 +2376,7 @@
     // Toggle Report Error FAB (before renderTable so errors don't hide it)
     const fab = document.getElementById('fabReport');
     if (fab) fab.classList.toggle('visible', v === 'b2c');
-    if (v === 'dash') { try { renderStats(); } catch(e){} try { renderTable(); } catch(e){} }
+    if (v === 'dash') { try { renderStats(); } catch(e){} try { initWarehouseFilter(); renderTable(); } catch(e){} }
     // Scroll to top on mobile
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -2937,11 +2944,13 @@ function fail(error) {
     document.getElementById('resolvedCount').textContent = resolvedCount;
 
     const q    = document.getElementById('searchInput').value.toLowerCase();
+    const whF  = document.getElementById('warehouseFilter')?.value || '';
     const rows = errors.filter(e => {
       const isResolved = (e.status || 'Open') === 'Resolved';
       if (dashTab === 'resolved' ? !isResolved : isResolved) return false;
+      if (whF && e.warehouse !== whF) return false;
       if (!q) return true;
-      return [e.orderId, e.toteNum, e.stationNum, e.errorType, e.status || 'Open']
+      return [e.orderId, e.toteNum, e.stationNum, e.errorType, e.status || 'Open', e.warehouse || '']
         .some(v => (v||'').toLowerCase().includes(q));
     });
 
@@ -3008,7 +3017,7 @@ function fail(error) {
               </div>` : '';
       const expandedRow = isOpen ? `
         <tr class="expanded-row">
-          <td colspan="5">
+          <td colspan="6">
             <div class="expanded-detail">
               <div class="detail-item"><span class="detail-label">Order ID</span><span class="detail-value td-mono">${e.orderId||'—'}</span></div>
               <div class="detail-item"><span class="detail-label">Tote Number</span><span class="detail-value">${e.toteNum||'—'}</span></div>
@@ -3025,6 +3034,7 @@ function fail(error) {
         <tr class="${isChecked ? 'row-selected' : ''}">
           <td class="col-check"><input type="checkbox" class="row-check" ${isChecked ? 'checked' : ''} onchange="toggleSelectRow('${e.id}', this.checked)" /></td>
           <td class="td-muted">${formatTime(e.timestamp)}</td>
+          <td class="col-wh" title="${e.warehouse||''}">${e.warehouse||'—'}</td>
           <td><span class="order-id-link" onclick="toggleExpand('${e.id}')">${e.orderId}</span></td>
           <td><span class="badge ${badgeClass(e.errorType)}">${e.errorType}</span></td>
           <td><select class="status-select status-${statusCls(e.status)}" onchange="updateStatus('${e.id}', this.value)"><option ${e.status==='Open'?'selected':''}>Open</option><option ${e.status==='In Progress'?'selected':''}>In Progress</option><option ${e.status==='Resolved'?'selected':''}>Resolved</option></select></td>
@@ -3039,6 +3049,25 @@ function fail(error) {
     if (selectAllEl) { selectAllEl.checked = allChecked; selectAllEl.indeterminate = !allChecked && someChecked; }
 
     updateBulkBar();
+  }
+
+  function initWarehouseFilter() {
+    const sel = document.getElementById('warehouseFilter');
+    if (!sel) return;
+    const current = sel.value;
+    // Build list from b2cData + any warehouse names seen in errors
+    const names = b2cData.filter(r => r.type === 'warehouse' && r.wh).map(r => r.wh);
+    errors.forEach(e => { if (e.warehouse && !names.includes(e.warehouse)) names.push(e.warehouse); });
+    names.sort();
+    sel.innerHTML = '<option value="">All warehouses</option>';
+    names.forEach(wh => {
+      const opt = document.createElement('option');
+      opt.value = wh; opt.textContent = wh;
+      sel.appendChild(opt);
+    });
+    // Restore previous selection, or default to the b2c warehouse setting
+    const defaultWh = current || localStorage.getItem('b2cWarehouseFilter') || '';
+    sel.value = defaultWh;
   }
 
   function updateBulkBar() {
