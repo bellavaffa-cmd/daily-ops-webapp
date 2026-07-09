@@ -1141,6 +1141,18 @@
         </div>
       </div>
     </div>
+    <div class="settings-group" id="sg-qr">
+      <div class="settings-group-header" onclick="toggleSettingsGroup('sg-qr')">
+        App QR Code
+        <svg class="settings-group-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="settings-group-body" style="padding:16px 14px;text-align:center">
+        <img src="https://chart.googleapis.com/chart?cht=qr&chs=180x180&chl=https%3A%2F%2Fbellavaffa-cmd.github.io%2Fdaily-ops-webapp%2F&choe=UTF-8"
+             alt="App QR Code" style="width:180px;height:180px;border-radius:8px;display:inline-block">
+        <div style="font-size:.75rem;color:var(--muted);margin-top:8px">Scan to open on another device</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:2px;word-break:break-all">bellavaffa-cmd.github.io/daily-ops-webapp</div>
+      </div>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-primary" onclick="saveSettings()">Save</button>
     </div>
