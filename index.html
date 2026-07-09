@@ -2508,8 +2508,9 @@ function fail(error) {
 
   // Init code block (restore saved ID if present)
   (function initCodeBlock() {
-    const savedId  = localStorage.getItem('packingErrorSheetId');
-    const inputEl  = document.getElementById('sheetUrlInput');
+    const inputEl = document.getElementById('sheetUrlInput');
+    if (!inputEl) return;  // element removed; nothing to initialize
+    const savedId = localStorage.getItem('packingErrorSheetId');
     if (savedId) {
       inputEl.value = 'https://docs.google.com/spreadsheets/d/' + savedId + '/edit';
       onSheetUrlInput(inputEl.value);
