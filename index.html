@@ -983,7 +983,7 @@
     }
     .fab-report:active { transform: scale(.97); }
     .fab-report.visible { display: flex; }
-    body:has(#view-dash.active) .fab-report { display: flex; }
+    body:has(#view-b2c.active) .fab-report { display: flex; }
     @media (max-width: 768px) {
       .fab-report { bottom: 72px; right: 16px; padding: 13px 18px; font-size: .9rem; }
     }
@@ -2261,7 +2261,7 @@
     const bnavBtn = document.getElementById('bnav-btn-' + v);
     if (bnavBtn) bnavBtn.classList.add('active');
     const fab = document.getElementById('fabReport');
-    if (fab) fab.classList.toggle('visible', v === 'dash');
+    if (fab) fab.classList.toggle('visible', v === 'b2c');
     if (v === 'dash') { try { renderStats(); } catch(e){} try { renderTable(); } catch(e){} }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
