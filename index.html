@@ -188,6 +188,18 @@
       padding: 0;
     }
 
+    /* Photo grid in error detail */
+    .err-photo-grid {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;
+    }
+    .err-photo-thumb {
+      width: 72px; height: 72px; object-fit: cover;
+      border-radius: 6px; cursor: zoom-in;
+      border: 1px solid var(--border);
+      transition: opacity .15s, transform .15s;
+    }
+    .err-photo-thumb:hover { opacity: .85; transform: scale(1.04); }
+
     /* Error type pills */
     .error-types {
       display: flex;
@@ -2228,7 +2240,7 @@
           notes:  row.notes  || '',
           status: row.status || 'Open',
           skus:   safeParseJson(row.skus),
-          photos:       []
+          photos: safeParseJson(localStorage.getItem('err_photos_' + row.id)) || []
         });
       });
 
@@ -2263,6 +2275,10 @@
     } catch (err) {
       console.error('Sheet write error:', err);
       showToast('Saved locally — sheet sync failed', false);
+    }
+    // Persist photos locally (GSheet only stores text fields)
+    if (record.photos && record.photos.length) {
+      try { localStorage.setItem('err_photos_' + record.id, JSON.stringify(record.photos)); } catch(e) {}
     }
   }
 
@@ -2570,6 +2586,21 @@ function fail(error) {
 
   function removePhoto(i) { photosBuffer.splice(i, 1); renderPhotoPreview(); }
 
+  function openPhotoLightbox(src) {
+    const lb = document.createElement('div');
+    lb.style.cssText = 'position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;cursor:zoom-out';
+    const img = document.createElement('img');
+    img.src = src;
+    img.style.cssText = 'max-width:92vw;max-height:92vh;border-radius:8px;box-shadow:0 8px 48px rgba(0,0,0,.7)';
+    img.onclick = e => e.stopPropagation();
+    lb.appendChild(img);
+    lb.onclick = () => lb.remove();
+    document.addEventListener('keydown', function esc(e) {
+      if (e.key === 'Escape') { lb.remove(); document.removeEventListener('keydown', esc); }
+    });
+    document.body.appendChild(lb);
+  }
+
   // ── Form submission ────────────────────────────────────────────────────
   document.getElementById('errorForm').addEventListener('submit', async e => {
     e.preventDefault();
@@ -2858,6 +2889,13 @@ function fail(error) {
       const extraItemRows   = '';
       const missingItemRows = '';
       const wrongItemRows   = '';
+      const photosRow = (isOpen && e.photos && e.photos.length) ? `
+              <div class="detail-item" style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
+                <span class="detail-label" style="color:var(--primary)">Photos (${e.photos.length})</span>
+                <div class="err-photo-grid">
+                  ${e.photos.map(src => `<img class="err-photo-thumb" src="${src}" onclick="openPhotoLightbox(this.src)" />`).join('')}
+                </div>
+              </div>` : '';
       const expandedRow = isOpen ? `
         <tr class="expanded-row">
           <td colspan="5">
@@ -2868,6 +2906,7 @@ function fail(error) {
               <div class="detail-item"><span class="detail-label">Reported</span><span class="detail-value">${formatTime(e.timestamp)}</span></div>
               ${skuRows}
               ${notesRows}
+              ${photosRow}
             </div>
           </td>
         </tr>` : '';
