@@ -920,49 +920,100 @@
       z-index: 20;
       padding-bottom: env(safe-area-inset-bottom, 0px);
     }
-    .bottom-nav-inner { display: flex; height: 56px; }
+    .bottom-nav-inner {
+      display: flex;
+      height: 56px;
+    }
     .bnav-btn {
-      flex: 1; display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      gap: 3px; background: none; border: none;
-      color: var(--muted); font-size: .65rem; font-weight: 600;
-      cursor: pointer; transition: color .15s; position: relative; padding: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: .65rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: color .15s;
+      position: relative;
+      padding: 0;
     }
     .bnav-btn.active { color: var(--primary); }
     .bnav-btn svg { flex-shrink: 0; }
     .bnav-badge {
-      position: absolute; top: 6px; right: calc(50% - 18px);
-      background: var(--primary); color: #fff; border-radius: 10px;
-      font-size: .6rem; font-weight: 700; padding: 1px 5px;
-      min-width: 16px; text-align: center; display: none;
+      position: absolute;
+      top: 6px;
+      right: calc(50% - 18px);
+      background: var(--primary);
+      color: #fff;
+      border-radius: 10px;
+      font-size: .6rem;
+      font-weight: 700;
+      padding: 1px 5px;
+      min-width: 16px;
+      text-align: center;
+      display: none;
     }
     .bnav-badge.visible { display: block; }
 
     /* ── Mobile overrides ── */
     @media (max-width: 768px) {
+      /* Compact header */
       header { padding: 0 12px; gap: 8px; height: 52px; }
       header .logo { font-size: .9rem; }
       .tab-bar { display: none; }
       .sync-wrap { display: none !important; }
       .bottom-nav { display: block; }
-      .report-btn-text { display: none; }
-      .btn-report-mobile { padding: 7px 12px !important; font-size: .8rem !important; }
-      main { margin: 16px auto 0; padding: 0 12px 72px; }
+
+
+
+      /* Main layout */
+      main {
+        margin: 16px auto 0;
+        padding: 0 12px 72px;
+      }
+
+      /* Scrollable table wrapper */
       .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+      /* Bottom-sheet modals */
       .modal-overlay.open { align-items: flex-end; }
       .modal-overlay .modal {
-        border-radius: 16px 16px 0 0; max-width: 100% !important;
-        margin: 0; max-height: 92vh; overflow-y: auto;
+        border-radius: 16px 16px 0 0;
+        max-width: 100% !important;
+        margin: 0;
+        max-height: 92vh;
+        overflow-y: auto;
       }
+      /* Don't bottom-sheet the warehouse picker */
+      #warehousePickerModal.modal-overlay.open { align-items: flex-end; }
+
+      /* Card padding */
       .card { padding: 16px; }
+
+      /* Dash controls wrap nicely */
       .dash-header { gap: 8px; }
       .dash-controls { gap: 6px; }
       .dash-controls input, .dash-controls select { font-size: .78rem; padding: 5px 8px; }
+
+      /* Stats row smaller */
       .stats-row { gap: 8px; }
       .stat-box { padding: 10px 12px; }
       .stat-box .num { font-size: 1.3rem; }
+
+      /* B2C country cards full width */
+      .b2c-country-grid { grid-template-columns: 1fr 1fr !important; }
+
+      /* Toast bottom offset for nav bar */
       #toast { bottom: 72px; }
+
+      /* Form modal full-height scroll */
+      #reportModal .modal { padding-bottom: 24px; }
     }
+
     @media (max-width: 400px) {
       .b2c-country-grid { grid-template-columns: 1fr !important; }
     }
@@ -995,6 +1046,7 @@
     }
     .fab-report:active { transform: scale(.97); }
     .fab-report.visible { display: flex; }
+    /* CSS fallback: show FAB whenever Errors view is active */
     body:has(#view-b2c.active) .fab-report { display: flex; }
     @media (max-width: 768px) {
       .fab-report { bottom: 72px; right: 16px; padding: 13px 18px; font-size: .9rem; }
@@ -1083,12 +1135,15 @@
         <div class="theme-toggle-row">
           <div>
             <div style="font-size:.85rem;color:var(--text);font-weight:500">🖥️ Desktop mode</div>
-            <div style="font-size:.72rem;color:var(--muted);margin-top:2px">Wider layout (1200px vs 600px)</div>
+            <div style="font-size:.72rem;color:var(--muted);margin-top:2px" id="layoutAutoNote">Wider layout (1200px vs 600px)</div>
           </div>
-          <label class="toggle-switch">
-            <input type="checkbox" id="layoutToggle" onchange="applyLayout(this.checked)" />
-            <span class="toggle-track"></span>
-          </label>
+          <div style="display:flex;align-items:center;gap:10px">
+            <button id="layoutResetBtn" onclick="resetLayout()" style="display:none;background:none;border:none;font-size:.72rem;color:var(--primary);cursor:pointer;padding:0">Auto-detect</button>
+            <label class="toggle-switch">
+              <input type="checkbox" id="layoutToggle" onchange="applyLayout(this.checked)" />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
         </div>
       </div>
     </div>
@@ -1679,12 +1734,12 @@
 
 </main>
 
-
 <!-- Report Error FAB -->
 <button class="fab-report" id="fabReport" onclick="openReportModal()">
   <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
   Report Error
 </button>
+
 <!-- Toast -->
 <div id="toast"></div>
 
@@ -2046,6 +2101,7 @@
     localStorage.setItem('packingErrorLayout', isDesktop ? 'desktop' : 'mobile');
     const el = document.getElementById('layoutToggle');
     if (el) el.checked = isDesktop;
+    // Show "Auto-detect" reset button since this is now a manual override
     const resetBtn = document.getElementById('layoutResetBtn');
     if (resetBtn) resetBtn.style.display = 'block';
     const note = document.getElementById('layoutAutoNote');
@@ -2284,8 +2340,10 @@
     // Persist photos to localStorage only as fallback (Drive upload already handled above)
     if (record.photos && record.photos.length) {
       if (record.driveFileIds && record.driveFileIds.length) {
+        // Drive upload succeeded — no need for localStorage copy
         try { localStorage.removeItem('err_photos_' + record.id); } catch(e) {}
       } else {
+        // Drive upload failed — fall back to localStorage for same-device access
         try { localStorage.setItem('err_photos_' + record.id, JSON.stringify(record.photos)); } catch(e) {}
       }
     }
@@ -2308,9 +2366,11 @@
     if (idx >= 0) document.querySelectorAll('.tab-btn')[idx].classList.add('active');
     const bnavBtn = document.getElementById('bnav-btn-' + v);
     if (bnavBtn) bnavBtn.classList.add('active');
+    // Toggle Report Error FAB (before renderTable so errors don't hide it)
     const fab = document.getElementById('fabReport');
     if (fab) fab.classList.toggle('visible', v === 'b2c');
     if (v === 'dash') { try { renderStats(); } catch(e){} try { renderTable(); } catch(e){} }
+    // Scroll to top on mobile
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -2627,6 +2687,7 @@ function fail(error) {
   }
 
   function openPhotoLightbox(src) {
+    // For Drive thumbnails, swap to full-size URL
     const fullSrc = src.includes('drive.google.com/thumbnail')
       ? src.replace(/sz=w\d+/, 'sz=w3000') : src;
     src = fullSrc;
@@ -2866,8 +2927,6 @@ function fail(error) {
     errors.forEach(e => counts[e.errorType] = (counts[e.errorType]||0)+1);
     return Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0];
   }
-
-  // ── Dashboard sub-tabs (declared before renderTable to avoid TDZ) ──────
 
   // ── Table ──────────────────────────────────────────────────────────────
   function renderTable() {
@@ -3122,7 +3181,6 @@ function fail(error) {
     else openSearchDrop();
   });
 
-  // ── Dashboard sub-tabs ────────────────────────────────────────────────
   function setDashTab(tab) {
     dashTab = tab;
     expandedId = null;
@@ -3133,6 +3191,7 @@ function fail(error) {
   }
 
   // ── Expandable rows ───────────────────────────────────────────────────
+
   function toggleExpand(id) {
     expandedId = String(expandedId) === String(id) ? null : id;
     renderTable();
@@ -3309,8 +3368,10 @@ function fail(error) {
     if (!el || el.childElementCount > 0) return;
     new QRCode(el, {
       text: 'https://bellavaffa-cmd.github.io/daily-ops-webapp/',
-      width: 160, height: 160,
-      colorDark: '#000000', colorLight: '#ffffff',
+      width: 160,
+      height: 160,
+      colorDark: '#000000',
+      colorLight: '#ffffff',
       correctLevel: QRCode.CorrectLevel.M
     });
   })();
