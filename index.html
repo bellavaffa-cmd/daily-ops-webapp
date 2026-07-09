@@ -2217,6 +2217,7 @@
         errors.push({
           id:              row.id,
           timestamp:       new Date(row.timestamp),
+          warehouse:       row.warehouse      || '',
           orderId:         row.orderId        || '',
           toteNum:         row.toteNum        || '',
           stationNum:      row.stationNum     || '',
@@ -2781,8 +2782,8 @@ function fail(error) {
   }
 
   // ── Dashboard sub-tabs (declared before renderTable to avoid TDZ) ──────
-  let dashTab = 'active';
-  let selectedIds = new Set();
+  var dashTab = 'active';
+  var selectedIds = new Set();
 
   // ── Table ──────────────────────────────────────────────────────────────
   function renderTable() {
