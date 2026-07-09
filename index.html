@@ -897,6 +897,63 @@
     html[data-theme="light"] #toast          { background: #1e293b; color: #ffffff; }
     html[data-theme="light"] .expanded-row td { background: #f8fafc; }
     html[data-theme="light"] .search-dropdown { box-shadow: 0 6px 20px rgba(0,0,0,.12); }
+
+    /* ── Bottom nav (mobile only) ── */
+    .bottom-nav {
+      display: none;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      z-index: 20;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    .bottom-nav-inner { display: flex; height: 56px; }
+    .bnav-btn {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 3px; background: none; border: none;
+      color: var(--muted); font-size: .65rem; font-weight: 600;
+      cursor: pointer; transition: color .15s; position: relative; padding: 0;
+    }
+    .bnav-btn.active { color: var(--primary); }
+    .bnav-btn svg { flex-shrink: 0; }
+    .bnav-badge {
+      position: absolute; top: 6px; right: calc(50% - 18px);
+      background: var(--primary); color: #fff; border-radius: 10px;
+      font-size: .6rem; font-weight: 700; padding: 1px 5px;
+      min-width: 16px; text-align: center; display: none;
+    }
+    .bnav-badge.visible { display: block; }
+
+    /* ── Mobile overrides ── */
+    @media (max-width: 768px) {
+      header { padding: 0 12px; gap: 8px; height: 52px; }
+      header .logo { font-size: .9rem; }
+      .tab-bar { display: none; }
+      .sync-wrap { display: none !important; }
+      .bottom-nav { display: block; }
+      .report-btn-text { display: none; }
+      .btn-report-mobile { padding: 7px 12px !important; font-size: .8rem !important; }
+      main { margin: 16px auto 0; padding: 0 12px 72px; }
+      .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .modal-overlay.open { align-items: flex-end; }
+      .modal-overlay .modal {
+        border-radius: 16px 16px 0 0; max-width: 100% !important;
+        margin: 0; max-height: 92vh; overflow-y: auto;
+      }
+      .card { padding: 16px; }
+      .dash-header { gap: 8px; }
+      .dash-controls { gap: 6px; }
+      .dash-controls input, .dash-controls select { font-size: .78rem; padding: 5px 8px; }
+      .stats-row { gap: 8px; }
+      .stat-box { padding: 10px 12px; }
+      .stat-box .num { font-size: 1.3rem; }
+      #toast { bottom: 72px; }
+    }
+    @media (max-width: 400px) {
+      .b2c-country-grid { grid-template-columns: 1fr !important; }
+    }
   </style>
 </head>
 <body>
@@ -929,9 +986,9 @@
     <div class="sync-dot" id="syncDot"></div>
     <span class="sync-label" id="syncLabel">—</span>
   </div>
-  <button class="btn btn-primary" onclick="openReportModal()" style="font-size:.8rem;padding:6px 14px;display:flex;align-items:center;gap:6px;white-space:nowrap">
+  <button class="btn btn-primary btn-report-mobile" onclick="openReportModal()" style="font-size:.8rem;padding:6px 14px;display:flex;align-items:center;gap:6px;white-space:nowrap">
     <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-    Report Error
+    <span class="report-btn-text">Report Error</span>
   </button>
   <button class="settings-btn" onclick="openSettings()" title="Settings">
     <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -939,6 +996,25 @@
     </svg>
   </button>
 </header>
+
+<!-- Bottom nav (mobile) -->
+<nav class="bottom-nav" id="bottomNav">
+  <div class="bottom-nav-inner">
+    <button class="bnav-btn active" id="bnav-btn-b2c" onclick="showView('b2c')">
+      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13l-1.4 7h12.8M7 13l-1-5m10 5l1-5M9 21a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z"/></svg>
+      B2C
+    </button>
+    <button class="bnav-btn" id="bnav-btn-dash" onclick="showView('dash')">
+      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span class="bnav-badge" id="bnavDashCount"></span>
+      Errors
+    </button>
+    <button class="bnav-btn" id="bnav-btn-help" onclick="showView('help')">
+      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17" stroke-linecap="round"/></svg>
+      Help
+    </button>
+  </div>
+</nav>
 
 <!-- Settings modal -->
 <div class="modal-overlay" id="settingsModal">
@@ -1246,7 +1322,7 @@
         <button class="btn-clear" onclick="clearSelection()">✕ Clear</button>
       </div>
 
-      <div id="tableWrap">
+      <div class="table-responsive" id="tableWrap">
         <div class="empty-state" id="emptyState">
           <div class="icon">📋</div>
           <p>No errors reported yet.<br>Submit your first report to see it here.</p>
@@ -2143,10 +2219,14 @@
     if (!document.getElementById('view-' + v)) return;
     document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.bnav-btn').forEach(el => el.classList.remove('active'));
     document.getElementById('view-' + v).classList.add('active');
     const idx = VIEW_ORDER.indexOf(v);
     if (idx >= 0) document.querySelectorAll('.tab-btn')[idx].classList.add('active');
+    const bnavBtn = document.getElementById('bnav-btn-' + v);
+    if (bnavBtn) bnavBtn.classList.add('active');
     if (v === 'dash') { renderStats(); renderTable(); }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   // ── Code.gs template & rendering ──────────────────────────────────────
@@ -2393,11 +2473,14 @@ function fail(error) {
 
   function updateBadge() {
     const badge = document.getElementById('dashCount');
+    const bnavBadge = document.getElementById('bnavDashCount');
     if (errors.length > 0) {
       badge.textContent = errors.length;
       badge.classList.add('visible');
+      if (bnavBadge) { bnavBadge.textContent = errors.length; bnavBadge.classList.add('visible'); }
     } else {
       badge.classList.remove('visible');
+      if (bnavBadge) bnavBadge.classList.remove('visible');
     }
   }
 
