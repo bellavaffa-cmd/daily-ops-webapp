@@ -3041,7 +3041,7 @@ function fail(error) {
   }
 
   // ── Expandable rows ───────────────────────────────────────────────────
-  let expandedId = null;
+  var expandedId = null;
 
   function toggleExpand(id) {
     expandedId = String(expandedId) === String(id) ? null : id;
