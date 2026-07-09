@@ -1892,14 +1892,37 @@
   }
 
   // ── Layout mode ────────────────────────────────────────────────────────
+  function detectIsMobile() {
+    return window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 768;
+  }
+
   function applyLayout(isDesktop) {
     document.querySelector('main').style.maxWidth = isDesktop ? '1200px' : '600px';
     localStorage.setItem('packingErrorLayout', isDesktop ? 'desktop' : 'mobile');
+    const el = document.getElementById('layoutToggle');
+    if (el) el.checked = isDesktop;
+    const resetBtn = document.getElementById('layoutResetBtn');
+    if (resetBtn) resetBtn.style.display = 'block';
+    const note = document.getElementById('layoutAutoNote');
+    if (note) note.textContent = 'Wider layout (1200px vs 600px)';
   }
+
+  function resetLayout() {
+    localStorage.removeItem('packingErrorLayout');
+    const isDesktop = !detectIsMobile();
+    document.querySelector('main').style.maxWidth = isDesktop ? '1200px' : '600px';
+    const el = document.getElementById('layoutToggle');
+    if (el) el.checked = isDesktop;
+    const resetBtn = document.getElementById('layoutResetBtn');
+    if (resetBtn) resetBtn.style.display = 'none';
+    const note = document.getElementById('layoutAutoNote');
+    if (note) note.textContent = 'Auto-detected (' + (isDesktop ? 'desktop' : 'mobile') + ')';
+  }
+
   (function initLayout() {
-    const saved = localStorage.getItem('packingErrorLayout') || 'desktop';
-    const isDesktop = saved === 'desktop';
-    applyLayout(isDesktop);
+    const saved = localStorage.getItem('packingErrorLayout');
+    const isDesktop = saved ? saved === 'desktop' : !detectIsMobile();
+    document.querySelector('main').style.maxWidth = isDesktop ? '1200px' : '600px';
     const el = document.getElementById('layoutToggle');
     if (el) el.checked = isDesktop;
   })();
@@ -1916,7 +1939,15 @@
     });
     // Populate layout toggle
     const layoutEl = document.getElementById('layoutToggle');
-    if (layoutEl) layoutEl.checked = (localStorage.getItem('packingErrorLayout') || 'desktop') === 'desktop';
+    const savedLayout = localStorage.getItem('packingErrorLayout');
+    const isDesktopNow = savedLayout ? savedLayout === 'desktop' : !detectIsMobile();
+    if (layoutEl) layoutEl.checked = isDesktopNow;
+    const layoutResetBtn = document.getElementById('layoutResetBtn');
+    if (layoutResetBtn) layoutResetBtn.style.display = savedLayout ? 'block' : 'none';
+    const layoutNote = document.getElementById('layoutAutoNote');
+    if (layoutNote) layoutNote.textContent = savedLayout
+      ? 'Wider layout (1200px vs 600px)'
+      : 'Auto-detected (' + (isDesktopNow ? 'desktop' : 'mobile') + ')';
     // Show B2C live source status
     const b2cStatusEl = document.getElementById('b2cLiveSourceStatus');
     if (b2cStatusEl) {
