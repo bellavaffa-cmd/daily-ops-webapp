@@ -1147,9 +1147,8 @@
         <svg class="settings-group-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="settings-group-body" style="padding:16px 14px;text-align:center">
-        <img src="https://chart.googleapis.com/chart?cht=qr&chs=180x180&chl=https%3A%2F%2Fbellavaffa-cmd.github.io%2Fdaily-ops-webapp%2F&choe=UTF-8"
-             alt="App QR Code" style="width:180px;height:180px;border-radius:8px;display:inline-block">
-        <div style="font-size:.75rem;color:var(--muted);margin-top:8px">Scan to open on another device</div>
+        <div id="appQRCode" style="display:inline-block;background:#fff;padding:10px;border-radius:8px"></div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:10px">Scan to open on another device</div>
         <div style="font-size:.7rem;color:var(--muted);margin-top:2px;word-break:break-all">bellavaffa-cmd.github.io/daily-ops-webapp</div>
       </div>
     </div>
@@ -3213,6 +3212,19 @@ function fail(error) {
     a.download = `packing-errors-${new Date().toISOString().slice(0,10)}.csv`;
     a.click();
   }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+  (function initQR() {
+    const el = document.getElementById('appQRCode');
+    if (!el || el.childElementCount > 0) return;
+    new QRCode(el, {
+      text: 'https://bellavaffa-cmd.github.io/daily-ops-webapp/',
+      width: 160, height: 160,
+      colorDark: '#000000', colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M
+    });
+  })();
 </script>
 </body>
 </html>
