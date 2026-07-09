@@ -1745,6 +1745,9 @@
   let errors = [];
   let photosBuffer = [];
   let refreshTimer = null;
+  var dashTab = 'active';       // var — avoids TDZ when renderTable is called early
+  var selectedIds = new Set();  // var — same reason
+  var expandedId = null;        // var — same reason
 
   // ── Init ───────────────────────────────────────────────────────────────
   (function init() {
@@ -2782,8 +2785,6 @@ function fail(error) {
   }
 
   // ── Dashboard sub-tabs (declared before renderTable to avoid TDZ) ──────
-  var dashTab = 'active';
-  var selectedIds = new Set();
 
   // ── Table ──────────────────────────────────────────────────────────────
   function renderTable() {
@@ -3041,8 +3042,6 @@ function fail(error) {
   }
 
   // ── Expandable rows ───────────────────────────────────────────────────
-  var expandedId = null;
-
   function toggleExpand(id) {
     expandedId = String(expandedId) === String(id) ? null : id;
     renderTable();
