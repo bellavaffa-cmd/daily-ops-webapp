@@ -1,0 +1,25 @@
+{
+  "name": "Daily B2C",
+  "short_name": "Daily B2C",
+  "description": "Daily B2C error reporting and operations dashboard",
+  "start_url": "/daily-ops-webapp/",
+  "scope": "/daily-ops-webapp/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#0f1117",
+  "background_color": "#0f1117",
+  "icons": [
+    {
+      "src": "/daily-ops-webapp/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/daily-ops-webapp/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

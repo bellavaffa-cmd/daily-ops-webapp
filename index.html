@@ -4,6 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Daily B2C</title>
+  <link rel="manifest" href="/daily-ops-webapp/manifest.json" />
+  <meta name="theme-color" content="#0f1117" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Daily B2C" />
+  <link rel="apple-touch-icon" href="/daily-ops-webapp/icons/icon-192.png" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -3834,6 +3841,16 @@ function fail(error) {
 </script>
 
   <!-- ── Barcode Scanner Overlay ── -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/daily-ops-webapp/sw.js')
+          .then(r => console.log('SW registered:', r.scope))
+          .catch(e => console.warn('SW registration failed:', e));
+      });
+    }
+  </script>
+
   <div id="scannerOverlay">
     <video id="scannerVideo" autoplay playsinline muted></video>
     <div class="scanner-frame"></div>
