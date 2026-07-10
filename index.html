@@ -1427,6 +1427,7 @@
       <div class="dash-subtabs">
         <button class="dash-subtab active" id="subtab-active" onclick="setDashTab('active')">Active <span class="subtab-count" id="activeCount"></span></button>
         <button class="dash-subtab" id="subtab-resolved" onclick="setDashTab('resolved')">Resolved <span class="subtab-count" id="resolvedCount"></span></button>
+        <button class="dash-subtab" id="subtab-picking" onclick="setDashTab('picking')">Picking Issues <span class="subtab-count" id="pickingCount"></span></button>
       </div>
 
       <div class="bulk-bar" id="bulkBar">
@@ -1463,6 +1464,44 @@
           <tbody id="tableBody"></tbody>
         </table>
       </div>
+
+      <!-- ── Picking Issues section (shown when dashTab === 'picking') ── -->
+      <div id="pickingSection" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+          <div>
+            <div style="font-size:1rem;font-weight:700">Picking Issues</div>
+            <div style="font-size:.8rem;color:var(--muted);margin-top:2px">Track and manage picking-related issues</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="openPickingModal()">
+            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="vertical-align:middle;margin-right:5px"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+            Report Picking Issue
+          </button>
+        </div>
+
+        <!-- Placeholder empty state -->
+        <div class="empty-state" id="pickingEmptyState">
+          <div class="icon">🔍</div>
+          <p>No picking issues reported yet.<br>Use the button above to log your first one.</p>
+        </div>
+
+        <!-- Picking issues table (hidden until data exists) -->
+        <div class="table-responsive" id="pickingTableWrap" style="display:none">
+          <table id="pickingTable">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th class="col-wh">Warehouse</th>
+                <th>Order ID</th>
+                <th>Issue Type</th>
+                <th>Status</th>
+                <th style="width:40px"></th>
+              </tr>
+            </thead>
+            <tbody id="pickingTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -2071,6 +2110,10 @@
   }
 
   // ── Report Error modal ────────────────────────────────────────────────
+  function openPickingModal() {
+    showToast('Picking Issues form coming soon — fields to be defined.', false);
+  }
+
   function openReportModal() {
     // Populate warehouse dropdown from b2cData
     const sel = document.getElementById('reportWarehouse');
@@ -2937,6 +2980,7 @@ function fail(error) {
 
   // ── Table ──────────────────────────────────────────────────────────────
   function renderTable() {
+    if (dashTab === 'picking') return; // picking section manages its own content
     // Update sub-tab counts
     const activeCount   = errors.filter(e => (e.status || 'Open') !== 'Resolved').length;
     const resolvedCount = errors.filter(e => (e.status || 'Open') === 'Resolved').length;
@@ -3216,7 +3260,17 @@ function fail(error) {
     selectedIds.clear();
     document.getElementById('subtab-active').classList.toggle('active', tab === 'active');
     document.getElementById('subtab-resolved').classList.toggle('active', tab === 'resolved');
-    renderTable();
+    document.getElementById('subtab-picking').classList.toggle('active', tab === 'picking');
+
+    const isPicking = tab === 'picking';
+    // Show/hide errors controls & table vs picking section
+    const errControls = document.querySelector('.dash-controls');
+    if (errControls) errControls.style.display = isPicking ? 'none' : '';
+    document.getElementById('bulkBar').style.display = isPicking ? 'none' : '';
+    document.getElementById('tableWrap').style.display = isPicking ? 'none' : '';
+    document.getElementById('pickingSection').style.display = isPicking ? '' : 'none';
+
+    if (!isPicking) renderTable();
   }
 
   // ── Expandable rows ───────────────────────────────────────────────────
