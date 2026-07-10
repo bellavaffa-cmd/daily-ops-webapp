@@ -1053,6 +1053,22 @@
       flex-shrink: 0;
     }
     .scan-btn:hover { color: var(--primary); border-color: var(--primary); }
+    .qty-stepper { display: flex; align-items: center; gap: 0; }
+    .qty-stepper input[type=number] {
+      width: 64px; text-align: center; border-radius: 0;
+      -moz-appearance: textfield; appearance: textfield;
+    }
+    .qty-stepper input[type=number]::-webkit-inner-spin-button,
+    .qty-stepper input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    .qty-step-btn {
+      background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+      width: 36px; height: 36px; font-size: 1.1rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .12s, color .12s; flex-shrink: 0; user-select: none;
+    }
+    .qty-step-btn:first-child { border-radius: 7px 0 0 7px; border-right: none; }
+    .qty-step-btn:last-child  { border-radius: 0 7px 7px 0; border-left: none; }
+    .qty-step-btn:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
     .scan-input-wrap { display: flex; gap: 6px; align-items: center; }
     .scan-input-wrap input { flex: 1; min-width: 0; }
     #scannerOverlay {
@@ -1513,12 +1529,20 @@
             <div id="pickingQtyFields" style="display:contents">
             <div class="field">
               <label>Picked Qty</label>
-              <input type="number" id="pickingPickedQty" placeholder="e.g. 3" min="0" />
+              <div class="qty-stepper">
+                <button type="button" class="qty-step-btn" onclick="stepQty('pickingPickedQty',-1)">▼</button>
+                <input type="number" id="pickingPickedQty" placeholder="0" min="0" value="" />
+                <button type="button" class="qty-step-btn" onclick="stepQty('pickingPickedQty',1)">▲</button>
+              </div>
             </div>
 
             <div class="field">
               <label>Expected Qty</label>
-              <input type="number" id="pickingExpectedQty" placeholder="e.g. 5" min="0" />
+              <div class="qty-stepper">
+                <button type="button" class="qty-step-btn" onclick="stepQty('pickingExpectedQty',-1)">▼</button>
+                <input type="number" id="pickingExpectedQty" placeholder="0" min="0" value="" />
+                <button type="button" class="qty-step-btn" onclick="stepQty('pickingExpectedQty',1)">▲</button>
+              </div>
             </div>
             </div>
 
@@ -2298,6 +2322,12 @@
   }
 
   // pickingModal merged into reportModal — click-outside handled by reportModal listener
+
+  function stepQty(id, delta) {
+    const el = document.getElementById(id);
+    const cur = parseInt(el.value, 10) || 0;
+    el.value = Math.max(0, cur + delta);
+  }
 
   function resetPickingForm() {
     document.getElementById('pickingForm').reset();
