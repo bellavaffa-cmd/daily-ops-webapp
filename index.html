@@ -1503,6 +1503,7 @@
               </div>
             </div>
 
+            <div id="pickingQtyFields" style="display:contents">
             <div class="field">
               <label>Picked Qty</label>
               <input type="number" id="pickingPickedQty" placeholder="e.g. 3" min="0" />
@@ -1511,6 +1512,7 @@
             <div class="field">
               <label>Expected Qty</label>
               <input type="number" id="pickingExpectedQty" placeholder="e.g. 5" min="0" />
+            </div>
             </div>
 
             <div class="field full">
@@ -2292,6 +2294,8 @@
 
   function resetPickingForm() {
     document.getElementById('pickingForm').reset();
+    const qtyWrap = document.getElementById('pickingQtyFields');
+    if (qtyWrap) qtyWrap.style.display = 'contents';
   }
 
   async function loadPickingIssues() {
@@ -3206,6 +3210,18 @@ function fail(error) {
   function safeParseJson(val) {
     try { return JSON.parse(val) || []; } catch { return []; }
   }
+
+  // ── Picking issue type → hide qty fields for Damaged / Missing Items ──
+  document.querySelectorAll('input[name="pickingIssueType"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      const hide = radio.value === 'Damaged' || radio.value === 'Missing Items';
+      const qtyWrap = document.getElementById('pickingQtyFields');
+      if (qtyWrap) {
+        qtyWrap.querySelectorAll('input').forEach(i => { i.value = ''; i.required = false; });
+        qtyWrap.style.display = hide ? 'none' : 'contents';
+      }
+    });
+  });
 
   // Init all lists with one empty row on page load
   addSkuRow('correctSkuList');
