@@ -1526,6 +1526,15 @@
             </div>
             </div>
 
+            <div id="pickingSimpleQtyField" style="display:none" class="field">
+              <label>QTY</label>
+              <div class="qty-stepper">
+                <button type="button" class="qty-step-btn" onclick="stepQty('pickingSimpleQty',-1)">▼</button>
+                <input type="number" id="pickingSimpleQty" placeholder="0" min="0" value="" />
+                <button type="button" class="qty-step-btn" onclick="stepQty('pickingSimpleQty',1)">▲</button>
+              </div>
+            </div>
+
             <div class="field full">
               <label>Issue Type *</label>
               <div class="error-types" id="pickingIssueTypes">
@@ -2331,8 +2340,10 @@
 
   function resetPickingForm() {
     document.getElementById('pickingForm').reset();
-    const qtyWrap = document.getElementById('pickingQtyFields');
-    if (qtyWrap) qtyWrap.style.display = 'contents';
+    const dualWrap   = document.getElementById('pickingQtyFields');
+    const simpleWrap = document.getElementById('pickingSimpleQtyField');
+    if (dualWrap)   dualWrap.style.display   = 'contents';
+    if (simpleWrap) { simpleWrap.style.display = 'none'; document.getElementById('pickingSimpleQty').value = ''; }
   }
 
   async function loadPickingIssues() {
@@ -2397,8 +2408,11 @@
     const orderId   = document.getElementById('pickingOrderId').value.trim();
     const sku       = document.getElementById('pickingSku').value.trim();
     const issueType = document.querySelector('input[name="pickingIssueType"]:checked')?.value || '';
-    const pickedQty   = document.getElementById('pickingPickedQty').value.trim();
-    const expectedQty = document.getElementById('pickingExpectedQty').value.trim();
+    const simpleTypes = ['Damaged', 'Missing Items'];
+    const isSimple = simpleTypes.includes(issueType);
+    const pickedQty   = isSimple ? document.getElementById('pickingSimpleQty').value.trim()
+                                 : document.getElementById('pickingPickedQty').value.trim();
+    const expectedQty = isSimple ? '' : document.getElementById('pickingExpectedQty').value.trim();
     const notes     = document.getElementById('pickingNotes').value.trim();
 
     if (!warehouse || !orderId || !sku || !issueType) {
@@ -3248,14 +3262,20 @@ function fail(error) {
     try { return JSON.parse(val) || []; } catch { return []; }
   }
 
-  // ── Picking issue type → hide qty fields for Damaged / Missing Items ──
+  // ── Picking issue type → show simple QTY for Damaged/Missing Items, dual qty otherwise ──
   document.querySelectorAll('input[name="pickingIssueType"]').forEach(radio => {
     radio.addEventListener('change', () => {
-      const hide = radio.value === 'Damaged' || radio.value === 'Missing Items';
-      const qtyWrap = document.getElementById('pickingQtyFields');
-      if (qtyWrap) {
-        qtyWrap.querySelectorAll('input').forEach(i => { i.value = ''; i.required = false; });
-        qtyWrap.style.display = hide ? 'none' : 'contents';
+      const simpleTypes = ['Damaged', 'Missing Items'];
+      const isSimple = simpleTypes.includes(radio.value);
+      const dualWrap   = document.getElementById('pickingQtyFields');
+      const simpleWrap = document.getElementById('pickingSimpleQtyField');
+      if (dualWrap)   dualWrap.style.display   = isSimple ? 'none' : 'contents';
+      if (simpleWrap) simpleWrap.style.display  = isSimple ? '' : 'none';
+      if (isSimple) {
+        document.getElementById('pickingPickedQty').value = '';
+        document.getElementById('pickingExpectedQty').value = '';
+      } else {
+        document.getElementById('pickingSimpleQty').value = '';
       }
     });
   });
