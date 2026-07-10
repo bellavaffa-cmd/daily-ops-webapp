@@ -1016,6 +1016,79 @@
       #reportModal .modal { padding-bottom: 24px; }
     }
 
+    .report-tab {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: .85rem;
+      font-weight: 600;
+      padding: 8px 16px;
+      margin-bottom: -1px;
+      transition: color .15s, border-color .15s;
+    }
+    .report-tab:hover { color: var(--text, #e2e8f0); }
+    .report-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+    /* Barcode scanner */
+    .scan-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 0 8px;
+      height: 36px;
+      display: inline-flex;
+      align-items: center;
+      transition: color .15s, border-color .15s;
+      flex-shrink: 0;
+    }
+    .scan-btn:hover { color: var(--primary); border-color: var(--primary); }
+    .scan-input-wrap { display: flex; gap: 6px; align-items: center; }
+    .scan-input-wrap input { flex: 1; min-width: 0; }
+    #scannerOverlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #000;
+      z-index: 9999;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    #scannerOverlay.open { display: flex; }
+    #scannerVideo { width: 100%; max-width: 480px; border-radius: 10px; }
+    .scanner-frame {
+      position: absolute;
+      width: 220px;
+      height: 140px;
+      border: 2px solid var(--primary);
+      border-radius: 8px;
+      box-shadow: 0 0 0 9999px rgba(0,0,0,.55);
+    }
+    .scanner-label {
+      position: absolute;
+      bottom: 90px;
+      color: #fff;
+      font-size: .85rem;
+      background: rgba(0,0,0,.5);
+      padding: 4px 12px;
+      border-radius: 99px;
+    }
+    .scanner-cancel {
+      position: absolute;
+      bottom: 36px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text, #e2e8f0);
+      border-radius: 8px;
+      padding: 10px 28px;
+      font-size: .9rem;
+      cursor: pointer;
+    }
+
     @media (max-width: 400px) {
       .b2c-country-grid { grid-template-columns: 1fr !important; }
     }
@@ -1242,142 +1315,230 @@
     </div>
   </div>
 
-  <!-- ── REPORT ERROR MODAL ── -->
+  <!-- ── REPORT MODAL (Packing Error / Picking Issue tabs) ── -->
   <div class="modal-overlay" id="reportModal">
     <div class="modal" style="max-width:620px;max-height:90vh;overflow-y:auto">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-        <h3 style="margin:0">Report a Packing Error</h3>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <h3 style="margin:0">Report an Issue</h3>
         <button onclick="closeReportModal()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem;line-height:1;padding:4px">✕</button>
       </div>
-      <p class="subtitle" style="margin-top:4px;margin-bottom:16px">Fill in the details below. All fields marked * are required.</p>
 
-      <form id="errorForm" novalidate>
-        <div class="form-grid">
+      <!-- Tab strip -->
+      <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:16px">
+        <button class="report-tab active" id="reportTab-packing" onclick="switchReportTab('packing')">📦 Packing Error</button>
+        <button class="report-tab" id="reportTab-picking" onclick="switchReportTab('picking')">🔍 Picking Issue</button>
+      </div>
 
-          <div class="field full">
-            <label>Warehouse *</label>
-            <select id="reportWarehouse" required>
-              <option value="">Select warehouse…</option>
-            </select>
-          </div>
+      <!-- ── Packing Error pane ── -->
+      <div id="reportPane-packing">
+        <p class="subtitle" style="margin-top:0;margin-bottom:16px">Fill in the details below. All fields marked * are required.</p>
 
-          <div class="field">
-            <label>Order ID *</label>
-            <input type="text" id="orderId" placeholder="e.g. ORD-20240001" required />
-          </div>
+        <form id="errorForm" novalidate>
+          <div class="form-grid">
 
-          <div class="field">
-            <label>Tote Number *</label>
-            <input type="text" id="toteNum" placeholder="e.g. T-045" required />
-          </div>
-
-          <div class="field">
-            <label>Packing Station</label>
-            <input type="text" id="stationNum" placeholder="e.g. PS-07" />
-          </div>
-
-          <div class="field full">
-            <label>Error Type *</label>
-            <div class="error-types" id="errorTypes">
-              <input type="radio" name="errorType" id="et-wrong" value="Wrong Item" />
-              <label for="et-wrong">📦 Wrong Item</label>
-
-              <input type="radio" name="errorType" id="et-missing" value="Missing Item" />
-              <label for="et-missing">❌ Missing Item</label>
-
-              <input type="radio" name="errorType" id="et-extra" value="Extra Item" />
-              <label for="et-extra">➕ Extra Item</label>
-
-              <input type="radio" name="errorType" id="et-damaged" value="Damaged Item" />
-              <label for="et-damaged">⚠️ Damaged Item</label>
-
-<input type="radio" name="errorType" id="et-awb" value="AWB Error" />
-              <label for="et-awb">📋 AWB Error</label>
-
-              <input type="radio" name="errorType" id="et-other" value="Other" />
-              <label for="et-other">💬 Other</label>
+            <div class="field full">
+              <label>Warehouse *</label>
+              <select id="reportWarehouse" required>
+                <option value="">Select warehouse…</option>
+              </select>
             </div>
-          </div>
 
-          <div class="field full" id="wrongItemFields" style="display:none">
-            <label>Wrong Item Details</label>
-            <div class="wrong-item-section" style="grid-template-columns:1fr">
-              <div class="wrong-item-group">
-                <span class="wrong-item-label">SKU</span>
-                <div class="sku-dynamic-list" id="correctSkuList"></div>
-                <button type="button" class="btn-add-sku" onclick="addSkuRow('correctSkuList')">+ Add SKU</button>
+            <div class="field">
+              <label>Order ID *</label>
+              <input type="text" id="orderId" placeholder="e.g. ORD-20240001" required />
+            </div>
+
+            <div class="field">
+              <label>Tote Number *</label>
+              <input type="text" id="toteNum" placeholder="e.g. T-045" required />
+            </div>
+
+            <div class="field">
+              <label>Packing Station</label>
+              <input type="text" id="stationNum" placeholder="e.g. PS-07" />
+            </div>
+
+            <div class="field full">
+              <label>Error Type *</label>
+              <div class="error-types" id="errorTypes">
+                <input type="radio" name="errorType" id="et-wrong" value="Wrong Item" />
+                <label for="et-wrong">📦 Wrong Item</label>
+
+                <input type="radio" name="errorType" id="et-missing" value="Missing Item" />
+                <label for="et-missing">❌ Missing Item</label>
+
+                <input type="radio" name="errorType" id="et-extra" value="Extra Item" />
+                <label for="et-extra">➕ Extra Item</label>
+
+                <input type="radio" name="errorType" id="et-damaged" value="Damaged Item" />
+                <label for="et-damaged">⚠️ Damaged Item</label>
+
+                <input type="radio" name="errorType" id="et-awb" value="AWB Error" />
+                <label for="et-awb">📋 AWB Error</label>
+
+                <input type="radio" name="errorType" id="et-other" value="Other" />
+                <label for="et-other">💬 Other</label>
               </div>
             </div>
-          </div>
 
-          <div class="field full" id="otherFields" style="display:none">
-            <label>Notes</label>
-            <textarea id="otherNotes" placeholder="Describe the issue…"></textarea>
-          </div>
-
-          <div class="field full" id="awbErrorFields" style="display:none">
-            <label>AWB Error Code</label>
-            <textarea id="awbErrorCode" placeholder="Paste error code here…"></textarea>
-          </div>
-
-          <div class="field full" id="damagedItemFields" style="display:none">
-            <label>Damaged Item Details</label>
-            <div class="wrong-item-section" style="grid-template-columns:1fr">
-              <div class="wrong-item-group">
-                <span class="wrong-item-label">SKU</span>
-                <div class="sku-dynamic-list" id="damagedSkuList"></div>
-                <button type="button" class="btn-add-sku" onclick="addSkuRow('damagedSkuList')">+ Add SKU</button>
+            <div class="field full" id="wrongItemFields" style="display:none">
+              <label>Wrong Item Details</label>
+              <div class="wrong-item-section" style="grid-template-columns:1fr">
+                <div class="wrong-item-group">
+                  <span class="wrong-item-label">SKU</span>
+                  <div class="sku-dynamic-list" id="correctSkuList"></div>
+                  <button type="button" class="btn-add-sku" onclick="addSkuRow('correctSkuList')">+ Add SKU</button>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div class="field full" id="extraItemFields" style="display:none">
-            <label>Extra Item Details</label>
-            <div class="wrong-item-section" style="grid-template-columns:1fr">
-              <div class="wrong-item-group">
-                <span class="wrong-item-label">SKU</span>
-                <div class="sku-dynamic-list" id="extraSkuList"></div>
-                <button type="button" class="btn-add-sku" onclick="addSkuRow('extraSkuList')">+ Add SKU</button>
+            <div class="field full" id="otherFields" style="display:none">
+              <label>Notes</label>
+              <textarea id="otherNotes" placeholder="Describe the issue…"></textarea>
+            </div>
+
+            <div class="field full" id="awbErrorFields" style="display:none">
+              <label>AWB Error Code</label>
+              <textarea id="awbErrorCode" placeholder="Paste error code here…"></textarea>
+            </div>
+
+            <div class="field full" id="damagedItemFields" style="display:none">
+              <label>Damaged Item Details</label>
+              <div class="wrong-item-section" style="grid-template-columns:1fr">
+                <div class="wrong-item-group">
+                  <span class="wrong-item-label">SKU</span>
+                  <div class="sku-dynamic-list" id="damagedSkuList"></div>
+                  <button type="button" class="btn-add-sku" onclick="addSkuRow('damagedSkuList')">+ Add SKU</button>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div class="field full" id="missingItemFields" style="display:none">
-            <label>Missing Item Details</label>
-            <div class="wrong-item-section" style="grid-template-columns:1fr">
-              <div class="wrong-item-group">
-                <span class="wrong-item-label">SKU</span>
-                <div class="sku-dynamic-list" id="missingSkuList"></div>
-                <button type="button" class="btn-add-sku" onclick="addSkuRow('missingSkuList')">+ Add SKU</button>
+            <div class="field full" id="extraItemFields" style="display:none">
+              <label>Extra Item Details</label>
+              <div class="wrong-item-section" style="grid-template-columns:1fr">
+                <div class="wrong-item-group">
+                  <span class="wrong-item-label">SKU</span>
+                  <div class="sku-dynamic-list" id="extraSkuList"></div>
+                  <button type="button" class="btn-add-sku" onclick="addSkuRow('extraSkuList')">+ Add SKU</button>
+                </div>
               </div>
             </div>
-          </div>
 
-
-          <div class="field full">
-            <label>Photos</label>
-            <div style="display:flex;gap:8px;margin-bottom:8px">
-              <button type="button" class="btn btn-ghost" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px" onclick="document.getElementById('photoCaptureInput').click()">
-                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><circle cx="12" cy="13" r="3"/></svg>
-                Take Photo
-              </button>
-              <button type="button" class="btn btn-ghost" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px" onclick="document.getElementById('photoInput').click()">
-                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                Choose File
-              </button>
+            <div class="field full" id="missingItemFields" style="display:none">
+              <label>Missing Item Details</label>
+              <div class="wrong-item-section" style="grid-template-columns:1fr">
+                <div class="wrong-item-group">
+                  <span class="wrong-item-label">SKU</span>
+                  <div class="sku-dynamic-list" id="missingSkuList"></div>
+                  <button type="button" class="btn-add-sku" onclick="addSkuRow('missingSkuList')">+ Add SKU</button>
+                </div>
+              </div>
             </div>
-            <input type="file" id="photoCaptureInput" accept="image/*" capture="environment" style="display:none" onchange="handleFiles(this.files)" />
-            <input type="file" id="photoInput" accept="image/*" multiple style="display:none" onchange="handleFiles(this.files)" />
-            <div class="photo-previews" id="photoPreviews"></div>
+
+            <div class="field full">
+              <label>Photos</label>
+              <div style="display:flex;gap:8px;margin-bottom:8px">
+                <button type="button" class="btn btn-ghost" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px" onclick="document.getElementById('photoCaptureInput').click()">
+                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><circle cx="12" cy="13" r="3"/></svg>
+                  Take Photo
+                </button>
+                <button type="button" class="btn btn-ghost" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px" onclick="document.getElementById('photoInput').click()">
+                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                  Choose File
+                </button>
+              </div>
+              <input type="file" id="photoCaptureInput" accept="image/*" capture="environment" style="display:none" onchange="handleFiles(this.files)" />
+              <input type="file" id="photoInput" accept="image/*" multiple style="display:none" onchange="handleFiles(this.files)" />
+              <div class="photo-previews" id="photoPreviews"></div>
+            </div>
+
           </div>
 
-        </div>
+          <div class="form-actions">
+            <button type="button" class="btn btn-ghost" onclick="resetForm()">Clear</button>
+            <button type="submit" class="btn btn-primary">Submit Report</button>
+          </div>
+        </form>
+      </div>
 
-        <div class="form-actions">
-          <button type="button" class="btn btn-ghost" onclick="resetForm()">Clear</button>
-          <button type="submit" class="btn btn-primary">Submit Report</button>
-        </div>
-      </form>
+      <!-- ── Picking Issue pane ── -->
+      <div id="reportPane-picking" style="display:none">
+        <p class="subtitle" style="margin-top:0;margin-bottom:16px">Fill in the details below. Fields marked * are required.</p>
+
+        <form id="pickingForm" novalidate>
+          <div class="form-grid">
+
+            <div class="field full">
+              <label>Warehouse *</label>
+              <select id="pickingWarehouse" required>
+                <option value="">Select warehouse…</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label>Location *</label>
+              <div class="scan-input-wrap">
+                <input type="text" id="pickingOrderId" placeholder="e.g. A-12-3" required />
+                <button type="button" class="scan-btn" onclick="openBarcodeScanner('pickingOrderId')" title="Scan barcode">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="4" height="16"/><rect x="8" y="4" width="2" height="16"/><rect x="13" y="4" width="3" height="16"/><rect x="19" y="4" width="3" height="16"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>SKU *</label>
+              <div class="scan-input-wrap">
+                <input type="text" id="pickingSku" placeholder="e.g. SKU-12345" required />
+                <button type="button" class="scan-btn" onclick="openBarcodeScanner('pickingSku')" title="Scan barcode">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="4" height="16"/><rect x="8" y="4" width="2" height="16"/><rect x="13" y="4" width="3" height="16"/><rect x="19" y="4" width="3" height="16"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="field full">
+              <label>Issue Type *</label>
+              <div class="error-types" id="pickingIssueTypes">
+                <input type="radio" name="pickingIssueType" id="pit-short" value="Short Pick" />
+                <label for="pit-short">📉 Short Pick</label>
+
+                <input type="radio" name="pickingIssueType" id="pit-miss" value="Miss Pick" />
+                <label for="pit-miss">🚫 Miss Pick</label>
+
+                <input type="radio" name="pickingIssueType" id="pit-wrong" value="Wrong Item" />
+                <label for="pit-wrong">📦 Wrong Item</label>
+
+                <input type="radio" name="pickingIssueType" id="pit-damaged" value="Damaged" />
+                <label for="pit-damaged">⚠️ Damaged</label>
+
+                <input type="radio" name="pickingIssueType" id="pit-other" value="Other" />
+                <label for="pit-other">💬 Other</label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Picked Qty</label>
+              <input type="number" id="pickingPickedQty" placeholder="e.g. 3" min="0" />
+            </div>
+
+            <div class="field">
+              <label>Expected Qty</label>
+              <input type="number" id="pickingExpectedQty" placeholder="e.g. 5" min="0" />
+            </div>
+
+            <div class="field full">
+              <label>Notes</label>
+              <textarea id="pickingNotes" placeholder="Any additional details…"></textarea>
+            </div>
+
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn btn-ghost" onclick="resetPickingForm()">Clear</button>
+            <button type="submit" class="btn btn-primary">Submit Issue</button>
+          </div>
+        </form>
+      </div>
+
     </div>
   </div>
 
@@ -1855,6 +2016,7 @@
   let B2C_DATA_URL   = localStorage.getItem('b2cDataUrl') || '';
 
   let errors = [];
+  let pickingIssues = [];
   let photosBuffer = [];
   let refreshTimer = null;
   var dashTab = 'packing';      // var — avoids TDZ when renderTable is called early
@@ -2108,12 +2270,164 @@
     renderB2C();
   }
 
-  // ── Report Error modal ────────────────────────────────────────────────
+  // ── Picking Issues ────────────────────────────────────────────────────
   function openPickingModal() {
-    showToast('Picking Issues form coming soon — fields to be defined.', false);
+    switchReportTab('picking');
+    // Populate warehouse dropdown from b2cData
+    const sel = document.getElementById('pickingWarehouse');
+    const whRows = b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh);
+    const current = sel.value || localStorage.getItem('b2cWarehouseFilter') || '';
+    sel.innerHTML = '<option value="">Select warehouse…</option>';
+    whRows.forEach(r => {
+      const opt = document.createElement('option');
+      opt.value = r.wh;
+      opt.textContent = r.wh;
+      sel.appendChild(opt);
+    });
+    sel.value = current;
+    document.getElementById('reportModal').classList.add('open');
   }
 
+  function closePickingModal() {
+    document.getElementById('reportModal').classList.remove('open');
+  }
+
+  function switchReportTab(tab) {
+    ['packing', 'picking'].forEach(t => {
+      document.getElementById('reportPane-' + t).style.display = t === tab ? '' : 'none';
+      const btn = document.getElementById('reportTab-' + t);
+      if (btn) btn.classList.toggle('active', t === tab);
+    });
+  }
+
+  // pickingModal merged into reportModal — click-outside handled by reportModal listener
+
+  function resetPickingForm() {
+    document.getElementById('pickingForm').reset();
+  }
+
+  async function loadPickingIssues() {
+    if (!SCRIPT_URL) return;
+    try {
+      const res = await fetch(SCRIPT_URL + '?action=picking_read', { cache: 'no-store' });
+      const data = await res.json();
+      pickingIssues = Array.isArray(data) ? data : (data.data || []);
+      renderPickingTable();
+    } catch (err) {
+      console.error('Failed to load picking issues', err);
+    }
+  }
+
+  function renderPickingTable() {
+    const tbody = document.getElementById('pickingTableBody');
+    const emptyState = document.getElementById('pickingEmptyState');
+    const tableWrap = document.getElementById('pickingTableWrap');
+    const countEl = document.getElementById('pickingCount');
+
+    if (countEl) countEl.textContent = pickingIssues.length || '';
+
+    if (!pickingIssues.length) {
+      emptyState.style.display = '';
+      tableWrap.style.display = 'none';
+      tbody.innerHTML = '';
+      return;
+    }
+
+    emptyState.style.display = 'none';
+    tableWrap.style.display = '';
+
+    tbody.innerHTML = pickingIssues.map(row => {
+      const ts = row.Timestamp || row.timestamp || '';
+      const timeStr = ts ? new Date(ts).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—';
+      const wh = row.Warehouse || row.warehouse || '—';
+      const orderId = row.OrderID || row.orderId || '—';
+      const issueType = row.IssueType || row.issueType || '—';
+      const status = row.Status || row.status || 'Open';
+      const id = row.ID || row.id;
+
+      const badgeClass = status === 'Resolved' ? 'badge-qty' : status === 'In Progress' ? 'badge-wrong' : 'badge-missing';
+
+      return `<tr>
+        <td style="font-size:.8rem;color:var(--muted);white-space:nowrap">${timeStr}</td>
+        <td style="font-size:.82rem">${wh}</td>
+        <td style="font-size:.82rem;font-family:monospace">${orderId}</td>
+        <td style="font-size:.82rem">${issueType}</td>
+        <td><span class="badge ${badgeClass}" style="font-size:.7rem">${status}</span></td>
+        <td>
+          <button onclick="deletePickingRecord('${id}')"
+            style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.9rem;padding:2px 6px"
+            title="Delete">🗑</button>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  document.getElementById('pickingForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const warehouse = document.getElementById('pickingWarehouse').value.trim();
+    const orderId   = document.getElementById('pickingOrderId').value.trim();
+    const sku       = document.getElementById('pickingSku').value.trim();
+    const issueType = document.querySelector('input[name="pickingIssueType"]:checked')?.value || '';
+    const pickedQty   = document.getElementById('pickingPickedQty').value.trim();
+    const expectedQty = document.getElementById('pickingExpectedQty').value.trim();
+    const notes     = document.getElementById('pickingNotes').value.trim();
+
+    if (!warehouse || !orderId || !sku || !issueType) {
+      showToast('Please fill in all required fields (Warehouse, Order ID, SKU, Issue Type).', true);
+      return;
+    }
+
+    const payload = { warehouse, orderId, sku, issueType, pickedQty, expectedQty, notes, status: 'Open' };
+    const btn = this.querySelector('[type="submit"]');
+    btn.disabled = true;
+    btn.textContent = 'Submitting…';
+
+    try {
+      const res = await fetch(SCRIPT_URL + '?action=picking_write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const result = await res.json();
+      if (result.status === 'ok' || result.success) {
+        closePickingModal();
+        resetPickingForm();
+        showToast('Picking issue logged successfully.', false);
+        await loadPickingIssues();
+      } else {
+        throw new Error(result.error || 'Unknown error');
+      }
+    } catch (err) {
+      showToast('Failed to submit: ' + err.message, true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Submit Issue';
+    }
+  });
+
+  async function deletePickingRecord(id) {
+    if (!id || !confirm('Delete this picking issue?')) return;
+    try {
+      const res = await fetch(SCRIPT_URL + '?action=picking_delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      const result = await res.json();
+      if (result.status === 'ok' || result.success) {
+        showToast('Picking issue deleted.', false);
+        await loadPickingIssues();
+      } else {
+        throw new Error(result.error || 'Unknown error');
+      }
+    } catch (err) {
+      showToast('Failed to delete: ' + err.message, true);
+    }
+  }
+
+  // ── Report Error modal ────────────────────────────────────────────────
   function openReportModal() {
+    switchReportTab('packing');
     // Populate warehouse dropdown from b2cData
     const sel = document.getElementById('reportWarehouse');
     const whRows = b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh);
@@ -3156,8 +3470,8 @@ function fail(error) {
       updateInSheet(errors[idx]);
     }
     clearSelection();
+    renderStats();
     renderTable();
-    else { renderStats(); renderTable(); }
     showToast(`${ids.length} record${ids.length > 1 ? 's' : ''} updated to ${status}.`, true);
   }
 
@@ -3182,7 +3496,6 @@ function fail(error) {
     if (idx === -1) return;
     errors[idx].status = status;
     renderTable();
-    else renderTable();
     await updateInSheet(errors[idx]);
   }
 
@@ -3259,7 +3572,8 @@ function fail(error) {
     document.getElementById('tableWrap').style.display = isPicking ? 'none' : '';
     document.getElementById('pickingSection').style.display = isPicking ? '' : 'none';
 
-    if (!isPicking) renderTable();
+    if (isPicking) loadPickingIssues();
+    else renderTable();
   }
 
   // ── Expandable rows ───────────────────────────────────────────────────
@@ -3447,6 +3761,81 @@ function fail(error) {
       correctLevel: QRCode.CorrectLevel.M
     });
   })();
+
+  // ── Barcode Scanner ──────────────────────────────────────────────────────
+  let _scanStream = null;
+  let _scanAnimFrame = null;
+  let _scanTargetId = null;
+
+  async function openBarcodeScanner(fieldId) {
+    if (!('BarcodeDetector' in window)) {
+      showToast('Barcode scanning not supported in this browser. Use Chrome on Android or desktop.', false);
+      return;
+    }
+    _scanTargetId = fieldId;
+    const overlay = document.getElementById('scannerOverlay');
+    const video   = document.getElementById('scannerVideo');
+    document.getElementById('scannerLabel').textContent = 'Align barcode within frame';
+    overlay.classList.add('open');
+    try {
+      _scanStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      video.srcObject = _scanStream;
+      await video.play();
+      _runBarcodeDetection();
+    } catch (err) {
+      closeBarcodeScanner();
+      showToast('Camera access denied or unavailable.', false);
+    }
+  }
+
+  function _runBarcodeDetection() {
+    const detector = new BarcodeDetector({ formats: [
+      'code_128', 'code_39', 'code_93', 'ean_13', 'ean_8',
+      'upc_a', 'upc_e', 'qr_code', 'data_matrix', 'aztec'
+    ]});
+    const video = document.getElementById('scannerVideo');
+    const label = document.getElementById('scannerLabel');
+
+    async function detect() {
+      if (!_scanStream) return;
+      try {
+        const barcodes = await detector.detect(video);
+        if (barcodes.length > 0) {
+          const value = barcodes[0].rawValue;
+          const field = document.getElementById(_scanTargetId);
+          if (field) {
+            field.value = value;
+            field.dispatchEvent(new Event('input'));
+          }
+          label.textContent = '✓ Scanned: ' + value;
+          setTimeout(() => closeBarcodeScanner(), 600);
+          return;
+        }
+      } catch (_) {}
+      _scanAnimFrame = requestAnimationFrame(detect);
+    }
+    _scanAnimFrame = requestAnimationFrame(detect);
+  }
+
+  function closeBarcodeScanner() {
+    if (_scanAnimFrame) { cancelAnimationFrame(_scanAnimFrame); _scanAnimFrame = null; }
+    if (_scanStream) { _scanStream.getTracks().forEach(t => t.stop()); _scanStream = null; }
+    document.getElementById('scannerOverlay').classList.remove('open');
+    document.getElementById('scannerVideo').srcObject = null;
+    _scanTargetId = null;
+  }
+
 </script>
+
+  <!-- ── Barcode Scanner Overlay ── -->
+  <div id="scannerOverlay">
+    <video id="scannerVideo" autoplay playsinline muted></video>
+    <div class="scanner-frame"></div>
+    <div class="scanner-label" id="scannerLabel">Align barcode within frame</div>
+    <button class="scanner-cancel" onclick="closeBarcodeScanner()">Cancel</button>
+  </div>
+
 </body>
 </html>
