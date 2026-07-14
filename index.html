@@ -2242,17 +2242,18 @@
     const modeEl = document.getElementById('b2cDataMode');
     if (modeEl) { modeEl.textContent = 'Loading…'; modeEl.style.color = 'var(--muted)'; }
     try {
-      const res = await fetch(SB_URL + '/b2c_data?select=*&order=wh.asc', { headers: SB_HDR });
+      const res = await fetch(SB_URL + '/b2c_data?select=*&order=country.asc,wh.asc', { headers: SB_HDR });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const rows = await res.json();
       if (rows && rows.length) {
         b2cData = rows.map(r => ({
           wh:      r.wh,
-          type:    r.type || 'warehouse',
-          new:     r.new      || 0,
-          rfp:     r.rfp      || 0,
-          picking: r.picking  || 0,
-          picked:  r.picked   || 0
+          type:    r.type    || 'warehouse',
+          country: r.country || '',
+          new:     r.new     || 0,
+          rfp:     r.rfp     || 0,
+          picking: r.picking || 0,
+          picked:  r.picked  || 0
         }));
         renderB2C();
         if (localStorage.getItem('b2cWarehousePicked') === null) showWarehousePicker();
