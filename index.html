@@ -2237,32 +2237,41 @@
   })();
   renderB2C();
 
-  // ── B2C Live Data Fetch ────────────────────────────────────────────────
+  // ── B2C Live Data Fetch (reads from Supabase b2c_data table) ─────────────
   async function fetchB2CData() {
-    const url = SCRIPT_URL; // uses the same Web App URL as error reports (Settings → Help tab)
-    if (!url) return; // no source — keep static snapshot
     const modeEl = document.getElementById('b2cDataMode');
     if (modeEl) { modeEl.textContent = 'Loading…'; modeEl.style.color = 'var(--muted)'; }
     try {
-      const res  = await fetch(url + '?action=b2c_read', { cache: 'no-store' });
-      const json = await res.json();
-      if (!json.success) throw new Error(json.error || 'read failed');
-      if (json.data && json.data.length) {
-        b2cData = json.data;
+      const res = await fetch(SB_URL + '/b2c_data?select=*&order=wh.asc', { headers: SB_HDR });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const rows = await res.json();
+      if (rows && rows.length) {
+        b2cData = rows.map(r => ({
+          wh:      r.wh,
+          type:    r.type || 'warehouse',
+          new:     r.new      || 0,
+          rfp:     r.rfp      || 0,
+          picking: r.picking  || 0,
+          picked:  r.picked   || 0
+        }));
         renderB2C();
-        // Show warehouse picker on first open (no prior selection saved)
-        if (localStorage.getItem('b2cWarehousePicked') === null) {
-          showWarehousePicker();
+        if (localStorage.getItem('b2cWarehousePicked') === null) showWarehousePicker();
+        // Show last sync time from most recently updated row
+        const latest = rows.reduce((a, b) => (a.updated_at > b.updated_at ? a : b), rows[0]);
+        if (latest && latest.updated_at) {
+          const st = document.getElementById('b2cSyncTime');
+          if (st) st.textContent = new Date(latest.updated_at).toLocaleString('en-GB', {
+            day: 'numeric', month: 'short', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
+          });
         }
+        if (modeEl) { modeEl.textContent = 'Supabase ●'; modeEl.style.color = 'var(--success)'; }
+      } else {
+        if (modeEl) { modeEl.textContent = 'Snapshot (run sync_b2c.py to update)'; modeEl.style.color = 'var(--muted)'; }
       }
-      if (json.sync_time) {
-        const st = document.getElementById('b2cSyncTime');
-        if (st) st.textContent = json.sync_time;
-      }
-      if (modeEl) { modeEl.textContent = 'Live ●'; modeEl.style.color = 'var(--success)'; }
     } catch (err) {
       console.error('B2C fetch error:', err);
-      if (modeEl) { modeEl.textContent = 'Offline — last snapshot'; modeEl.style.color = 'var(--danger)'; }
+      if (modeEl) { modeEl.textContent = 'Offline — using snapshot'; modeEl.style.color = 'var(--danger)'; }
     }
   }
 
@@ -2272,9 +2281,9 @@
     if (btn) { btn.disabled = false; btn.style.opacity = ''; }
   }
 
-  // Fetch on load, then auto-refresh every 5 min if Web App URL is connected
+  // Fetch on load, then auto-refresh every 5 min
   fetchB2CData();
-  setInterval(() => { if (SCRIPT_URL) fetchB2CData(); }, 5 * 60 * 1000);
+  setInterval(fetchB2CData, 5 * 60 * 1000);
 
   // ── Warehouse Picker ──────────────────────────────────────────────────
   function showWarehousePicker() {
