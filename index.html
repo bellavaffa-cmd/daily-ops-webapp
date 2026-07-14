@@ -2348,23 +2348,25 @@
   // ── Picking Issues ────────────────────────────────────────────────────
   function openPickingModal() {
     switchReportTab('picking');
-    // Populate warehouse dropdown from b2cData
-    const sel = document.getElementById('pickingWarehouse');
-    const whRows = b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh);
-    const current = sel.value || localStorage.getItem('b2cWarehouseFilter') || '';
-    sel.innerHTML = '<option value="">Select warehouse…</option>';
-    whRows.forEach(r => {
-      const opt = document.createElement('option');
-      opt.value = r.wh;
-      opt.textContent = r.wh;
-      sel.appendChild(opt);
-    });
-    sel.value = current;
     document.getElementById('reportModal').classList.add('open');
   }
 
   function closePickingModal() {
     document.getElementById('reportModal').classList.remove('open');
+  }
+
+  function populateWarehouseSelect(selId) {
+    const sel = document.getElementById(selId);
+    if (!sel) return;
+    const whRows = b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh);
+    const current = sel.value || localStorage.getItem('b2cWarehouseFilter') || '';
+    sel.innerHTML = '<option value="">Select warehouse…</option>';
+    whRows.forEach(r => {
+      const opt = document.createElement('option');
+      opt.value = r.wh; opt.textContent = r.wh;
+      sel.appendChild(opt);
+    });
+    sel.value = current;
   }
 
   function switchReportTab(tab) {
@@ -2373,6 +2375,8 @@
       const btn = document.getElementById('reportTab-' + t);
       if (btn) btn.classList.toggle('active', t === tab);
     });
+    if (tab === 'picking') populateWarehouseSelect('pickingWarehouse');
+    if (tab === 'packing') populateWarehouseSelect('reportWarehouse');
   }
 
   // pickingModal merged into reportModal — click-outside handled by reportModal listener
@@ -2531,18 +2535,6 @@
   // ── Report Error modal ────────────────────────────────────────────────
   function openReportModal() {
     switchReportTab('packing');
-    // Populate warehouse dropdown from b2cData
-    const sel = document.getElementById('reportWarehouse');
-    const whRows = b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh);
-    const current = sel.value || localStorage.getItem('b2cWarehouseFilter') || '';
-    sel.innerHTML = '<option value="">Select warehouse…</option>';
-    whRows.forEach(r => {
-      const opt = document.createElement('option');
-      opt.value = r.wh;
-      opt.textContent = r.wh;
-      sel.appendChild(opt);
-    });
-    sel.value = current;
     document.getElementById('reportModal').classList.add('open');
   }
   function closeReportModal() {
