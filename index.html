@@ -351,6 +351,9 @@
     .badge-label    { background: #271238; color: #c084fc; }
     .badge-qty      { background: #0f2e1a; color: #4ade80; }
     .badge-other    { background: #1e2130; color: #9ca3af; }
+    .badge-scan     { background: #1a2e1a; color: #4ade80; }
+    .badge-printer  { background: #1a2a3a; color: #38bdf8; }
+    .badge-camera   { background: #2a1a2e; color: #e879f9; }
 
     table {
       width: 100%;
@@ -905,6 +908,9 @@
     html[data-theme="light"] .badge-label    { background: #f3e8ff; color: #6b21a8; }
     html[data-theme="light"] .badge-qty      { background: #dcfce7; color: #15803d; }
     html[data-theme="light"] .badge-other    { background: #f3f4f6; color: #374151; }
+    html[data-theme="light"] .badge-scan     { background: #dcfce7; color: #15803d; }
+    html[data-theme="light"] .badge-printer  { background: #e0f2fe; color: #0369a1; }
+    html[data-theme="light"] .badge-camera   { background: #fae8ff; color: #7e22ce; }
     html[data-theme="light"] tbody tr:hover  { background: #f8fafc; }
     html[data-theme="light"] .status-select.status-open       { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
     html[data-theme="light"] .status-select.status-inprogress { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
@@ -1387,6 +1393,15 @@
                 <input type="radio" name="errorType" id="et-awb" value="AWB Error" />
                 <label for="et-awb">📋 AWB Error</label>
 
+                <input type="radio" name="errorType" id="et-scan" value="Unscannable Stock" />
+                <label for="et-scan">🔍 Unscannable Stock</label>
+
+                <input type="radio" name="errorType" id="et-printer" value="Printer Issue" />
+                <label for="et-printer">🖨️ Printer Issue</label>
+
+                <input type="radio" name="errorType" id="et-camera" value="Camera Issue" />
+                <label for="et-camera">📷 Camera Issue</label>
+
                 <input type="radio" name="errorType" id="et-other" value="Other" />
                 <label for="et-other">💬 Other</label>
               </div>
@@ -1614,6 +1629,9 @@
               <div class="search-option" onclick="pickFilter('Damaged Item')">⚠️ Damaged Item</div>
               <div class="search-option" onclick="pickFilter('Wrong Label')">🏷️ Wrong Label</div>
               <div class="search-option" onclick="pickFilter('AWB Error')">📋 AWB Error</div>
+              <div class="search-option" onclick="pickFilter('Unscannable Stock')">🔍 Unscannable Stock</div>
+              <div class="search-option" onclick="pickFilter('Printer Issue')">🖨️ Printer Issue</div>
+              <div class="search-option" onclick="pickFilter('Camera Issue')">📷 Camera Issue</div>
               <div class="search-option" onclick="pickFilter('Other')">💬 Other</div>
             </div>
           </div>
@@ -3175,8 +3193,8 @@ function fail(error) {
     const errorType     = document.querySelector('input[name="errorType"]:checked')?.value;
     const awbErrorCode = document.getElementById('awbErrorCode').value.trim();
     const otherNotes   = document.getElementById('otherNotes').value.trim();
-    const notes        = errorType === 'AWB Error' ? awbErrorCode :
-                         errorType === 'Other'     ? otherNotes   : '';
+    const notes        = errorType === 'AWB Error'          ? awbErrorCode :
+                         ['Other','Unscannable Stock','Printer Issue','Camera Issue'].includes(errorType) ? otherNotes : '';
     const skus = errorType === 'Wrong Item'   ? getSkuRows('correctSkuList') :
                  errorType === 'Missing Item' ? getSkuRows('missingSkuList') :
                  errorType === 'Extra Item'   ? getSkuRows('extraSkuList')   :
@@ -3349,14 +3367,15 @@ function fail(error) {
       extraPanel.style.display   = val === 'Extra Item'    ? 'block' : 'none';
       damagedPanel.style.display = val === 'Damaged Item'  ? 'block' : 'none';
       awbPanel.style.display     = val === 'AWB Error'     ? 'block' : 'none';
-      document.getElementById('otherFields').style.display = val === 'Other' ? 'block' : 'none';
+      const notesTypes = ['Other','Unscannable Stock','Printer Issue','Camera Issue'];
+      document.getElementById('otherFields').style.display = notesTypes.includes(val) ? 'block' : 'none';
 
       if (val !== 'Wrong Item')   resetSkuList('correctSkuList');
       if (val !== 'Missing Item') resetSkuList('missingSkuList');
       if (val !== 'Extra Item')   resetSkuList('extraSkuList');
       if (val !== 'Damaged Item') resetSkuList('damagedSkuList');
       if (val !== 'AWB Error') { const el = document.getElementById('awbErrorCode'); if (el) el.value = ''; }
-      if (val !== 'Other') { const el = document.getElementById('otherNotes'); if (el) el.value = ''; }
+      if (!['Other','Unscannable Stock','Printer Issue','Camera Issue'].includes(val)) { const el = document.getElementById('otherNotes'); if (el) el.value = ''; }
     });
   });
 
@@ -3609,6 +3628,7 @@ function fail(error) {
   function badgeClass(type) {
     return { 'Wrong Item':'badge-wrong','Missing Item':'badge-missing','Extra Item':'badge-extra',
       'Damaged Item':'badge-damaged','Wrong Label':'badge-label','AWB Error':'badge-label',
+      'Unscannable Stock':'badge-scan','Printer Issue':'badge-printer','Camera Issue':'badge-camera',
       'Other':'badge-other' }[type] || 'badge-other';
   }
 
@@ -3733,7 +3753,8 @@ function fail(error) {
 
     const errorEmoji = {
       'Wrong Item':   '📦', 'Missing Item': '❌', 'Extra Item':   '➕',
-      'Damaged Item': '⚠️', 'AWB Error':    '📋', 'Other':        '💬'
+      'Damaged Item': '⚠️', 'AWB Error':    '📋', 'Other':        '💬',
+      'Unscannable Stock': '🔍', 'Printer Issue': '🖨️', 'Camera Issue': '📷'
     }[record.errorType] || '🔔';
 
     const ts = record.timestamp instanceof Date
