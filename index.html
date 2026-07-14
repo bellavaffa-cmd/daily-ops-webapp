@@ -2055,11 +2055,14 @@
     }
   });
 
-  // ── Config (loaded from localStorage) ────────────────────────────────
-  let SCRIPT_URL     = localStorage.getItem('packingErrorScriptUrl')   || 'https://script.google.com/macros/s/AKfycbwtCXoxcN2gTL8s2rv13Ekb4GI-okMOr_fgeQ-xhUOSV2mMcDl3uhXpK9r_JVo1TjmYWQ/exec';
+  // ── Supabase config ────────────────────────────────────────────────────
+  const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co/rest/v1';
+  const SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
+  const SB_HDR = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' };
+
+  // ── Config ────────────────────────────────────────────────────────────
+  let SCRIPT_URL     = localStorage.getItem('packingErrorScriptUrl') || ''; // kept for B2C data only
   let SLACK_WEBHOOK  = localStorage.getItem('packingErrorSlackWebhook') || '';
-  // B2C live data source — set via Settings or hardcode below once GAS is deployed.
-  // When set, ALL instances of this file fetch live data from Google Sheets instead of static snapshot.
   let B2C_DATA_URL   = localStorage.getItem('b2cDataUrl') || '';
 
   let errors = [];
@@ -2073,14 +2076,10 @@
 
   // ── Init ───────────────────────────────────────────────────────────────
   (function init() {
-    if (SCRIPT_URL) {
-      document.getElementById('syncWrap').style.display = 'flex';
-      loadFromSheet();
-      refreshTimer = setInterval(loadFromSheet, 30000);
-    } else {
-      loadSampleData();
-      updateBadge();
-    }
+    document.getElementById('syncWrap').style.display = 'flex';
+    loadFromSupabase();
+    loadPickingIssues();
+    refreshTimer = setInterval(() => { loadFromSupabase(); loadPickingIssues(); }, 30000);
   })();
 
   // ── Tab visibility ─────────────────────────────────────────────────────
@@ -2367,11 +2366,23 @@
   }
 
   async function loadPickingIssues() {
-    if (!SCRIPT_URL) return;
     try {
-      const res = await fetch(SCRIPT_URL + '?action=picking_read', { cache: 'no-store' });
-      const data = await res.json();
-      pickingIssues = Array.isArray(data) ? data : (data.data || []);
+      const res = await fetch(SB_URL + '/picking_issues?select=*&order=created_at.desc', { headers: SB_HDR });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const rows = await res.json();
+      pickingIssues = rows.map(r => ({
+        id:          r.id,
+        timestamp:   new Date(r.created_at),
+        warehouse:   r.warehouse    || '',
+        orderId:     r.order_id     || '',
+        sku:         r.sku          || '',
+        issueType:   r.issue_type   || '',
+        pickedQty:   r.picked_qty   || '',
+        expectedQty: r.expected_qty || '',
+        notes:       r.notes        || '',
+        photos:      Array.isArray(r.photos) ? r.photos : [],
+        status:      r.status       || 'Open'
+      }));
       renderPickingTable();
     } catch (err) {
       console.error('Failed to load picking issues', err);
@@ -2440,26 +2451,32 @@
       return;
     }
 
-    const payload = { warehouse, orderId, sku, issueType, pickedQty, expectedQty, notes, photos: [...pickingPhotosBuffer], status: 'Open' };
     const btn = this.querySelector('[type="submit"]');
     btn.disabled = true;
     btn.textContent = 'Submitting…';
 
     try {
-      const res = await fetch(SCRIPT_URL + '?action=picking_write', {
+      const res = await fetch(SB_URL + '/picking_issues', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        headers: { ...SB_HDR, Prefer: 'return=minimal' },
+        body: JSON.stringify({
+          id:           uid(),
+          warehouse,
+          order_id:     orderId,
+          sku,
+          issue_type:   issueType,
+          picked_qty:   pickedQty,
+          expected_qty: expectedQty,
+          notes,
+          photos:       [...pickingPhotosBuffer],
+          status:       'Open'
+        })
       });
-      const result = await res.json();
-      if (result.status === 'ok' || result.success) {
-        closePickingModal();
-        resetPickingForm();
-        showToast('Picking issue logged successfully.', false);
-        await loadPickingIssues();
-      } else {
-        throw new Error(result.error || 'Unknown error');
-      }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      closePickingModal();
+      resetPickingForm();
+      showToast('Picking issue logged successfully.', false);
+      await loadPickingIssues();
     } catch (err) {
       showToast('Failed to submit: ' + err.message, true);
     } finally {
@@ -2471,18 +2488,13 @@
   async function deletePickingRecord(id) {
     if (!id || !confirm('Delete this picking issue?')) return;
     try {
-      const res = await fetch(SCRIPT_URL + '?action=picking_delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id })
+      const res = await fetch(SB_URL + '/picking_issues?id=eq.' + id, {
+        method: 'DELETE',
+        headers: SB_HDR
       });
-      const result = await res.json();
-      if (result.status === 'ok' || result.success) {
-        showToast('Picking issue deleted.', false);
-        await loadPickingIssues();
-      } else {
-        throw new Error(result.error || 'Unknown error');
-      }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      showToast('Picking issue deleted.', false);
+      await loadPickingIssues();
     } catch (err) {
       showToast('Failed to delete: ' + err.message, true);
     }
@@ -2661,14 +2673,14 @@
     }
     updateUrlStatus(url);
 
-    // Apply immediately
+    // Apply immediately (SCRIPT_URL now only used for B2C data)
     clearInterval(refreshTimer);
     refreshTimer = null;
-    if (SCRIPT_URL) {
+    if (true) {
       document.getElementById('syncWrap').style.display = 'flex';
       errors.length = 0;
-      loadFromSheet();
-      refreshTimer = setInterval(loadFromSheet, 30000);
+      loadFromSupabase();
+      refreshTimer = setInterval(() => { loadFromSupabase(); loadPickingIssues(); }, 30000);
     } else {
       document.getElementById('syncWrap').style.display = 'none';
       loadSampleData();
@@ -2693,7 +2705,7 @@
     ].forEach(r => errors.push(r));
   }
 
-  // ── Google Sheets sync ─────────────────────────────────────────────────
+  // ── Supabase sync ──────────────────────────────────────────────────────
   function setSyncStatus(state, label) {
     const dot = document.getElementById('syncDot');
     const lbl = document.getElementById('syncLabel');
@@ -2701,83 +2713,70 @@
     lbl.textContent = label || { ok:'Synced', syncing:'Syncing…', error:'Sync failed' }[state];
   }
 
-  async function loadFromSheet() {
+  async function loadFromSupabase() {
     setSyncStatus('syncing');
     try {
-      const res  = await fetch(SCRIPT_URL + '?action=read', { cache: 'no-store' });
-      const json = await res.json();
-      if (!json.success) throw new Error(json.error || 'read failed');
-
+      const res = await fetch(SB_URL + '/packing_errors?select=*&order=created_at.desc', { headers: SB_HDR });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const rows = await res.json();
       errors.length = 0;
-      // Sheet returns oldest-first; reverse so newest is at top
-      [...json.data].reverse().forEach(row => {
+      rows.forEach(r => {
         errors.push({
-          id:              row.id,
-          timestamp:       new Date(row.timestamp),
-          warehouse:       row.warehouse      || '',
-          orderId:         row.orderId        || '',
-          toteNum:         row.toteNum        || '',
-          stationNum:      row.stationNum     || '',
-          errorType:       row.errorType      || '',
-          notes:  row.notes  || '',
-          status: row.status || 'Open',
-          skus:   safeParseJson(row.skus),
-          photos: (() => {
-            const ids = safeParseJson(row.photos) || [];
-            if (ids.length) return ids.map(id => 'https://drive.google.com/thumbnail?id=' + id + '&sz=w1200');
-            return safeParseJson(localStorage.getItem('err_photos_' + row.id)) || [];
-          })()
+          id:         r.id,
+          timestamp:  new Date(r.created_at),
+          warehouse:  r.warehouse   || '',
+          orderId:    r.order_id    || '',
+          toteNum:    r.tote_num    || '',
+          stationNum: r.station_num || '',
+          errorType:  r.error_type  || '',
+          notes:      r.notes       || '',
+          status:     r.status      || 'Open',
+          skus:       Array.isArray(r.skus) ? r.skus : safeParseJson(r.skus),
+          photos:     Array.isArray(r.photos) ? r.photos : []
         });
       });
-
       updateBadge();
-      // Re-render dashboard if it's currently visible
       if (document.getElementById('view-dash').classList.contains('active')) {
         initWarehouseFilter(); renderStats(); renderTable();
       }
       setSyncStatus('ok', `Synced ${new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`);
     } catch (err) {
-      console.error('Sheet read error:', err);
+      console.error('Supabase read error:', err);
       setSyncStatus('error', 'Sync failed — retrying');
     }
   }
 
-  async function saveToSheet(record) {
-    if (!SCRIPT_URL) return;
-    const payload = encodeURIComponent(JSON.stringify({
-      id:             record.id,
-      timestamp:      record.timestamp.toISOString(),
-      warehouse:      record.warehouse || '',
-      orderId:        record.orderId,
-      toteNum:        record.toteNum,
-      stationNum:     record.stationNum,
-      errorType:      record.errorType,
-      notes:          record.notes || '',
-      status:         record.status || 'Open',
-      skus:           JSON.stringify(record.skus || []),
-      photos:         JSON.stringify(record.driveFileIds || [])
-    }));
+  async function saveToSupabase(record) {
     try {
-      await fetch(`${SCRIPT_URL}?action=write&data=${payload}`, { cache: 'no-store' });
+      const res = await fetch(SB_URL + '/packing_errors', {
+        method: 'POST',
+        headers: { ...SB_HDR, Prefer: 'return=minimal' },
+        body: JSON.stringify({
+          id:          record.id,
+          warehouse:   record.warehouse   || '',
+          order_id:    record.orderId,
+          tote_num:    record.toteNum,
+          station_num: record.stationNum,
+          error_type:  record.errorType,
+          notes:       record.notes || '',
+          status:      record.status || 'Open',
+          skus:        JSON.stringify(record.skus || []),
+          photos:      record.photos || []
+        })
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
     } catch (err) {
-      console.error('Sheet write error:', err);
-      showToast('Saved locally — sheet sync failed', false);
-    }
-    // Persist photos to localStorage only as fallback (Drive upload already handled above)
-    if (record.photos && record.photos.length) {
-      if (record.driveFileIds && record.driveFileIds.length) {
-        // Drive upload succeeded — no need for localStorage copy
-        try { localStorage.removeItem('err_photos_' + record.id); } catch(e) {}
-      } else {
-        // Drive upload failed — fall back to localStorage for same-device access
-        try { localStorage.setItem('err_photos_' + record.id, JSON.stringify(record.photos)); } catch(e) {}
-      }
+      console.error('Supabase write error:', err);
+      showToast('Saved locally — sync failed', false);
     }
   }
 
-  // ── Unique ID helper ───────────────────────────────────────────────────
+  // ── Unique ID helper (UUID v4) ─────────────────────────────────────────
   function uid() {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
   }
 
   // ── View switching ─────────────────────────────────────────────────────
@@ -3215,14 +3214,6 @@ function fail(error) {
       status: 'Open'
     };
 
-    // Upload photos to Drive before saving
-    let driveFileIds = [];
-    if (record.photos.length && SCRIPT_URL) {
-      submitBtn.textContent = `Uploading photo${record.photos.length > 1 ? 's' : ''}…`;
-      driveFileIds = (await Promise.all(record.photos.map(uploadPhotoToDrive))).filter(Boolean);
-    }
-    record.driveFileIds = driveFileIds;
-
     // Optimistically add to local list
     errors.unshift(record);
     updateBadge();
@@ -3232,9 +3223,9 @@ function fail(error) {
     submitBtn.textContent = 'Submit Report';
     closeReportModal();
 
-    // Persist to sheet, then reload to pick up any other changes
-    await saveToSheet(record);
-    if (SCRIPT_URL) await loadFromSheet();
+    // Persist to Supabase, then reload to sync any other changes
+    await saveToSupabase(record);
+    await loadFromSupabase();
     sendSlackNotification(record);
   });
 
@@ -3573,7 +3564,7 @@ function fail(error) {
       const idx = errors.findIndex(e => String(e.id) === id);
       if (idx === -1) continue;
       errors[idx].status = status;
-      updateInSheet(errors[idx]);
+      updateInSupabase(errors[idx]);
     }
     clearSelection();
     renderStats();
@@ -3589,7 +3580,7 @@ function fail(error) {
     clearSelection();
     updateBadge();
     renderStats(); renderTable();
-    for (const id of ids) await deleteFromSheet(id);
+    for (const id of ids) await deleteFromSupabase(id);
     showToast(`${ids.length} record${ids.length > 1 ? 's' : ''} deleted.`, true);
   }
 
@@ -3602,7 +3593,7 @@ function fail(error) {
     if (idx === -1) return;
     errors[idx].status = status;
     renderTable();
-    await updateInSheet(errors[idx]);
+    await updateInSupabase(errors[idx]);
   }
 
   function badgeClass(type) {
@@ -3689,24 +3680,17 @@ function fail(error) {
     renderTable();
   }
 
-  async function updateInSheet(record) {
-    if (!SCRIPT_URL) return;
-    const payload = encodeURIComponent(JSON.stringify({
-      id:              record.id,
-      timestamp:       record.timestamp instanceof Date ? record.timestamp.toISOString() : record.timestamp,
-      orderId:         record.orderId,
-      toteNum:         record.toteNum,
-      stationNum:      record.stationNum,
-      errorType:       record.errorType,
-      notes:  record.notes  || '',
-      status: record.status || '',
-      skus:   JSON.stringify(record.skus || [])
-    }));
+  async function updateInSupabase(record) {
     try {
-      await fetch(`${SCRIPT_URL}?action=update&data=${payload}`, { cache: 'no-store' });
+      const res = await fetch(SB_URL + '/packing_errors?id=eq.' + record.id, {
+        method: 'PATCH',
+        headers: SB_HDR,
+        body: JSON.stringify({ status: record.status, notes: record.notes || '' })
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
     } catch (err) {
-      console.error('Sheet update error:', err);
-      showToast('Updated locally — sheet sync failed', false);
+      console.error('Supabase update error:', err);
+      showToast('Updated locally — sync failed', false);
     }
   }
 
@@ -3716,28 +3700,20 @@ function fail(error) {
     if (String(expandedId) === String(id)) expandedId = null;
     updateBadge();
     renderStats(); renderTable();
-    await deleteFromSheet(id);
+    await deleteFromSupabase(id);
   }
 
-  async function deleteFromSheet(id) {
-    if (!SCRIPT_URL) return;
-    const payload = encodeURIComponent(JSON.stringify({ id }));
+  async function deleteFromSupabase(id) {
     try {
-      const res  = await fetch(`${SCRIPT_URL}?action=delete&data=${payload}`, { cache: 'no-store' });
-      const json = await res.json().catch(() => null);
-      if (json && json.status === 'error') {
-        console.error('Sheet delete failed:', json.message);
-        showToast('Sheet sync failed: ' + (json.message || 'unknown error'), false);
-      } else if (json && json.status === 'ok') {
-        showToast('Deleted and synced to sheet.', true);
-      } else {
-        // Unexpected response — Apps Script may be outdated (missing handleDelete)
-        console.warn('Unexpected delete response:', json);
-        showToast('Sheet sync issue — please re-deploy your Apps Script.', false);
-      }
+      const res = await fetch(SB_URL + '/packing_errors?id=eq.' + id, {
+        method: 'DELETE',
+        headers: SB_HDR
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      showToast('Deleted and synced.', true);
     } catch (err) {
-      console.error('Sheet delete error:', err);
-      showToast('Deleted locally — sheet sync failed (network error)', false);
+      console.error('Supabase delete error:', err);
+      showToast('Deleted locally — sync failed', false);
     }
   }
 
@@ -3814,11 +3790,11 @@ function fail(error) {
 
   // ── Manual refresh ────────────────────────────────────────────────────
   async function manualRefresh() {
-    if (!SCRIPT_URL) { showToast('No sheet connected — configure in Settings.', false); return; }
     const btn = document.getElementById('refreshBtn');
     btn.disabled = true;
     btn.style.opacity = '.5';
-    await loadFromSheet();
+    await loadFromSupabase();
+    await loadPickingIssues();
     renderStats(); renderTable();
     btn.disabled = false;
     btn.style.opacity = '';
