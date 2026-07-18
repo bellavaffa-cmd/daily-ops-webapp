@@ -1,4 +1,4 @@
-const CACHE = 'daily-b2c-v17';
+const CACHE = 'daily-b2c-v18';
 const SHELL = [
   '/daily-ops-webapp/',
   '/daily-ops-webapp/index.html',
