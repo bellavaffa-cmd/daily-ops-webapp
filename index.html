@@ -1506,7 +1506,7 @@
 
           <div class="form-actions">
             <button type="button" class="btn btn-ghost" onclick="resetForm()">Clear</button>
-            <button type="button" class="btn btn-primary" onclick="_packingSubmitOk=true;document.getElementById('errorForm').requestSubmit()">Submit Report</button>
+            <button type="button" class="btn btn-primary" onclick="_packingSubmitOk=true;document.getElementById('errorForm').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))">Submit Report</button>
           </div>
         </form>
       </div>
