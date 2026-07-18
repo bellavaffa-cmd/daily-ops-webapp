@@ -2152,8 +2152,9 @@
 
   let errors = [];
   let pickingIssues = [];
-  let brandMap = {};          // orderId → brand (dashboard display fallback)
+  let brandMap = {};           // orderId → brand (dashboard display fallback)
   let warehouseBrandsMap = {}; // warehouse → sorted brand array (form dropdown)
+  let allBrands = [];          // all known brands (fallback until warehouse data is ready)
   let photosBuffer = [];
   let pickingPhotosBuffer = [];
   let _packingSubmitOk  = false;
@@ -3993,8 +3994,10 @@ function fail(error) {
       const rows = await res.json();
       brandMap = {};
       warehouseBrandsMap = {};
+      const allBrandsSet = new Set();
       rows.forEach(r => {
         if (r.order_id) brandMap[r.order_id] = r.brand;
+        if (r.brand) allBrandsSet.add(r.brand);
         if (r.warehouse && r.brand) {
           if (!warehouseBrandsMap[r.warehouse]) warehouseBrandsMap[r.warehouse] = new Set();
           warehouseBrandsMap[r.warehouse].add(r.brand);
@@ -4004,6 +4007,7 @@ function fail(error) {
       Object.keys(warehouseBrandsMap).forEach(wh => {
         warehouseBrandsMap[wh] = [...warehouseBrandsMap[wh]].sort();
       });
+      allBrands = [...allBrandsSet].sort();
       updateBrandDropdown();
     } catch(e) { /* silently fail */ }
   }
@@ -4012,10 +4016,14 @@ function fail(error) {
     const wh  = document.getElementById('reportWarehouse')?.value || '';
     const sel = document.getElementById('reportBrand');
     if (!sel) return;
-    const brands = wh && warehouseBrandsMap[wh] ? warehouseBrandsMap[wh] : [];
+    // Use warehouse-specific brands if available, fall back to all brands
+    const whBrands = wh && warehouseBrandsMap[wh] && warehouseBrandsMap[wh].length
+      ? warehouseBrandsMap[wh]
+      : null;
+    const brands = whBrands || (wh ? allBrands : []);
     sel.innerHTML = brands.length
       ? '<option value="">Select brand…</option>' + brands.map(b => `<option value="${b}">${b}</option>`).join('')
-      : `<option value="">${wh ? 'No brands found' : 'Select warehouse first…'}</option>`;
+      : `<option value="">${wh ? 'No brands available' : 'Select warehouse first…'}</option>`;
     sel.value = '';
   }
 
