@@ -1386,16 +1386,14 @@
 
             <div class="field full">
               <label>Warehouse *</label>
-              <select id="reportWarehouse" required onchange="updateBrandDropdown()">
+              <select id="reportWarehouse" required>
                 <option value="">Select warehouse…</option>
               </select>
             </div>
 
             <div class="field full">
               <label>Brand *</label>
-              <select id="reportBrand" required>
-                <option value="">Select warehouse first…</option>
-              </select>
+              <input type="text" id="reportBrand" placeholder="e.g. Adarna House" required />
             </div>
 
             <div class="field">
@@ -2152,9 +2150,6 @@
 
   let errors = [];
   let pickingIssues = [];
-  let brandMap = {};           // orderId → brand (dashboard display fallback)
-  let warehouseBrandsMap = {}; // warehouse → sorted brand array (form dropdown)
-  let allBrands = [];          // all known brands (fallback until warehouse data is ready)
   let photosBuffer = [];
   let pickingPhotosBuffer = [];
   let _packingSubmitOk  = false;
@@ -2168,7 +2163,6 @@
   // ── Init ───────────────────────────────────────────────────────────────
   (function init() {
     document.getElementById('syncWrap').style.display = 'flex';
-    loadBrandLookup();
     loadFromSupabase();
     loadPickingIssues();
     refreshTimer = setInterval(() => { loadFromSupabase(); loadPickingIssues(); }, 30000);
@@ -3395,7 +3389,6 @@ function fail(error) {
     // Restore warehouse default (form.reset() clears it)
     const whSel = document.getElementById('reportWarehouse');
     if (whSel) whSel.value = localStorage.getItem('b2cWarehouseFilter') || '';
-    updateBrandDropdown();
     photosBuffer = [];
     renderPhotoPreview();
     document.getElementById('wrongItemFields').style.display = 'none';
@@ -3655,7 +3648,7 @@ function fail(error) {
           <td class="col-wh" title="${e.warehouse||''}">${e.warehouse||'—'}</td>
           <td><span class="order-id-link" onclick="toggleExpand('${e.id}')">${e.orderId}</span></td>
           <td class="td-muted" style="font-size:.8rem">${e.toteNum||'—'}</td>
-          <td class="td-muted" style="font-size:.8rem">${e.brand || brandMap[e.orderId] || '—'}</td>
+          <td class="td-muted" style="font-size:.8rem">${e.brand || '—'}</td>
           <td><span class="badge ${badgeClass(e.errorType)}">${e.errorType}</span></td>
           <td><select class="status-select status-${statusCls(e.status)}" onchange="updateStatus('${e.id}', this.value)"><option ${e.status==='Open'?'selected':''}>Open</option><option ${e.status==='In Progress'?'selected':''}>In Progress</option><option ${e.status==='Resolved'?'selected':''}>Resolved</option></select></td>
           <td style="text-align:center">${(e.status||'Open') === 'Resolved' ? `<button class="btn-delete-row" onclick="deleteRecord('${e.id}')" title="Delete record">🗑</button>` : ''}</td>
@@ -3987,51 +3980,11 @@ function fail(error) {
   }
 
   // ── Manual refresh ────────────────────────────────────────────────────
-  async function loadBrandLookup() {
-    try {
-      const res = await fetch(SB_URL + '/brand_by_order?select=order_id,brand,warehouse&limit=50000', { headers: SB_HDR });
-      if (!res.ok) return;
-      const rows = await res.json();
-      brandMap = {};
-      warehouseBrandsMap = {};
-      const allBrandsSet = new Set();
-      rows.forEach(r => {
-        if (r.order_id) brandMap[r.order_id] = r.brand;
-        if (r.brand) allBrandsSet.add(r.brand);
-        if (r.warehouse && r.brand) {
-          if (!warehouseBrandsMap[r.warehouse]) warehouseBrandsMap[r.warehouse] = new Set();
-          warehouseBrandsMap[r.warehouse].add(r.brand);
-        }
-      });
-      // Convert Sets to sorted arrays
-      Object.keys(warehouseBrandsMap).forEach(wh => {
-        warehouseBrandsMap[wh] = [...warehouseBrandsMap[wh]].sort();
-      });
-      allBrands = [...allBrandsSet].sort();
-      updateBrandDropdown();
-    } catch(e) { /* silently fail */ }
-  }
-
-  function updateBrandDropdown() {
-    const wh  = document.getElementById('reportWarehouse')?.value || '';
-    const sel = document.getElementById('reportBrand');
-    if (!sel) return;
-    // Use warehouse-specific brands if available, fall back to all brands
-    const whBrands = wh && warehouseBrandsMap[wh] && warehouseBrandsMap[wh].length
-      ? warehouseBrandsMap[wh]
-      : null;
-    const brands = whBrands || (wh ? allBrands : []);
-    sel.innerHTML = brands.length
-      ? '<option value="">Select brand…</option>' + brands.map(b => `<option value="${b}">${b}</option>`).join('')
-      : `<option value="">${wh ? 'No brands available' : 'Select warehouse first…'}</option>`;
-    sel.value = '';
-  }
 
   async function manualRefresh() {
     const btn = document.getElementById('refreshBtn');
     btn.disabled = true;
     btn.style.opacity = '.5';
-    await loadBrandLookup();
     await loadFromSupabase();
     await loadPickingIssues();
     renderStats(); renderTable();
@@ -4057,7 +4010,7 @@ function fail(error) {
     const esc = v => '"' + String(v || '').replace(/"/g, '""') + '"';
     const lines = ['Order Number,Tote Number,Brand,AWB Error Code'];
     rows.forEach(e => {
-      const brand = e.brand || brandMap[e.orderId] || '';
+      const brand = e.brand || '';
       const awb   = e.errorType === 'AWB Error' ? (e.notes || '') : '';
       lines.push([esc(e.orderId), esc(e.toteNum), esc(brand), esc(awb)].join(','));
     });
