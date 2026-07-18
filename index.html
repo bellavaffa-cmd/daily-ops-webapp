@@ -1506,7 +1506,7 @@
 
           <div class="form-actions">
             <button type="button" class="btn btn-ghost" onclick="resetForm()">Clear</button>
-            <button type="button" class="btn btn-primary" onclick="_packingSubmitOk=true;document.getElementById('errorForm').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))">Submit Report</button>
+            <button type="button" id="errorSubmitBtn" class="btn btn-primary" onclick="_packingSubmitOk=true;document.getElementById('errorForm').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))">Submit Report</button>
           </div>
         </form>
       </div>
@@ -3356,9 +3356,8 @@ function fail(error) {
       }
     }
 
-    const submitBtn = e.target.querySelector('[type=submit]');
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Saving…';
+    const submitBtn = document.getElementById('errorSubmitBtn');
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Saving…'; }
 
     const record = {
       id: uid(), timestamp: new Date(),
@@ -3374,8 +3373,7 @@ function fail(error) {
     updateBadge();
     resetForm();
     showToast('Report submitted!', true);
-    submitBtn.disabled = false;
-    submitBtn.textContent = 'Submit Report';
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit Report'; }
     closeReportModal();
 
     // Persist to Supabase, then reload to sync any other changes
