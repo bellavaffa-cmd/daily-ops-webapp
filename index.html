@@ -1406,11 +1406,6 @@
               <input type="text" id="toteNum" placeholder="e.g. T-045" required />
             </div>
 
-            <div class="field">
-              <label>Packing Station</label>
-              <input type="text" id="stationNum" placeholder="e.g. PS-07" />
-            </div>
-
             <div class="field full">
               <label>Error Type *</label>
               <div class="error-types" id="errorTypes">
@@ -2878,7 +2873,6 @@
           brand:      r.brand       || '',
           orderId:    r.order_id    || '',
           toteNum:    r.tote_num    || '',
-          stationNum: r.station_num || '',
           errorType:  r.error_type  || '',
           notes:      r.notes       || '',
           status:     r.status      || 'Open',
@@ -2908,7 +2902,6 @@
           brand:       record.brand       || '',
           order_id:    record.orderId,
           tote_num:    record.toteNum,
-          station_num: record.stationNum,
           error_type:  record.errorType,
           notes:       record.notes || '',
           status:      record.status || 'Open',
@@ -2999,11 +2992,10 @@ function handleRead() {
         warehouse: row[2] || '',
         orderId:   row[3],
         toteNum:   row[4],
-        stationNum: row[5],
-        errorType: row[6],
-        notes:     row[7] || '',
-        status:    row[8] || 'Open',
-        skus:      row[9] || '[]'
+        errorType: row[5],
+        notes:     row[6] || '',
+        status:    row[7] || 'Open',
+        skus:      row[8] || '[]'
       };
     });
     return ok({ data: rows });
@@ -3021,7 +3013,6 @@ function handleWrite(e) {
       data.warehouse   || '',
       data.orderId     || '',
       data.toteNum     || '',
-      data.stationNum  || '',
       data.errorType   || '',
       data.notes       || '',
       data.status      || 'Open',
@@ -3045,7 +3036,6 @@ function handleUpdate(e) {
           data.warehouse   || values[i][2] || '',
           data.orderId     || '',
           data.toteNum     || '',
-          data.stationNum  || '',
           data.errorType   || '',
           data.notes       || '',
           data.status      || '',
@@ -3316,7 +3306,6 @@ function fail(error) {
     const brand         = document.getElementById('reportBrand').value;
     const orderId       = document.getElementById('orderId').value.trim();
     const toteNum       = document.getElementById('toteNum').value.trim();
-    const stationNum    = document.getElementById('stationNum').value.trim();
     const errorType     = document.querySelector('input[name="errorType"]:checked')?.value;
     const awbErrorCode = document.getElementById('awbErrorCode').value.trim();
     const otherNotes   = document.getElementById('otherNotes').value.trim();
@@ -3362,7 +3351,7 @@ function fail(error) {
     const record = {
       id: uid(), timestamp: new Date(),
       warehouse, brand,
-      orderId, toteNum, stationNum, errorType,
+      orderId, toteNum, errorType,
       notes, skus,
       photos: [...photosBuffer],
       status: 'Open'
@@ -3520,11 +3509,9 @@ function fail(error) {
     const total    = errors.length;
     const today    = errors.filter(e => isToday(e.timestamp)).length;
     const topType  = topErrorType();
-    const stations = new Set(errors.map(e => e.stationNum).filter(Boolean)).size;
     row.innerHTML = `
       <div class="stat-box"><div class="num">${total}</div><div class="lbl">Total Errors</div></div>
       <div class="stat-box"><div class="num">${today}</div><div class="lbl">Today</div></div>
-      <div class="stat-box"><div class="num">${stations}</div><div class="lbl">Stations Affected</div></div>
       <div class="stat-box" style="overflow:hidden"><div class="num" style="font-size:1rem;margin-top:4px">${topType}</div><div class="lbl">Top Error Type</div></div>
     `;
   }
@@ -3561,7 +3548,7 @@ function fail(error) {
     const rows = activeErrors.filter(e => {
       if (whF && e.warehouse !== whF) return false;
       if (!q) return true;
-      return [e.orderId, e.toteNum, e.stationNum, e.errorType, e.status || 'Open', e.warehouse || '']
+      return [e.orderId, e.toteNum, e.errorType, e.status || 'Open', e.warehouse || '']
         .some(v => (v||'').toLowerCase().includes(q));
     });
 
@@ -3630,7 +3617,6 @@ function fail(error) {
             <div class="expanded-detail">
               <div class="detail-item"><span class="detail-label">Order ID</span><span class="detail-value td-mono">${e.orderId||'—'}</span></div>
               <div class="detail-item"><span class="detail-label">Tote Number</span><span class="detail-value">${e.toteNum||'—'}</span></div>
-              <div class="detail-item"><span class="detail-label">Packing Station</span><span class="detail-value">${e.stationNum||'—'}</span></div>
               <div class="detail-item"><span class="detail-label">Reported</span><span class="detail-value">${formatTime(e.timestamp)}</span></div>
               ${skuRows}
               ${notesRows}
@@ -3927,7 +3913,6 @@ function fail(error) {
     table += `${pad('Order ID',    col1)}  ${record.orderId   || '—'}\n`;
     table += `${pad('Error Type',  col1)}  ${errorEmoji} ${record.errorType}\n`;
     table += `${pad('Tote',        col1)}  ${record.toteNum   || '—'}\n`;
-    table += `${pad('Station',     col1)}  ${record.stationNum|| '—'}\n`;
     table += `${pad('Reported',    col1)}  ${ts}\n`;
     table += '```';
 
@@ -4001,7 +3986,7 @@ function fail(error) {
     const rows = activeErrors.filter(e => {
       if (whF && e.warehouse !== whF) return false;
       if (!q) return true;
-      return [e.orderId, e.toteNum, e.stationNum, e.errorType, e.status || 'Open', e.warehouse || '']
+      return [e.orderId, e.toteNum, e.errorType, e.status || 'Open', e.warehouse || '']
         .some(v => (v || '').toLowerCase().includes(q));
     });
 
@@ -4041,10 +4026,10 @@ function fail(error) {
   // ── CSV Export ─────────────────────────────────────────────────────────
   function exportCSV() {
     if (!errors.length) { showToast('No data to export.', false); return; }
-    const headers = ['ID','Timestamp','Order ID','Tote','Station','Error Type','Notes','Status'];
+    const headers = ['ID','Timestamp','Order ID','Tote','Error Type','Notes','Status'];
     const rows = errors.map(e => [
       e.id, e.timestamp instanceof Date ? e.timestamp.toISOString() : e.timestamp,
-      e.orderId, e.toteNum, e.stationNum, e.errorType,
+      e.orderId, e.toteNum, e.errorType,
       `"${(e.notes||'').replace(/"/g,'""')}"`,
       e.status || 'Open'
     ]);
