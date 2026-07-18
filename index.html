@@ -1482,7 +1482,7 @@
 
           <div class="form-actions">
             <button type="button" class="btn btn-ghost" onclick="resetForm()">Clear</button>
-            <button type="submit" class="btn btn-primary">Submit Report</button>
+            <button type="button" class="btn btn-primary" onclick="document.getElementById('errorForm').requestSubmit()">Submit Report</button>
           </div>
         </form>
       </div>
@@ -1596,7 +1596,7 @@
 
           <div class="form-actions">
             <button type="button" class="btn btn-ghost" onclick="resetPickingForm()">Clear</button>
-            <button type="submit" class="btn btn-primary">Submit Issue</button>
+            <button type="button" class="btn btn-primary" onclick="document.getElementById('pickingForm').requestSubmit()">Submit Issue</button>
           </div>
         </form>
       </div>
@@ -3257,13 +3257,6 @@ function fail(error) {
     });
     document.body.appendChild(lb);
   }
-
-  // ── Block Enter-key form submission ──────────────────────────────────
-  ['errorForm', 'pickingForm'].forEach(id => {
-    document.getElementById(id).addEventListener('keydown', e => {
-      if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') e.preventDefault();
-    });
-  });
 
   // ── Form submission ────────────────────────────────────────────────────
   document.getElementById('errorForm').addEventListener('submit', async e => {
