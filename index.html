@@ -1653,6 +1653,7 @@
       <div class="dash-subtabs">
         <button class="dash-subtab active" id="subtab-packing" onclick="setDashTab('packing')">Packing Error <span class="subtab-count" id="packingErrCount"></span></button>
         <button class="dash-subtab" id="subtab-picking" onclick="setDashTab('picking')">Picking Issues <span class="subtab-count" id="pickingCount"></span></button>
+        <button class="dash-subtab" id="subtab-resolved" onclick="setDashTab('resolved')">✅ Resolved <span class="subtab-count" id="resolvedCount"></span></button>
       </div>
 
       <div class="bulk-bar" id="bulkBar">
@@ -1723,6 +1724,35 @@
               </tr>
             </thead>
             <tbody id="pickingTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── Resolved section (shown when dashTab === 'resolved') ── -->
+      <div id="resolvedSection" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+          <div>
+            <div style="font-size:1rem;font-weight:700">Resolved Errors</div>
+            <div style="font-size:.8rem;color:var(--muted);margin-top:2px">All resolved packing errors and picking issues</div>
+          </div>
+        </div>
+        <div class="empty-state" id="resolvedEmptyState" style="display:none">
+          <div class="icon">✅</div>
+          <p>No resolved errors yet.</p>
+        </div>
+        <div class="table-responsive" id="resolvedTableWrap" style="display:none">
+          <table id="resolvedTable">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th class="col-wh">Warehouse</th>
+                <th>Form</th>
+                <th>Order ID</th>
+                <th>Error / Issue Type</th>
+                <th style="width:40px"></th>
+              </tr>
+            </thead>
+            <tbody id="resolvedTableBody"></tbody>
           </table>
         </div>
       </div>
@@ -2416,6 +2446,7 @@
         status:      r.status       || 'Open'
       }));
       renderPickingTable();
+      if (dashTab === 'resolved') renderResolvedTable();
     } catch (err) {
       console.error('Failed to load picking issues', err);
     }
@@ -2427,9 +2458,10 @@
     const tableWrap = document.getElementById('pickingTableWrap');
     const countEl = document.getElementById('pickingCount');
 
-    if (countEl) countEl.textContent = pickingIssues.length || '';
+    const activeIssues = pickingIssues.filter(p => (p.status || 'Open') !== 'Resolved');
+    if (countEl) countEl.textContent = activeIssues.length || '';
 
-    if (!pickingIssues.length) {
+    if (!activeIssues.length) {
       emptyState.style.display = '';
       tableWrap.style.display = 'none';
       tbody.innerHTML = '';
@@ -2439,7 +2471,7 @@
     emptyState.style.display = 'none';
     tableWrap.style.display = '';
 
-    tbody.innerHTML = pickingIssues.map(row => {
+    tbody.innerHTML = activeIssues.map(row => {
       const ts = row.Timestamp || row.timestamp || '';
       const timeStr = ts ? new Date(ts).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—';
       const wh = row.Warehouse || row.warehouse || '—';
@@ -2463,6 +2495,57 @@
         </td>
       </tr>`;
     }).join('');
+  }
+
+  function renderResolvedTable() {
+    const tbody    = document.getElementById('resolvedTableBody');
+    const emptyEl  = document.getElementById('resolvedEmptyState');
+    const tableWrap= document.getElementById('resolvedTableWrap');
+    const countEl  = document.getElementById('resolvedCount');
+
+    const resolvedPacking = errors.filter(e => (e.status || 'Open') === 'Resolved');
+    const resolvedPicking = pickingIssues.filter(p => (p.status || 'Open') === 'Resolved');
+    const total = resolvedPacking.length + resolvedPicking.length;
+    if (countEl) countEl.textContent = total || '';
+
+    if (!total) {
+      emptyEl.style.display = ''; tableWrap.style.display = 'none'; tbody.innerHTML = '';
+      return;
+    }
+    emptyEl.style.display = 'none'; tableWrap.style.display = '';
+
+    const packRows = resolvedPacking.map(e => {
+      const timeStr = formatTime(e.timestamp);
+      return `<tr>
+        <td style="font-size:.8rem;color:var(--muted);white-space:nowrap">${timeStr}</td>
+        <td style="font-size:.82rem">${e.warehouse||'—'}</td>
+        <td><span class="badge badge-other" style="font-size:.7rem">Packing</span></td>
+        <td style="font-size:.82rem;font-family:monospace">${e.orderId||'—'}</td>
+        <td><span class="badge ${badgeClass(e.errorType)}" style="font-size:.7rem">${e.errorType||'—'}</span></td>
+        <td style="text-align:center"><button class="btn-delete-row" onclick="deleteRecord('${e.id}')" title="Delete">🗑</button></td>
+      </tr>`;
+    });
+
+    const pickRows = resolvedPicking.map(p => {
+      const ts = p.timestamp || '';
+      const timeStr = ts ? new Date(ts).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—';
+      return `<tr>
+        <td style="font-size:.8rem;color:var(--muted);white-space:nowrap">${timeStr}</td>
+        <td style="font-size:.82rem">${p.warehouse||'—'}</td>
+        <td><span class="badge badge-label" style="font-size:.7rem">Picking</span></td>
+        <td style="font-size:.82rem;font-family:monospace">${p.orderId||'—'}</td>
+        <td style="font-size:.82rem">${p.issueType||'—'}</td>
+        <td style="text-align:center"><button class="btn-delete-row" onclick="deletePickingRecord('${p.id}')" title="Delete">🗑</button></td>
+      </tr>`;
+    });
+
+    // Sort combined rows newest first
+    const allRows = [
+      ...resolvedPacking.map((e,i) => ({ ts: e.timestamp instanceof Date ? e.timestamp : new Date(e.timestamp||0), html: packRows[i] })),
+      ...resolvedPicking.map((p,i) => ({ ts: p.timestamp instanceof Date ? p.timestamp : new Date(p.timestamp||0), html: pickRows[i] }))
+    ].sort((a,b) => b.ts - a.ts);
+
+    tbody.innerHTML = allRows.map(r => r.html).join('');
   }
 
   document.getElementById('pickingForm').addEventListener('submit', async function(e) {
@@ -3411,13 +3494,16 @@ function fail(error) {
 
   // ── Table ──────────────────────────────────────────────────────────────
   function renderTable() {
-    if (dashTab === 'picking') return; // picking section manages its own content
-    // Update sub-tab counts
-    document.getElementById('packingErrCount').textContent = errors.length;
+    if (dashTab === 'picking' || dashTab === 'resolved') return;
+    const activeErrors = errors.filter(e => (e.status || 'Open') !== 'Resolved');
+    const resolvedCount = errors.filter(e => (e.status || 'Open') === 'Resolved').length
+                        + pickingIssues.filter(p => (p.status || 'Open') === 'Resolved').length;
+    document.getElementById('packingErrCount').textContent = activeErrors.length;
+    document.getElementById('resolvedCount').textContent   = resolvedCount || '';
 
     const q    = document.getElementById('searchInput').value.toLowerCase();
     const whF  = document.getElementById('warehouseFilter')?.value || '';
-    const rows = errors.filter(e => {
+    const rows = activeErrors.filter(e => {
       if (whF && e.warehouse !== whF) return false;
       if (!q) return true;
       return [e.orderId, e.toteNum, e.stationNum, e.errorType, e.status || 'Open', e.warehouse || '']
@@ -3682,17 +3768,22 @@ function fail(error) {
     selectedIds.clear();
     document.getElementById('subtab-packing').classList.toggle('active', tab === 'packing');
     document.getElementById('subtab-picking').classList.toggle('active', tab === 'picking');
+    document.getElementById('subtab-resolved').classList.toggle('active', tab === 'resolved');
 
-    const isPicking = tab === 'picking';
-    // Show/hide errors controls & table vs picking section
+    const isPicking  = tab === 'picking';
+    const isResolved = tab === 'resolved';
+    const isPacking  = tab === 'packing';
+
     const errControls = document.querySelector('.dash-controls');
-    if (errControls) errControls.style.display = isPicking ? 'none' : '';
-    document.getElementById('bulkBar').style.display = isPicking ? 'none' : '';
-    document.getElementById('tableWrap').style.display = isPicking ? 'none' : '';
+    if (errControls) errControls.style.display = isPacking ? '' : 'none';
+    document.getElementById('bulkBar').style.display = isPacking ? '' : 'none';
+    document.getElementById('tableWrap').style.display = isPacking ? '' : 'none';
     document.getElementById('pickingSection').style.display = isPicking ? '' : 'none';
+    document.getElementById('resolvedSection').style.display = isResolved ? '' : 'none';
 
-    if (isPicking) loadPickingIssues();
-    else renderTable();
+    if (isPicking)  { loadPickingIssues(); }
+    else if (isResolved) { renderResolvedTable(); }
+    else { renderTable(); }
   }
 
   // ── Expandable rows ───────────────────────────────────────────────────
