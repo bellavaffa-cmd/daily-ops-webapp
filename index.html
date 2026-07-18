@@ -1711,6 +1711,7 @@
               <th class="col-wh">Warehouse</th>
               <th>Order ID</th>
               <th>Tote</th>
+              <th>Brand</th>
               <th>Error Type</th>
               <th>Status</th>
               <th style="width:40px"></th>
@@ -2144,6 +2145,7 @@
 
   let errors = [];
   let pickingIssues = [];
+  let brandMap = {}; // orderId → brand, loaded from Supabase brand_by_order
   let photosBuffer = [];
   let pickingPhotosBuffer = [];
   let _packingSubmitOk  = false;
@@ -2157,6 +2159,7 @@
   // ── Init ───────────────────────────────────────────────────────────────
   (function init() {
     document.getElementById('syncWrap').style.display = 'flex';
+    loadBrandLookup();
     loadFromSupabase();
     loadPickingIssues();
     refreshTimer = setInterval(() => { loadFromSupabase(); loadPickingIssues(); }, 30000);
@@ -3619,7 +3622,7 @@ function fail(error) {
               </div>` : '';
       const expandedRow = isOpen ? `
         <tr class="expanded-row">
-          <td colspan="7">
+          <td colspan="8">
             <div class="expanded-detail">
               <div class="detail-item"><span class="detail-label">Order ID</span><span class="detail-value td-mono">${e.orderId||'—'}</span></div>
               <div class="detail-item"><span class="detail-label">Tote Number</span><span class="detail-value">${e.toteNum||'—'}</span></div>
@@ -3639,6 +3642,7 @@ function fail(error) {
           <td class="col-wh" title="${e.warehouse||''}">${e.warehouse||'—'}</td>
           <td><span class="order-id-link" onclick="toggleExpand('${e.id}')">${e.orderId}</span></td>
           <td class="td-muted" style="font-size:.8rem">${e.toteNum||'—'}</td>
+          <td class="td-muted" style="font-size:.8rem">${brandMap[e.orderId]||'—'}</td>
           <td><span class="badge ${badgeClass(e.errorType)}">${e.errorType}</span></td>
           <td><select class="status-select status-${statusCls(e.status)}" onchange="updateStatus('${e.id}', this.value)"><option ${e.status==='Open'?'selected':''}>Open</option><option ${e.status==='In Progress'?'selected':''}>In Progress</option><option ${e.status==='Resolved'?'selected':''}>Resolved</option></select></td>
           <td style="text-align:center">${(e.status||'Open') === 'Resolved' ? `<button class="btn-delete-row" onclick="deleteRecord('${e.id}')" title="Delete record">🗑</button>` : ''}</td>
@@ -3970,10 +3974,21 @@ function fail(error) {
   }
 
   // ── Manual refresh ────────────────────────────────────────────────────
+  async function loadBrandLookup() {
+    try {
+      const res = await fetch(SB_URL + '/brand_by_order?select=order_id,brand&limit=50000', { headers: SB_HDR });
+      if (!res.ok) return;
+      const rows = await res.json();
+      brandMap = {};
+      rows.forEach(r => { if (r.order_id) brandMap[r.order_id] = r.brand; });
+    } catch(e) { /* silently fail — brand will show as — */ }
+  }
+
   async function manualRefresh() {
     const btn = document.getElementById('refreshBtn');
     btn.disabled = true;
     btn.style.opacity = '.5';
+    await loadBrandLookup();
     await loadFromSupabase();
     await loadPickingIssues();
     renderStats(); renderTable();
@@ -3997,10 +4012,11 @@ function fail(error) {
     });
 
     const esc = v => '"' + String(v || '').replace(/"/g, '""') + '"';
-    const lines = ['Order Number,Tote Number,AWB Error Code'];
+    const lines = ['Order Number,Tote Number,Brand,AWB Error Code'];
     rows.forEach(e => {
-      const awb = e.errorType === 'AWB Error' ? (e.notes || '') : '';
-      lines.push([esc(e.orderId), esc(e.toteNum), esc(awb)].join(','));
+      const brand = brandMap[e.orderId] || '';
+      const awb   = e.errorType === 'AWB Error' ? (e.notes || '') : '';
+      lines.push([esc(e.orderId), esc(e.toteNum), esc(brand), esc(awb)].join(','));
     });
 
     const blob = new Blob([lines.join('\r\n')], { type: 'text/csv' });
