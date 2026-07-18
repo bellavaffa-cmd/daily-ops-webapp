@@ -1482,7 +1482,7 @@
 
           <div class="form-actions">
             <button type="button" class="btn btn-ghost" onclick="resetForm()">Clear</button>
-            <button type="button" class="btn btn-primary" onclick="document.getElementById('errorForm').requestSubmit()">Submit Report</button>
+            <button type="button" class="btn btn-primary" onclick="_packingSubmitOk=true;document.getElementById('errorForm').requestSubmit()">Submit Report</button>
           </div>
         </form>
       </div>
@@ -1596,7 +1596,7 @@
 
           <div class="form-actions">
             <button type="button" class="btn btn-ghost" onclick="resetPickingForm()">Clear</button>
-            <button type="button" class="btn btn-primary" onclick="document.getElementById('pickingForm').requestSubmit()">Submit Issue</button>
+            <button type="button" class="btn btn-primary" onclick="_pickingSubmitOk=true;document.getElementById('pickingForm').requestSubmit()">Submit Issue</button>
           </div>
         </form>
       </div>
@@ -2117,6 +2117,8 @@
   let pickingIssues = [];
   let photosBuffer = [];
   let pickingPhotosBuffer = [];
+  let _packingSubmitOk  = false;
+  let _pickingSubmitOk  = false;
   let refreshTimer = null;
   var dashTab = 'packing';      // var — avoids TDZ when renderTable is called early
   var selectedIds = new Set();  // var — same reason
@@ -2550,6 +2552,8 @@
 
   document.getElementById('pickingForm').addEventListener('submit', async function(e) {
     e.preventDefault();
+    if (!_pickingSubmitOk) return;
+    _pickingSubmitOk = false;
     const warehouse = document.getElementById('pickingWarehouse').value.trim();
     const orderId   = document.getElementById('pickingOrderId').value.trim();
     const sku       = document.getElementById('pickingSku').value.trim();
@@ -3261,6 +3265,8 @@ function fail(error) {
   // ── Form submission ────────────────────────────────────────────────────
   document.getElementById('errorForm').addEventListener('submit', async e => {
     e.preventDefault();
+    if (!_packingSubmitOk) return;
+    _packingSubmitOk = false;
     const warehouse     = document.getElementById('reportWarehouse').value;
     const orderId       = document.getElementById('orderId').value.trim();
     const toteNum       = document.getElementById('toteNum').value.trim();
