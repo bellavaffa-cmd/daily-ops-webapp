@@ -1392,8 +1392,8 @@
             </div>
 
             <div class="field full">
-              <label>Brand *</label>
-              <input type="text" id="reportBrand" placeholder="e.g. Adarna House" required />
+              <label>Brand</label>
+              <input type="text" id="reportBrand" placeholder="e.g. Adarna House" />
             </div>
 
             <div class="field">
@@ -3327,7 +3327,7 @@ function fail(error) {
                  errorType === 'Extra Item'   ? getSkuRows('extraSkuList')   :
                  errorType === 'Damaged Item' ? getSkuRows('damagedSkuList') : [];
 
-    if (!warehouse || !brand || !orderId || !toteNum || !errorType) {
+    if (!warehouse || !orderId || !toteNum || !errorType) {
       showToast('Please fill in all required fields and select an error type.', false);
       return;
     }
