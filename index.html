@@ -330,6 +330,25 @@
       text-align: center;
     }
     .dash-subtab.active .subtab-count { background: color-mix(in srgb, var(--primary) 20%, transparent); color: var(--primary); }
+    .dash-statustabs {
+      border-bottom: 1px solid var(--border);
+      margin: -16px -20px 16px;
+      padding: 0 20px;
+      background: var(--surface2);
+    }
+    .dash-statustab {
+      background: none; border: none;
+      border-bottom: 2px solid transparent;
+      padding: 6px 14px;
+      font-size: .78rem; font-weight: 600;
+      color: var(--muted); cursor: pointer;
+      margin-bottom: -1px;
+      transition: color .15s, border-color .15s;
+      display: inline-flex; align-items: center; gap: 5px;
+    }
+    .dash-statustab:hover { color: var(--text); }
+    .dash-statustab.active { color: var(--primary); border-bottom-color: var(--primary); }
+    .dash-statustab.active .subtab-count { background: color-mix(in srgb, var(--primary) 20%, transparent); color: var(--primary); }
     .dash-controls input, .dash-controls select {
       width: auto;
       font-size: .8rem;
@@ -1651,9 +1670,14 @@
       </div>
 
       <div class="dash-subtabs">
-        <button class="dash-subtab active" id="subtab-packing" onclick="setDashTab('packing')">Packing Error <span class="subtab-count" id="packingErrCount"></span></button>
-        <button class="dash-subtab" id="subtab-picking" onclick="setDashTab('picking')">Picking Issues <span class="subtab-count" id="pickingCount"></span></button>
+        <button class="dash-subtab active" id="subtab-packing" onclick="setDashTab('packing')">📦 Packing Error <span class="subtab-count" id="packingErrCount"></span></button>
+        <button class="dash-subtab" id="subtab-picking" onclick="setDashTab('picking')">🔍 Picking Issues <span class="subtab-count" id="pickingCount"></span></button>
         <button class="dash-subtab" id="subtab-resolved" onclick="setDashTab('resolved')">✅ Resolved <span class="subtab-count" id="resolvedCount"></span></button>
+      </div>
+
+      <div class="dash-statustabs" id="statusTabs">
+        <button class="dash-statustab active" id="statustab-open" onclick="setStatusTab('open')">Open <span class="subtab-count" id="openCount"></span></button>
+        <button class="dash-statustab" id="statustab-inprogress" onclick="setStatusTab('inprogress')">In Progress <span class="subtab-count" id="inprogressCount"></span></button>
       </div>
 
       <div class="bulk-bar" id="bulkBar">
@@ -2120,7 +2144,8 @@
   let _packingSubmitOk  = false;
   let _pickingSubmitOk  = false;
   let refreshTimer = null;
-  var dashTab = 'packing';      // var — avoids TDZ when renderTable is called early
+  var dashTab    = 'packing';    // var — avoids TDZ when renderTable is called early
+  var dashStatus = 'open';       // 'open' | 'inprogress'
   var selectedIds = new Set();  // var — same reason
   var expandedId = null;        // var — same reason
 
@@ -2460,8 +2485,15 @@
     const tableWrap = document.getElementById('pickingTableWrap');
     const countEl = document.getElementById('pickingCount');
 
-    const activeIssues = pickingIssues.filter(p => (p.status || 'Open') !== 'Resolved');
-    if (countEl) countEl.textContent = activeIssues.length || '';
+    const openIssues       = pickingIssues.filter(p => (p.status || 'Open') === 'Open');
+    const inProgressIssues = pickingIssues.filter(p => (p.status || 'Open') === 'In Progress');
+    if (countEl) countEl.textContent = (openIssues.length + inProgressIssues.length) || '';
+    const openEl = document.getElementById('openCount');
+    const ipEl   = document.getElementById('inprogressCount');
+    if (openEl) openEl.textContent = openIssues.length || '';
+    if (ipEl)   ipEl.textContent   = inProgressIssues.length || '';
+
+    const activeIssues = dashStatus === 'inprogress' ? inProgressIssues : openIssues;
 
     if (!activeIssues.length) {
       emptyState.style.display = '';
@@ -3501,11 +3533,16 @@ function fail(error) {
   // ── Table ──────────────────────────────────────────────────────────────
   function renderTable() {
     if (dashTab === 'picking' || dashTab === 'resolved') return;
-    const activeErrors = errors.filter(e => (e.status || 'Open') !== 'Resolved');
-    const resolvedCount = errors.filter(e => (e.status || 'Open') === 'Resolved').length
-                        + pickingIssues.filter(p => (p.status || 'Open') === 'Resolved').length;
-    document.getElementById('packingErrCount').textContent = activeErrors.length;
+    const openErrors       = errors.filter(e => (e.status || 'Open') === 'Open');
+    const inProgressErrors = errors.filter(e => (e.status || 'Open') === 'In Progress');
+    const resolvedCount    = errors.filter(e => (e.status || 'Open') === 'Resolved').length
+                           + pickingIssues.filter(p => (p.status || 'Open') === 'Resolved').length;
+    document.getElementById('packingErrCount').textContent = (openErrors.length + inProgressErrors.length) || '';
     document.getElementById('resolvedCount').textContent   = resolvedCount || '';
+    document.getElementById('openCount').textContent       = openErrors.length || '';
+    document.getElementById('inprogressCount').textContent = inProgressErrors.length || '';
+
+    const activeErrors = dashStatus === 'inprogress' ? inProgressErrors : openErrors;
 
     const q    = document.getElementById('searchInput').value.toLowerCase();
     const whF  = document.getElementById('warehouseFilter')?.value || '';
@@ -3524,7 +3561,7 @@ function fail(error) {
       empty.style.display = 'block'; table.style.display = 'none';
       empty.innerHTML = q
         ? '<div class="icon">🔍</div><p>No results match your filter.</p>'
-        : '<div class="icon">📋</div><p>No errors reported yet. Submit your first report.</p>';
+        : `<div class="icon">📋</div><p>No ${dashStatus === 'inprogress' ? 'in-progress' : 'open'} errors.</p>`;
       return;
     }
 
@@ -3770,6 +3807,7 @@ function fail(error) {
 
   function setDashTab(tab) {
     dashTab = tab;
+    dashStatus = 'open';
     expandedId = null;
     selectedIds.clear();
     document.getElementById('subtab-packing').classList.toggle('active', tab === 'packing');
@@ -3780,6 +3818,14 @@ function fail(error) {
     const isResolved = tab === 'resolved';
     const isPacking  = tab === 'packing';
 
+    // Show/hide status tabs (Open | In Progress) for packing and picking only
+    const statusTabs = document.getElementById('statusTabs');
+    if (statusTabs) statusTabs.style.display = isResolved ? 'none' : '';
+
+    // Reset status tab active state
+    document.getElementById('statustab-open').classList.add('active');
+    document.getElementById('statustab-inprogress').classList.remove('active');
+
     const errControls = document.querySelector('.dash-controls');
     if (errControls) errControls.style.display = isPacking ? '' : 'none';
     document.getElementById('bulkBar').style.display = isPacking ? '' : 'none';
@@ -3787,9 +3833,18 @@ function fail(error) {
     document.getElementById('pickingSection').style.display = isPicking ? '' : 'none';
     document.getElementById('resolvedSection').style.display = isResolved ? '' : 'none';
 
-    if (isPicking)  { loadPickingIssues(); }
+    if (isPicking)       { loadPickingIssues(); }
     else if (isResolved) { renderResolvedTable(); }
-    else { renderTable(); }
+    else                 { renderTable(); }
+  }
+
+  function setStatusTab(status) {
+    dashStatus = status;
+    expandedId = null;
+    document.getElementById('statustab-open').classList.toggle('active', status === 'open');
+    document.getElementById('statustab-inprogress').classList.toggle('active', status === 'inprogress');
+    if (dashTab === 'picking') renderPickingTable();
+    else renderTable();
   }
 
   // ── Expandable rows ───────────────────────────────────────────────────
