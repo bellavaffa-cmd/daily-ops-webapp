@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "WMS → Report Error",
+  "version": "1.0",
+  "description": "Auto-detects WMS packing orders and opens the Daily Ops report form. Auto-triggers when a carrier/AWB error appears.",
+  "content_scripts": [
+    {
+      "matches": ["https://wms.golocad.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "https://wms.golocad.com/*"
+  ],
+  "permissions": ["tabs"],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "WMS → Report Error"
+  }
+}
