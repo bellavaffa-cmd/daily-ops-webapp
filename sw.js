@@ -1,4 +1,4 @@
-const CACHE = 'daily-b2c-v24';
+const CACHE = 'daily-b2c-v25';
 const SHELL = [
   '/daily-ops-webapp/manifest.json',
   '/daily-ops-webapp/icons/icon-192.png',

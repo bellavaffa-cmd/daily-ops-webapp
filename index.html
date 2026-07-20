@@ -511,6 +511,14 @@
       justify-content: center;
     }
     .modal-overlay.open { display: flex; }
+
+    /* ── Extension mode: full-page report form (no dashboard behind it) ── */
+    body.ext-mode .modal-overlay {
+      background: var(--bg) !important;
+    }
+    body.ext-mode #reportModalClose {
+      display: none !important;
+    }
     .modal {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -1368,7 +1376,7 @@
     <div class="modal" style="max-width:620px;max-height:90vh;overflow-y:auto">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <h3 style="margin:0">Report an Issue</h3>
-        <button onclick="closeReportModal()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem;line-height:1;padding:4px">✕</button>
+        <button id="reportModalClose" onclick="closeReportModal()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem;line-height:1;padding:4px">✕</button>
       </div>
 
       <!-- Tab strip -->
@@ -2250,6 +2258,7 @@
   let pickingPhotosBuffer = [];
   let _packingSubmitOk  = false;
   let _pickingSubmitOk  = false;
+  const _extMode = new URLSearchParams(location.search).get('ext') === '1';
   let wmsScanSkuData = null; // SKU/qty/packType rows scraped from a WMS packing-station scan, applied when an item-level error type is chosen
   let wmsScanErrorText = null; // WMS carrier/system error toast text scraped from a scan, applied to the AWB Error Code field
   let refreshTimer = null;
@@ -2468,6 +2477,7 @@
 
   // Fetch on load, then auto-refresh every 5 min
   // Wait for b2cData (used to match the WMS scan's warehouse hint) before applying a pending scan.
+  if (_extMode) document.body.classList.add('ext-mode');
   fetchB2CData().then(applyWmsScanFromUrl);
   setInterval(fetchB2CData, 5 * 60 * 1000);
 
@@ -3529,9 +3539,14 @@ function fail(error) {
     errors.unshift(record);
     updateBadge();
     resetForm();
-    showToast('Report submitted!', true);
     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit Report'; }
-    closeReportModal();
+    if (_extMode) {
+      showToast('Report submitted! Closing…', true);
+      setTimeout(() => window.close(), 1800);
+    } else {
+      showToast('Report submitted!', true);
+      closeReportModal();
+    }
 
     // Persist to Supabase, then reload to sync any other changes
     await saveToSupabase(record);

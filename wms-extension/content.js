@@ -74,7 +74,7 @@
   function openApp(data) {
     const json = JSON.stringify(data);
     const b64  = btoa(unescape(encodeURIComponent(json)));
-    const url  = APP_URL + '?wmsScan=' + encodeURIComponent(b64);
+    const url  = APP_URL + '?wmsScan=' + encodeURIComponent(b64) + '&ext=1';
     // Send to background so chrome.tabs.create works even without user gesture
     chrome.runtime.sendMessage({ action: 'openTab', url });
   }
