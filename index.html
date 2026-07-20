@@ -2745,9 +2745,9 @@
     const orderEl = document.getElementById('orderId');
     const toteEl  = document.getElementById('toteNum');
     const brandEl = document.getElementById('reportBrand');
-    if (orderEl && data.orderId) { orderEl.value = data.orderId; orderEl.style.borderColor = ''; }
-    if (toteEl  && data.toteNum)  { toteEl.value  = data.toteNum;  toteEl.style.borderColor  = ''; }
-    if (brandEl && data.brand)    { brandEl.value = data.brand;    brandEl.style.borderColor = ''; }
+    if (orderEl && data.orderId) { orderEl.value = String(data.orderId).toUpperCase(); orderEl.style.borderColor = ''; }
+    if (toteEl  && data.toteNum)  { toteEl.value  = String(data.toteNum).toUpperCase();  toteEl.style.borderColor  = ''; }
+    if (brandEl && data.brand)    { brandEl.value = String(data.brand).toUpperCase();    brandEl.style.borderColor = ''; }
 
     let warehouseMatched = false;
     if (data.warehouseHint) {
