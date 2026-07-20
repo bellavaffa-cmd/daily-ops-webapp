@@ -2277,9 +2277,9 @@
 
   // ── Tab visibility ─────────────────────────────────────────────────────
   const TAB_KEYS = [
-    { key: 'packingErrorTabB2c',  btnId: 'tab-btn-b2c',  view: 'b2c',   toggleId: 'tabToggleB2c'  },
-    { key: 'packingErrorTabDash', btnId: 'tab-btn-dash', view: 'dash',  toggleId: 'tabToggleDash' },
-    { key: 'packingErrorTabHelp', btnId: 'tab-btn-help', view: 'help',  toggleId: 'tabToggleHelp' },
+    { key: 'packingErrorTabB2c',  btnId: 'tab-btn-b2c',  bnavId: 'bnav-btn-b2c',  view: 'b2c',   toggleId: 'tabToggleB2c'  },
+    { key: 'packingErrorTabDash', btnId: 'tab-btn-dash', bnavId: 'bnav-btn-dash', view: 'dash',  toggleId: 'tabToggleDash' },
+    { key: 'packingErrorTabHelp', btnId: 'tab-btn-help', bnavId: 'bnav-btn-help', view: 'help',  toggleId: 'tabToggleHelp' },
   ];
 
   function applyTabVisibility() {
@@ -2295,6 +2295,8 @@
       localStorage.setItem(t.key, visible ? '1' : '0');
       const btn = document.getElementById(t.btnId);
       if (btn) btn.style.display = visible ? '' : 'none';
+      const bnav = document.getElementById(t.bnavId);
+      if (bnav) bnav.style.display = visible ? '' : 'none';
     });
     // If current view's tab is now hidden, switch to first visible tab
     const activeView = document.querySelector('.view.active')?.id?.replace('view-', '');
@@ -2306,10 +2308,18 @@
   }
 
   function initTabVisibility() {
+    // One-time migration: hide error dashboard tab by default for all users
+    if (!localStorage.getItem('dashHideDefault_v1')) {
+      localStorage.setItem('packingErrorTabDash', '0');
+      localStorage.setItem('dashHideDefault_v1', '1');
+    }
     TAB_KEYS.forEach(t => {
-      const visible = (localStorage.getItem(t.key) ?? '1') !== '0';
+      const def = t.key === 'packingErrorTabDash' ? '0' : '1';
+      const visible = (localStorage.getItem(t.key) ?? def) !== '0';
       const btn = document.getElementById(t.btnId);
       if (btn) btn.style.display = visible ? '' : 'none';
+      const bnav = document.getElementById(t.bnavId);
+      if (bnav) bnav.style.display = visible ? '' : 'none';
     });
   }
   initTabVisibility();
