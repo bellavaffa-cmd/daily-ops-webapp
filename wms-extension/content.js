@@ -167,6 +167,30 @@
     btn.addEventListener('animationend', () => btn.classList.remove('pulsing'), { once: true });
   }
 
+  // ─── Red notification check ──────────────────────────────────────────────────
+  // Only auto-trigger for red (carrier/AWB error) notifications, not info/warning toasts.
+
+  function isRedNotification(el) {
+    if (!el) return false;
+    // Check element and its immediate parent for a red background
+    const targets = [el, el.parentElement].filter(Boolean);
+    for (const target of targets) {
+      const bg = getComputedStyle(target).backgroundColor;
+      const m  = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      if (m) {
+        const r = +m[1], g = +m[2], b = +m[3];
+        // Red: high red channel, low green + blue
+        if (r > 150 && g < 100 && b < 100) return true;
+      }
+    }
+    // Fallback: check for error/danger/red class names on the element or its ancestors
+    let node = el;
+    for (let i = 0; i < 5 && node; i++, node = node.parentElement) {
+      if (/\berror\b|\bdanger\b|\bred\b/i.test(node.className || '')) return true;
+    }
+    return false;
+  }
+
   // ─── State check (called on every DOM mutation) ───────────────────────────────
 
   function checkState() {
@@ -180,6 +204,8 @@
       q('.notification-container.error') ||
       q('platform-page-alert .notification-container');
     const hasError = !!errEl;
+    // Auto-trigger only fires for red (carrier/AWB) notifications
+    const isRedError = hasError && isRedNotification(errEl);
 
     // Show button whenever an order is loaded
     if (hasOrder) {
@@ -189,9 +215,9 @@
       errorAutoTriggered = false;
     }
 
-    // AUTO-TRIGGER: error appeared while order is loaded → open form automatically
+    // AUTO-TRIGGER: red carrier error appeared while order is loaded
     // (error toast is time-sensitive and dismisses in a few seconds)
-    if (hasOrder && hasError && !errorAutoTriggered) {
+    if (hasOrder && isRedError && !errorAutoTriggered) {
       errorAutoTriggered = true;
       pulseBtn();
       setTimeout(() => {
