@@ -5,6 +5,7 @@
   const PULSE_STYLE_ID = 'wms-ext-pulse-style';
 
   let floatingBtn = null;
+  let overlay     = null;
   let errorAutoTriggered = false;
 
   // ─── DOM helpers ────────────────────────────────────────────────────────────
@@ -69,15 +70,44 @@
     return { orderId, toteNum, warehouseHint, brand, wmsError, skus };
   }
 
-  // ─── Open app ───────────────────────────────────────────────────────────────
+  // ─── Overlay (replaces new-tab approach) ─────────────────────────────────────
 
-  function openApp(data) {
-    const json = JSON.stringify(data);
-    const b64  = btoa(unescape(encodeURIComponent(json)));
-    const url  = APP_URL + '?wmsScan=' + encodeURIComponent(b64) + '&ext=1';
-    // Send to background so chrome.tabs.create works even without user gesture
-    chrome.runtime.sendMessage({ action: 'openTab', url });
+  function buildUrl(data) {
+    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+    return APP_URL + '?wmsScan=' + encodeURIComponent(b64) + '&ext=1';
   }
+
+  function showOverlay(data) {
+    if (overlay) return; // already open
+
+    ensurePulseStyle(); // also injects overlay CSS
+
+    overlay = document.createElement('div');
+    overlay.id = 'wms-report-overlay';
+
+    const frame = document.createElement('iframe');
+    frame.src = buildUrl(data);
+    frame.id  = 'wms-report-frame';
+    frame.allow = '';
+
+    overlay.appendChild(frame);
+
+    // Click backdrop to dismiss
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) removeOverlay();
+    });
+
+    document.body.appendChild(overlay);
+  }
+
+  function removeOverlay() {
+    if (overlay) { overlay.remove(); overlay = null; }
+  }
+
+  // Listen for "submitted — close the overlay" message from the iframe
+  window.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'wms-close-overlay') removeOverlay();
+  });
 
   // ─── Floating button ─────────────────────────────────────────────────────────
 
@@ -90,6 +120,7 @@
         0%, 100% { transform: scale(1); box-shadow: 0 4px 14px rgba(220,38,38,.45); }
         50%       { transform: scale(1.12); box-shadow: 0 6px 20px rgba(220,38,38,.7); }
       }
+      /* Floating button */
       #wms-report-fab { all: unset; }
       #wms-report-fab button {
         position: fixed !important;
@@ -119,6 +150,27 @@
       #wms-report-fab button.pulsing {
         animation: wms-pulse .5s ease 3 !important;
       }
+      /* Overlay */
+      #wms-report-overlay {
+        position: fixed !important;
+        inset: 0 !important;
+        z-index: 2147483646 !important;
+        background: rgba(0,0,0,0.55) !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 20px !important;
+        box-sizing: border-box !important;
+      }
+      #wms-report-frame {
+        width: 100% !important;
+        max-width: 640px !important;
+        height: 90vh !important;
+        border: none !important;
+        border-radius: 14px !important;
+        background: #fff !important;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.35) !important;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -146,7 +198,7 @@
         alert('WMS extension: no order loaded on this packing station.');
         return;
       }
-      openApp(data);
+      showOverlay(data);
     });
 
     document.body.appendChild(wrap);
@@ -161,29 +213,25 @@
     if (!floatingBtn) return;
     const btn = floatingBtn.querySelector('button');
     btn.classList.remove('pulsing');
-    // Force reflow so re-adding the class restarts the animation
-    void btn.offsetWidth;
+    void btn.offsetWidth; // force reflow to restart animation
     btn.classList.add('pulsing');
     btn.addEventListener('animationend', () => btn.classList.remove('pulsing'), { once: true });
   }
 
   // ─── Red notification check ──────────────────────────────────────────────────
-  // Only auto-trigger for red (carrier/AWB error) notifications, not info/warning toasts.
+  // Auto-trigger only for red (carrier/AWB error) notifications.
 
   function isRedNotification(el) {
     if (!el) return false;
-    // Check element and its immediate parent for a red background
     const targets = [el, el.parentElement].filter(Boolean);
     for (const target of targets) {
       const bg = getComputedStyle(target).backgroundColor;
       const m  = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
       if (m) {
         const r = +m[1], g = +m[2], b = +m[3];
-        // Red: high red channel, low green + blue
         if (r > 150 && g < 100 && b < 100) return true;
       }
     }
-    // Fallback: check for error/danger/red class names on the element or its ancestors
     let node = el;
     for (let i = 0; i < 5 && node; i++, node = node.parentElement) {
       if (/\berror\b|\bdanger\b|\bred\b/i.test(node.className || '')) return true;
@@ -203,41 +251,34 @@
     const errEl =
       q('.notification-container.error') ||
       q('platform-page-alert .notification-container');
-    const hasError = !!errEl;
-    // Auto-trigger only fires for red (carrier/AWB) notifications
+    const hasError   = !!errEl;
     const isRedError = hasError && isRedNotification(errEl);
 
-    // Show button whenever an order is loaded
     if (hasOrder) {
       createFloatingBtn();
     } else {
       removeFloatingBtn();
+      removeOverlay();
       errorAutoTriggered = false;
     }
 
-    // AUTO-TRIGGER: red carrier error appeared while order is loaded
-    // (error toast is time-sensitive and dismisses in a few seconds)
+    // AUTO-TRIGGER: red carrier error → open overlay immediately
     if (hasOrder && isRedError && !errorAutoTriggered) {
       errorAutoTriggered = true;
       pulseBtn();
       setTimeout(() => {
         const data = extractData();
-        if (data.wmsError) openApp(data);
-      }, 600); // small delay so the error text is fully rendered
+        if (data.wmsError) showOverlay(data);
+      }, 600);
     }
 
-    // Reset auto-trigger flag once error clears
-    if (!hasError) {
-      errorAutoTriggered = false;
-    }
+    if (!hasError) errorAutoTriggered = false;
   }
 
   // ─── Boot ────────────────────────────────────────────────────────────────────
 
-  // Run immediately (page may already have an order loaded)
   checkState();
 
-  // Watch for any DOM change (SPA navigation, new notifications, etc.)
   new MutationObserver(checkState).observe(document.body, {
     childList: true,
     subtree: true,
