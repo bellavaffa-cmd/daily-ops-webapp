@@ -2,8 +2,11 @@
 // Content script sends messages here so we can call chrome.tabs.create
 // even without a direct user gesture (needed for auto-trigger on error).
 
-chrome.runtime.onMessage.addListener((msg) => {
+chrome.runtime.onMessage.addListener((msg, sender) => {
   if (msg.action === 'openTab' && msg.url) {
     chrome.tabs.create({ url: msg.url, active: true });
+  }
+  if (msg.action === 'closeTab' && sender.tab) {
+    chrome.tabs.remove(sender.tab.id);
   }
 });

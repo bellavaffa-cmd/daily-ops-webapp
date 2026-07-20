@@ -3542,7 +3542,7 @@ function fail(error) {
     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit Report'; }
     if (_extMode) {
       showToast('Report submitted! Closing…', true);
-      setTimeout(() => window.close(), 1800);
+      setTimeout(() => window.postMessage({ type: 'wms-ext-close' }, '*'), 1800);
     } else {
       showToast('Report submitted!', true);
       closeReportModal();

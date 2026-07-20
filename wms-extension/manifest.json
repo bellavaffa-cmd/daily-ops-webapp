@@ -8,13 +8,19 @@
       "matches": ["https://wms.golocad.com/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://bellavaffa-cmd.github.io/daily-ops-webapp/*"],
+      "js": ["closer.js"],
+      "run_at": "document_idle"
     }
   ],
   "background": {
     "service_worker": "background.js"
   },
   "host_permissions": [
-    "https://wms.golocad.com/*"
+    "https://wms.golocad.com/*",
+    "https://bellavaffa-cmd.github.io/*"
   ],
   "permissions": ["tabs"],
   "icons": {
