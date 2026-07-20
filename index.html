@@ -2149,6 +2149,7 @@
   let pickingPhotosBuffer = [];
   let _packingSubmitOk  = false;
   let _pickingSubmitOk  = false;
+  let wmsScanSkuData = null; // SKU/qty/packType rows scraped from a WMS packing-station scan, applied when an item-level error type is chosen
   let refreshTimer = null;
   var dashTab    = 'packing';    // var — avoids TDZ when renderTable is called early
   var dashStatus = 'open';       // 'open' | 'inprogress'
@@ -2364,7 +2365,8 @@
   }
 
   // Fetch on load, then auto-refresh every 5 min
-  fetchB2CData();
+  // Wait for b2cData (used to match the WMS scan's warehouse hint) before applying a pending scan.
+  fetchB2CData().then(applyWmsScanFromUrl);
   setInterval(fetchB2CData, 5 * 60 * 1000);
 
   // ── Warehouse Picker ──────────────────────────────────────────────────
@@ -2664,6 +2666,56 @@
   }
   function closeReportModal() {
     document.getElementById('reportModal').classList.remove('open');
+    wmsScanSkuData = null; // don't let stale scan data leak into a later, unrelated report
+  }
+
+  // ── Prefill "Report an Issue" from a WMS packing-station scan ─────────
+  // Triggered by the wms-scan bookmarklet, which opens this page as:
+  //   .../daily-ops-webapp/?wmsScan=<base64url JSON>
+  // JSON shape: { orderId, toteNum, warehouseHint, skus:[{sku,qty,packType}] }
+  function applyWmsScanFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const encoded = params.get('wmsScan');
+    if (!encoded) return;
+
+    let data;
+    try {
+      const b64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+      data = JSON.parse(decodeURIComponent(escape(atob(b64))));
+    } catch (err) {
+      console.error('WMS scan data could not be decoded:', err);
+      showToast('WMS scan link looks corrupted — fill in manually', false);
+      return;
+    }
+
+    openReportModal();
+
+    const orderEl = document.getElementById('orderId');
+    const toteEl  = document.getElementById('toteNum');
+    if (orderEl && data.orderId) { orderEl.value = data.orderId; orderEl.style.borderColor = ''; }
+    if (toteEl  && data.toteNum)  { toteEl.value  = data.toteNum;  toteEl.style.borderColor  = ''; }
+
+    let warehouseMatched = false;
+    if (data.warehouseHint) {
+      const whSel = document.getElementById('reportWarehouse');
+      const STOPWORDS = new Set(['locad', 'fc', 'b2c', 'multi', 'item']);
+      const tokenize = s => String(s).toLowerCase().split(/[^a-z0-9]+/).filter(w => w && !STOPWORDS.has(w));
+      const hintTokens = new Set(tokenize(data.warehouseHint));
+      const match = whSel && Array.from(whSel.options).find(o => o.value && tokenize(o.value).some(w => hintTokens.has(w)));
+      if (match) { whSel.value = match.value; warehouseMatched = true; }
+    }
+
+    wmsScanSkuData = Array.isArray(data.skus) && data.skus.length ? data.skus : null;
+
+    const parts = ['Prefilled Order ID / Tote from WMS scan'];
+    if (!warehouseMatched && data.warehouseHint) parts.push('please pick the warehouse manually');
+    if (wmsScanSkuData) parts.push('choose an error type to fill in the scanned SKU(s)');
+    showToast(parts.join(' — '), warehouseMatched);
+
+    // Strip the param so a page refresh doesn't reapply a stale scan
+    const url = new URL(window.location);
+    url.searchParams.delete('wmsScan');
+    window.history.replaceState({}, '', url);
   }
   document.getElementById('reportModal').addEventListener('click', function(e) {
     if (e.target === this) closeReportModal();
@@ -3393,7 +3445,8 @@ function fail(error) {
   }
 
   // ── Dynamic SKU list helpers ──────────────────────────────────────────
-  function addSkuRow(listId) {
+  // `prefill`, if given, is {sku, qty, packType} scraped from a WMS scan.
+  function addSkuRow(listId, prefill) {
     const list = document.getElementById(listId);
     const row  = document.createElement('div');
     row.className = 'sku-row-item';
@@ -3405,6 +3458,15 @@ function fail(error) {
       </div>
       <button type="button" class="btn-remove-sku" onclick="removeSkuRow(this)" title="Remove row">✕</button>`;
     list.appendChild(row);
+    if (prefill) {
+      const inputs = row.querySelectorAll('input');
+      if (prefill.sku) inputs[0].value = prefill.sku;
+      if (prefill.qty) inputs[1].value = prefill.qty;
+      const sel = row.querySelector('select');
+      const wanted = String(prefill.packType || '').toLowerCase();
+      const opt = wanted && Array.from(sel.options).find(o => o.value && o.value.toLowerCase().startsWith(wanted));
+      if (opt) sel.value = opt.value;
+    }
     updateRemoveBtns(list);
     // Clear error highlight as user fills each field
     row.querySelectorAll('input').forEach(inp => inp.addEventListener('input', () => { inp.style.borderColor = ''; }));
@@ -3431,9 +3493,15 @@ function fail(error) {
     }).filter(r => r.sku || r.qty);
   }
 
-  function resetSkuList(listId) {
+  // `prefillRows`, if a non-empty array, populates one row per scanned SKU
+  // instead of a single blank row.
+  function resetSkuList(listId, prefillRows) {
     document.getElementById(listId).innerHTML = '';
-    addSkuRow(listId);
+    if (Array.isArray(prefillRows) && prefillRows.length) {
+      prefillRows.forEach(r => addSkuRow(listId, r));
+    } else {
+      addSkuRow(listId);
+    }
   }
 
   function safeParseJson(val) {
@@ -3484,10 +3552,12 @@ function fail(error) {
       const notesTypes = ['Other','Unscannable Stock','Printer Issue','Camera Issue'];
       document.getElementById('otherFields').style.display = notesTypes.includes(val) ? 'block' : 'none';
 
-      if (val !== 'Wrong Item')   resetSkuList('correctSkuList');
-      if (val !== 'Missing Item') resetSkuList('missingSkuList');
-      if (val !== 'Extra Item')   resetSkuList('extraSkuList');
-      if (val !== 'Damaged Item') resetSkuList('damagedSkuList');
+      // When the selected type matches a scanned item-level error, populate
+      // its SKU rows from the WMS scan; otherwise fall back to one blank row.
+      resetSkuList('correctSkuList', val === 'Wrong Item'   ? wmsScanSkuData : null);
+      resetSkuList('missingSkuList', val === 'Missing Item' ? wmsScanSkuData : null);
+      resetSkuList('extraSkuList',   val === 'Extra Item'   ? wmsScanSkuData : null);
+      resetSkuList('damagedSkuList', val === 'Damaged Item' ? wmsScanSkuData : null);
       if (val !== 'AWB Error') { const el = document.getElementById('awbErrorCode'); if (el) el.value = ''; }
       if (!['Other','Unscannable Stock','Printer Issue','Camera Issue'].includes(val)) { const el = document.getElementById('otherNotes'); if (el) el.value = ''; }
     });
