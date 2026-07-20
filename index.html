@@ -2073,7 +2073,7 @@
           <p style="font-size:.875rem;color:var(--muted);margin-bottom:16px;line-height:1.6">
             Skip retyping the order details. This bookmarklet reads the order currently open on a
             <strong>wms.golocad.com</strong> Packing Station screen and opens the
-            <strong>Report an Issue</strong> form here with Order ID, Tote Number, and Warehouse
+            <strong>Report an Issue</strong> form here with Order ID, Tote Number, Brand, and Warehouse
             already filled in.
           </p>
           <ol class="step-list">
@@ -2082,7 +2082,7 @@
                 <strong>Install.</strong><br>
                 Drag this button to your bookmarks bar:
                 <div style="margin:10px 0 4px">
-                  <a href="javascript:!function()%7Bfunction%20t(t)%7Breturn%20document.querySelector(t)%7Dfunction%20e(t)%7Breturn%20t%3Ft.textContent.trim()%3A%22%22%7Dvar%20n%3Dt(%22.packing-station-board-order-text-description%22)%2Co%3Dt(%22%23searchInputIdentifier%22)%2Cr%3Dt(%22.packing-station-job-type-text-description%22)%3Bif(n%7C%7Co)%7Bvar%20a%3De(n)%2Ci%3Do%3F(o.value%7C%7C%22%22).trim()%3A%22%22%2Cc%3De(r)%2Cs%3Ddocument.querySelectorAll(%22.packing-station-product-information-container%22)%2Cp%3DArray.prototype.map.call(s%2Cfunction(t)%7Bfor(var%20n%3De(t.querySelector(%22.packing-station-product-information-sub-title%22))%2Co%3DArray.prototype.slice.call(t.querySelectorAll(%22span%22))%2Cr%3D-1%2Ca%3D0%3Ba%3Co.length%3Ba%2B%2B)if(%22Pack%20Type%20%3A%22%3D%3D%3Do%5Ba%5D.textContent.trim())%7Br%3Da%3Bbreak%7Dvar%20i%3Dr%3E%3D0%26%26o%5Br%2B1%5D%3Fo%5Br%2B1%5D.textContent.trim()%3A%22%22%2Cc%3Dt.textContent.match(%2F(%5Cd%2B)%5Cs*%5C%2F%5Cs*(%5Cd%2B)%2F)%3Breturn%7Bsku%3An%2Cqty%3Ac%3Fc%5B2%5D%3A%22%22%2CpackType%3Ai%7D%7D).filter(function(t)%7Breturn%20t.sku%7D)%3Bif(a%7C%7Ci)%7Bvar%20u%3D%7BorderId%3Aa%2CtoteNum%3Ai%2CwarehouseHint%3Ac%2Cskus%3Ap%7D%2Cl%3DJSON.stringify(u)%2Cd%3Dbtoa(unescape(encodeURIComponent(l)))%2Cf%3D%22https%3A%2F%2Fbellavaffa-cmd.github.io%2Fdaily-ops-webapp%2F%3FwmsScan%3D%22%2BencodeURIComponent(d)%3Bwindow.open(f%2C%22_blank%22)%7Delse%20alert(%22WMS%20scan%3A%20no%20order%20or%20tote%20code%20found.%20Make%20sure%20an%20order%20is%20loaded%20on%20this%20packing%20station.%22)%7Delse%20alert(%22WMS%20scan%3A%20could%20not%20find%20an%20active%20order%20on%20this%20page.%20Open%20an%20order%20in%20the%20WMS%20Packing%20Station%20screen%20first%2C%20then%20click%20this%20bookmarklet%20again.%22)%7D()%3B"
+                  <a href="javascript:!function()%7Bfunction%20t(t)%7Breturn%20document.querySelector(t)%7Dfunction%20e(t)%7Breturn%20t%3Ft.textContent.trim()%3A%22%22%7Dvar%20n%3Dt(%22.packing-station-board-order-text-description%22)%2Cr%3Dt(%22%23searchInputIdentifier%22)%2Co%3Dt(%22.packing-station-job-type-text-description%22)%2Ca%3DArray.prototype.slice.call(document.querySelectorAll(%22.packing-station-board-order-note-text-title%22))%3Bif(n%7C%7Cr)%7Bfor(var%20i%3De(n)%2Cc%3Dr%3F(r.value%7C%7C%22%22).trim()%3A%22%22%2Cl%3De(o)%2Cs%3D%22%22%2Cp%3D0%3Bp%3Ca.length%3Bp%2B%2B)%7Bvar%20u%3DArray.prototype.slice.call(a%5Bp%5D.querySelectorAll(%22span%22))%3Bif(0%3D%3D%3D(u%5B0%5D%3Fu%5B0%5D.textContent.trim()%3A%22%22).indexOf(%22Packing%20Instructions%22))%7Bvar%20d%3D(u%5B1%5D%3Fu%5B1%5D.textContent.trim()%3A%22%22).match(%2F%5E%5C%5B(%5B%5E%5C%5D%5D%2B)%5C%5D%2F)%3Bs%3Dd%3Fd%5B1%5D.trim()%3A%22%22%3Bbreak%7D%7Dvar%20f%3Ddocument.querySelectorAll(%22.packing-station-product-information-container%22)%2Cm%3DArray.prototype.map.call(f%2Cfunction(t)%7Bfor(var%20n%3De(t.querySelector(%22.packing-station-product-information-sub-title%22))%2Cr%3DArray.prototype.slice.call(t.querySelectorAll(%22span%22))%2Co%3D-1%2Ca%3D0%3Ba%3Cr.length%3Ba%2B%2B)if(%22Pack%20Type%20%3A%22%3D%3D%3Dr%5Ba%5D.textContent.trim())%7Bo%3Da%3Bbreak%7Dvar%20i%3Do%3E%3D0%26%26r%5Bo%2B1%5D%3Fr%5Bo%2B1%5D.textContent.trim()%3A%22%22%2Cc%3Dt.textContent.match(%2F(%5Cd%2B)%5Cs*%5C%2F%5Cs*(%5Cd%2B)%2F)%3Breturn%7Bsku%3An%2Cqty%3Ac%3Fc%5B2%5D%3A%22%22%2CpackType%3Ai%7D%7D).filter(function(t)%7Breturn%20t.sku%7D)%3Bif(i%7C%7Cc)%7Bvar%20k%3D%7BorderId%3Ai%2CtoteNum%3Ac%2CwarehouseHint%3Al%2Cbrand%3As%2Cskus%3Am%7D%2Cy%3DJSON.stringify(k)%2Cg%3Dbtoa(unescape(encodeURIComponent(y)))%2Cb%3D%22https%3A%2F%2Fbellavaffa-cmd.github.io%2Fdaily-ops-webapp%2F%3FwmsScan%3D%22%2BencodeURIComponent(g)%3Bwindow.open(b%2C%22_blank%22)%7Delse%20alert(%22WMS%20scan%3A%20no%20order%20or%20tote%20code%20found.%20Make%20sure%20an%20order%20is%20loaded%20on%20this%20packing%20station.%22)%7Delse%20alert(%22WMS%20scan%3A%20could%20not%20find%20an%20active%20order%20on%20this%20page.%20Open%20an%20order%20in%20the%20WMS%20Packing%20Station%20screen%20first%2C%20then%20click%20this%20bookmarklet%20again.%22)%7D()%3B"
                     style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;background:var(--primary);color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:.85rem;cursor:grab;user-select:none">
                     📋 Scan WMS → Report Error
                   </a>
@@ -2740,8 +2740,10 @@
 
     const orderEl = document.getElementById('orderId');
     const toteEl  = document.getElementById('toteNum');
+    const brandEl = document.getElementById('reportBrand');
     if (orderEl && data.orderId) { orderEl.value = data.orderId; orderEl.style.borderColor = ''; }
     if (toteEl  && data.toteNum)  { toteEl.value  = data.toteNum;  toteEl.style.borderColor  = ''; }
+    if (brandEl && data.brand)    { brandEl.value = data.brand;    brandEl.style.borderColor = ''; }
 
     let warehouseMatched = false;
     if (data.warehouseHint) {
@@ -2755,7 +2757,9 @@
 
     wmsScanSkuData = Array.isArray(data.skus) && data.skus.length ? data.skus : null;
 
-    const parts = ['Prefilled Order ID / Tote from WMS scan'];
+    const filledFields = ['Order ID', 'Tote'];
+    if (brandEl && data.brand) filledFields.push('Brand');
+    const parts = ['Prefilled ' + filledFields.join(' / ') + ' from WMS scan'];
     if (!warehouseMatched && data.warehouseHint) parts.push('please pick the warehouse manually');
     if (wmsScanSkuData) parts.push('choose an error type to fill in the scanned SKU(s)');
     showToast(parts.join(' — '), warehouseMatched);
