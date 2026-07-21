@@ -3920,22 +3920,13 @@ function fail(error) {
         <tr class="expanded-row">
           <td colspan="8">
             <div class="expanded-detail">
-              <div class="detail-item"><span class="detail-label">Order ID</span><span class="detail-value td-mono">${e.orderId||'—'}</span></div>
+              <div class="detail-item"><span class="detail-label">Order ID</span><span class="detail-value" style="display:inline-flex;align-items:center;gap:8px"><span class="td-mono">${e.orderId||'—'}</span>${e.orderId ? `<a href="https://wms.golocad.com/en/wms/shipment-order/list?code=${encodeURIComponent(e.orderId)}&codeqt=eq&ps=100" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:.75rem;font-weight:600;color:var(--text);text-decoration:none;transition:border-color .15s" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'"><svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>WMS</a>` : ''}</span></div>
               <div class="detail-item"><span class="detail-label">Tote Number</span><span class="detail-value">${e.toteNum||'—'}</span></div>
               <div class="detail-item"><span class="detail-label">Reported</span><span class="detail-value">${formatTime(e.timestamp)}</span></div>
               ${skuRows}
               ${notesRows}
               ${photosRow}
             </div>
-            ${e.orderId ? `<div style="margin-top:10px">
-              <a href="https://wms.golocad.com/en/wms/shipment-order/list?code=${encodeURIComponent(e.orderId)}&codeqt=eq&ps=100"
-                 target="_blank" rel="noopener"
-                 style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:.8rem;font-weight:600;color:var(--text);text-decoration:none;transition:border-color .15s"
-                 onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
-                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-                View in WMS
-              </a>
-            </div>` : ''}
           </td>
         </tr>` : '';
       const isChecked = selectedIds.has(String(e.id));
