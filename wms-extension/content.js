@@ -12,6 +12,31 @@
   function q(sel) { return document.querySelector(sel); }
   function txt(el) { return el ? el.textContent.trim() : ''; }
 
+  // ─── Find carrier-error element (flexible — tries multiple selectors) ────────
+
+  function findCarrierErrorEl() {
+    // Priority: specific selectors that are known to work
+    const specific = [
+      '.notification-container.error',
+      'platform-page-alert .notification-container',
+      'platform-page-alert',
+      '[role="alert"]',
+      '.notification-container',
+    ];
+    for (const sel of specific) {
+      const el = q(sel);
+      if (el && /error returned from carrier/i.test(el.textContent || '')) return el;
+    }
+    // Fallback: scan ALL notification / alert-like elements on page
+    const candidates = document.querySelectorAll(
+      '[class*="notification"], [class*="alert"], [class*="toast"], [role="alert"]'
+    );
+    for (const el of candidates) {
+      if (/error returned from carrier/i.test(el.textContent || '')) return el;
+    }
+    return null;
+  }
+
   // ─── Data extraction (mirrors bookmarklet logic) ─────────────────────────────
 
   function extractData() {
@@ -39,13 +64,13 @@
       }
     }
 
-    // WMS error notification
+    // WMS error notification (flexible selectors)
     let wmsError = '';
-    const errEl =
+    const errEl = findCarrierErrorEl() ||
       q('.notification-container.error') ||
       q('platform-page-alert .notification-container');
     if (errEl) {
-      wmsError = errEl.textContent.trim().replace(/^Error/, '').trim();
+      wmsError = errEl.textContent.trim().replace(/^Error[:\s]*/i, '').trim();
     }
 
     // SKUs
@@ -74,7 +99,27 @@
   function openInSidePanel(data) {
     const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
     const url = APP_URL + '?wmsScan=' + encodeURIComponent(b64) + '&ext=1';
-    chrome.runtime.sendMessage({ action: 'openSidePanel', url });
+    try {
+      chrome.runtime.sendMessage({ action: 'openSidePanel', url }, () => {
+        if (chrome.runtime.lastError) {
+          // Service worker was dead — page needs a refresh to reconnect
+          console.warn('[WMS ext] sendMessage failed:', chrome.runtime.lastError.message);
+          setBtnError('Reload page & retry');
+        }
+      });
+    } catch (e) {
+      console.warn('[WMS ext] openInSidePanel error:', e);
+      setBtnError('Reload page & retry');
+    }
+  }
+
+  function setBtnError(msg) {
+    if (!floatingBtn) return;
+    const btn = floatingBtn.querySelector('button');
+    const orig = btn.innerHTML;
+    btn.style.background = '#b91c1c';
+    btn.innerHTML = msg;
+    setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; }, 3000);
   }
 
   // ─── Floating button ─────────────────────────────────────────────────────────
@@ -88,7 +133,7 @@
         0%, 100% { transform: scale(1); box-shadow: 0 4px 14px rgba(220,38,38,.45); }
         50%       { transform: scale(1.12); box-shadow: 0 6px 20px rgba(220,38,38,.7); }
       }
-      #wms-report-fab { all: unset; }
+      #wms-report-fab { all: unset; display: block !important; }
       #wms-report-fab button {
         position: fixed !important;
         bottom: 24px !important;
@@ -102,6 +147,7 @@
         font-size: 14px !important;
         font-weight: 600 !important;
         cursor: pointer !important;
+        pointer-events: auto !important;
         box-shadow: 0 4px 14px rgba(220,38,38,.45) !important;
         display: flex !important;
         align-items: center !important;
@@ -123,6 +169,9 @@
 
   function createFloatingBtn() {
     if (floatingBtn) return;
+    // Remove any stale FAB left by a previous content script injection
+    const stale = document.getElementById('wms-report-fab');
+    if (stale) stale.remove();
     ensurePulseStyle();
 
     const wrap = document.createElement('div');
@@ -143,6 +192,12 @@
         alert('WMS extension: no order loaded on this packing station.');
         return;
       }
+      // Brief visual feedback so user knows click registered
+      const btn = wrap.querySelector('button');
+      const orig = btn.innerHTML;
+      btn.innerHTML = 'Opening…';
+      btn.disabled = true;
+      setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 2000);
       openInSidePanel(data);
     });
 
@@ -172,13 +227,9 @@
     const toteNum = toteEl ? (toteEl.value || '').trim() : '';
     const hasOrder = !!(orderId || toteNum);
 
-    const errEl =
-      q('.notification-container.error') ||
-      q('platform-page-alert .notification-container');
-    const hasError = !!errEl;
-    // Auto-trigger only when notification text contains "error returned from carrier"
-    const isCarrierError = hasError &&
-      /error returned from carrier/i.test(errEl.textContent || '');
+    // Flexible carrier-error detection
+    const carrierErrEl = findCarrierErrorEl();
+    const isCarrierError = !!carrierErrEl;
 
     if (hasOrder) {
       createFloatingBtn();
@@ -187,17 +238,16 @@
       errorAutoTriggered = false;
     }
 
-    // AUTO-TRIGGER: carrier error → open side panel with pre-filled form
+    // AUTO-TRIGGER: capture data immediately (before notification may disappear),
+    // then open side panel after brief delay so the panel has time to initialise.
     if (hasOrder && isCarrierError && !errorAutoTriggered) {
       errorAutoTriggered = true;
       pulseBtn();
-      setTimeout(() => {
-        const data = extractData();
-        if (data.wmsError) openInSidePanel(data);
-      }, 600);
+      const capturedData = extractData(); // capture NOW while notification is visible
+      setTimeout(() => openInSidePanel(capturedData), 600);
     }
 
-    if (!hasError) errorAutoTriggered = false;
+    if (!isCarrierError) errorAutoTriggered = false;
   }
 
   // ─── Boot ────────────────────────────────────────────────────────────────────
@@ -208,7 +258,7 @@
     childList: true,
     subtree: true,
     attributes: false,
-    characterData: false
+    characterData: false,
   });
 
 })();
