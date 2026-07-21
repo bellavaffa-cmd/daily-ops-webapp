@@ -1701,8 +1701,8 @@
           <option value="Resolved">Resolved</option>
         </select>
         <button class="btn btn-sm" id="bulkDeleteBtn"
-          style="background:#3a1212;border:1px solid #7f1d1d;color:#f87171;font-size:.78rem;padding:5px 10px;border-radius:6px;cursor:pointer"
-          onclick="bulkDelete()">🗑 Delete</button>
+          style="display:inline-flex;align-items:center;gap:5px;background:#3a1212;border:1px solid #7f1d1d;color:#ef4444;font-size:.78rem;padding:5px 10px;border-radius:6px;cursor:pointer"
+          onclick="bulkDelete()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg> Delete</button>
         <button class="btn-clear" onclick="clearSelection()">✕ Clear</button>
       </div>
 
@@ -1773,6 +1773,16 @@
             <div style="font-size:1rem;font-weight:700">Resolved Errors</div>
             <div style="font-size:.8rem;color:var(--muted);margin-top:2px">All resolved packing errors and picking issues</div>
           </div>
+          <!-- Bulk action bar — shown when rows are selected -->
+          <div id="resolvedBulkBar" style="display:none;align-items:center;gap:8px">
+            <span id="resolvedBulkCount" style="font-size:.82rem;color:var(--muted)">0 selected</span>
+            <button onclick="bulkDeleteResolved()"
+              style="display:inline-flex;align-items:center;gap:5px;background:#3a1212;border:1px solid #7f1d1d;color:#ef4444;font-size:.78rem;padding:5px 10px;border-radius:6px;cursor:pointer">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+              Delete selected
+            </button>
+            <button class="btn-clear" onclick="clearResolvedSelection()">✕ Clear</button>
+          </div>
         </div>
         <div class="empty-state" id="resolvedEmptyState" style="display:none">
           <div class="icon">✅</div>
@@ -1782,6 +1792,7 @@
           <table id="resolvedTable">
             <thead>
               <tr>
+                <th class="col-check"><input type="checkbox" id="resolvedSelectAll" onchange="toggleResolvedSelectAll(this.checked)"></th>
                 <th>Time</th>
                 <th class="col-wh">Warehouse</th>
                 <th>Form</th>
@@ -2264,8 +2275,9 @@
   let refreshTimer = null;
   var dashTab    = 'packing';    // var — avoids TDZ when renderTable is called early
   var dashStatus = 'open';       // 'open' | 'inprogress'
-  var selectedIds = new Set();  // var — same reason
-  var expandedId = null;        // var — same reason
+  var selectedIds = new Set();         // var — same reason
+  var resolvedSelectedIds = new Set(); // multi-select for resolved tab
+  var expandedId = null;               // var — same reason
 
   // ── Init ───────────────────────────────────────────────────────────────
   (function init() {
@@ -2678,28 +2690,34 @@
     }
     emptyEl.style.display = 'none'; tableWrap.style.display = '';
 
+    const trashSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>`;
+
     const packRows = resolvedPacking.map(e => {
-      const timeStr = formatTime(e.timestamp);
+      const timeStr  = formatTime(e.timestamp);
+      const checked  = resolvedSelectedIds.has('p:' + e.id) ? 'checked' : '';
       return `<tr>
+        <td class="col-check"><input type="checkbox" class="row-check" ${checked} onchange="toggleResolvedRow('p:${e.id}',this.checked)"></td>
         <td style="font-size:.8rem;color:var(--muted);white-space:nowrap">${timeStr}</td>
         <td style="font-size:.82rem">${e.warehouse||'—'}</td>
         <td><span class="badge badge-other" style="font-size:.7rem">Packing</span></td>
         <td style="font-size:.82rem;font-family:monospace">${e.orderId||'—'}</td>
         <td><span class="badge ${badgeClass(e.errorType)}" style="font-size:.7rem">${e.errorType||'—'}</span></td>
-        <td style="text-align:center"><button class="btn-delete-row" onclick="deleteRecord('${e.id}')" title="Delete">🗑</button></td>
+        <td style="text-align:center"><button class="btn-delete-row" onclick="deleteRecord('${e.id}')" title="Delete">${trashSvg}</button></td>
       </tr>`;
     });
 
     const pickRows = resolvedPicking.map(p => {
       const ts = p.timestamp || '';
       const timeStr = ts ? new Date(ts).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—';
+      const checked = resolvedSelectedIds.has('k:' + p.id) ? 'checked' : '';
       return `<tr>
+        <td class="col-check"><input type="checkbox" class="row-check" ${checked} onchange="toggleResolvedRow('k:${p.id}',this.checked)"></td>
         <td style="font-size:.8rem;color:var(--muted);white-space:nowrap">${timeStr}</td>
         <td style="font-size:.82rem">${p.warehouse||'—'}</td>
         <td><span class="badge badge-label" style="font-size:.7rem">Picking</span></td>
         <td style="font-size:.82rem;font-family:monospace">${p.orderId||'—'}</td>
         <td style="font-size:.82rem">${p.issueType||'—'}</td>
-        <td style="text-align:center"><button class="btn-delete-row" onclick="deletePickingRecord('${p.id}')" title="Delete">🗑</button></td>
+        <td style="text-align:center"><button class="btn-delete-row" onclick="deletePickingRecord('${p.id}')" title="Delete">${trashSvg}</button></td>
       </tr>`;
     });
 
@@ -2710,6 +2728,81 @@
     ].sort((a,b) => b.ts - a.ts);
 
     tbody.innerHTML = allRows.map(r => r.html).join('');
+
+    // Sync select-all checkbox
+    const saEl = document.getElementById('resolvedSelectAll');
+    if (saEl) {
+      saEl.checked       = total > 0 && resolvedSelectedIds.size === total;
+      saEl.indeterminate = resolvedSelectedIds.size > 0 && resolvedSelectedIds.size < total;
+    }
+    updateResolvedBulkBar();
+  }
+
+  function toggleResolvedRow(key, checked) {
+    if (checked) resolvedSelectedIds.add(key);
+    else resolvedSelectedIds.delete(key);
+    updateResolvedBulkBar();
+    // Sync select-all state
+    const resolvedPacking = errors.filter(e => (e.status || 'Open') === 'Resolved');
+    const resolvedPicking = pickingIssues.filter(p => (p.status || 'Open') === 'Resolved');
+    const total = resolvedPacking.length + resolvedPicking.length;
+    const saEl = document.getElementById('resolvedSelectAll');
+    if (saEl) {
+      saEl.checked       = total > 0 && resolvedSelectedIds.size === total;
+      saEl.indeterminate = resolvedSelectedIds.size > 0 && resolvedSelectedIds.size < total;
+    }
+  }
+
+  function toggleResolvedSelectAll(checked) {
+    const resolvedPacking = errors.filter(e => (e.status || 'Open') === 'Resolved');
+    const resolvedPicking = pickingIssues.filter(p => (p.status || 'Open') === 'Resolved');
+    resolvedSelectedIds.clear();
+    if (checked) {
+      resolvedPacking.forEach(e => resolvedSelectedIds.add('p:' + e.id));
+      resolvedPicking.forEach(p => resolvedSelectedIds.add('k:' + p.id));
+    }
+    renderResolvedTable();
+  }
+
+  function clearResolvedSelection() {
+    resolvedSelectedIds.clear();
+    renderResolvedTable();
+  }
+
+  function updateResolvedBulkBar() {
+    const bar    = document.getElementById('resolvedBulkBar');
+    const countEl= document.getElementById('resolvedBulkCount');
+    const count  = resolvedSelectedIds.size;
+    if (!bar) return;
+    bar.style.display = count > 0 ? 'flex' : 'none';
+    if (countEl) countEl.textContent = count + ' selected';
+  }
+
+  async function bulkDeleteResolved() {
+    const keys = [...resolvedSelectedIds];
+    if (!keys.length) return;
+    if (!confirm(`Delete ${keys.length} resolved record${keys.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
+
+    const packIds = keys.filter(k => k.startsWith('p:')).map(k => k.slice(2));
+    const pickIds = keys.filter(k => k.startsWith('k:')).map(k => k.slice(2));
+
+    errors        = errors.filter(e => !packIds.includes(String(e.id)));
+    pickingIssues = pickingIssues.filter(p => !pickIds.includes(String(p.id)));
+
+    clearResolvedSelection();
+    renderResolvedTable();
+    renderStats();
+    updateBadge();
+
+    for (const id of packIds) await deleteFromSupabase(id);
+    for (const id of pickIds) {
+      try {
+        await fetch(SB_URL + '/picking_issues?id=eq.' + id, {
+          method: 'DELETE', headers: SB_HDR
+        });
+      } catch (err) { console.error('Delete picking error:', err); }
+    }
+    showToast(`${keys.length} record${keys.length > 1 ? 's' : ''} deleted.`, true);
   }
 
   document.getElementById('pickingForm').addEventListener('submit', async function(e) {
@@ -3847,7 +3940,7 @@ function fail(error) {
           <td class="td-muted" style="font-size:.8rem">${e.brand || '—'}</td>
           <td><span class="badge ${badgeClass(e.errorType)}">${e.errorType}</span></td>
           <td><select class="status-select status-${statusCls(e.status)}" onchange="updateStatus('${e.id}', this.value)"><option ${e.status==='Open'?'selected':''}>Open</option><option ${e.status==='In Progress'?'selected':''}>In Progress</option><option ${e.status==='Resolved'?'selected':''}>Resolved</option></select></td>
-          <td style="text-align:center">${(e.status||'Open') === 'Resolved' ? `<button class="btn-delete-row" onclick="deleteRecord('${e.id}')" title="Delete record">🗑</button>` : ''}</td>
+          <td style="text-align:center">${(e.status||'Open') === 'Resolved' ? `<button class="btn-delete-row" onclick="deleteRecord('${e.id}')" title="Delete record"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg></button>` : ''}</td>
         </tr>${expandedRow}`;
     }).join('');
 
