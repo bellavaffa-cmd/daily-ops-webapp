@@ -218,27 +218,6 @@
     btn.addEventListener('animationend', () => btn.classList.remove('pulsing'), { once: true });
   }
 
-  // ─── Red notification check ──────────────────────────────────────────────────
-  // Auto-trigger only for red (carrier/AWB error) notifications.
-
-  function isRedNotification(el) {
-    if (!el) return false;
-    const targets = [el, el.parentElement].filter(Boolean);
-    for (const target of targets) {
-      const bg = getComputedStyle(target).backgroundColor;
-      const m  = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-      if (m) {
-        const r = +m[1], g = +m[2], b = +m[3];
-        if (r > 150 && g < 100 && b < 100) return true;
-      }
-    }
-    let node = el;
-    for (let i = 0; i < 5 && node; i++, node = node.parentElement) {
-      if (/\berror\b|\bdanger\b|\bred\b/i.test(node.className || '')) return true;
-    }
-    return false;
-  }
-
   // ─── State check (called on every DOM mutation) ───────────────────────────────
 
   function checkState() {
@@ -251,8 +230,10 @@
     const errEl =
       q('.notification-container.error') ||
       q('platform-page-alert .notification-container');
-    const hasError   = !!errEl;
-    const isRedError = hasError && isRedNotification(errEl);
+    const hasError = !!errEl;
+    // Auto-trigger only when notification text contains "error returned from carrier"
+    const isCarrierError = hasError &&
+      /error returned from carrier/i.test(errEl.textContent || '');
 
     if (hasOrder) {
       createFloatingBtn();
@@ -262,8 +243,8 @@
       errorAutoTriggered = false;
     }
 
-    // AUTO-TRIGGER: red carrier error → open overlay immediately
-    if (hasOrder && isRedError && !errorAutoTriggered) {
+    // AUTO-TRIGGER: "error returned from carrier" notification → open overlay immediately
+    if (hasOrder && isCarrierError && !errorAutoTriggered) {
       errorAutoTriggered = true;
       pulseBtn();
       setTimeout(() => {
