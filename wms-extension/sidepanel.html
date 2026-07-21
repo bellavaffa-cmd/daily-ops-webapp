@@ -11,8 +11,37 @@
   </style>
 </head>
 <body>
-  <iframe src="https://bellavaffa-cmd.github.io/daily-ops-webapp/"
+  <iframe id="appFrame"
+          src="https://bellavaffa-cmd.github.io/daily-ops-webapp/"
           allow=""
           title="Daily Ops Dashboard"></iframe>
+
+  <script>
+    const frame   = document.getElementById('appFrame');
+    const BASE_URL = 'https://bellavaffa-cmd.github.io/daily-ops-webapp/';
+
+    // On load: pick up a pending scan URL stored before the panel opened
+    chrome.storage.session.get('pendingScan', (result) => {
+      if (result.pendingScan) {
+        frame.src = result.pendingScan;
+        chrome.storage.session.remove('pendingScan');
+      }
+    });
+
+    // When the panel is already open: receive new scan URL directly
+    chrome.runtime.onMessage.addListener((msg) => {
+      if (msg.action === 'loadScan' && msg.url) {
+        frame.src = msg.url;
+      }
+    });
+
+    // After form submission the iframe posts wms-close-overlay —
+    // navigate back to the main dashboard instead of closing the panel
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'wms-close-overlay') {
+        frame.src = BASE_URL;
+      }
+    });
+  </script>
 </body>
 </html>

@@ -23,7 +23,7 @@
     "https://wms.golocad.com/*",
     "https://bellavaffa-cmd.github.io/*"
   ],
-  "permissions": ["tabs", "sidePanel"],
+  "permissions": ["tabs", "sidePanel", "storage"],
   "side_panel": {
     "default_path": "sidepanel.html"
   },

@@ -5,7 +5,6 @@
   const PULSE_STYLE_ID = 'wms-ext-pulse-style';
 
   let floatingBtn = null;
-  let overlay     = null;
   let errorAutoTriggered = false;
 
   // ─── DOM helpers ────────────────────────────────────────────────────────────
@@ -70,44 +69,13 @@
     return { orderId, toteNum, warehouseHint, brand, wmsError, skus };
   }
 
-  // ─── Overlay (replaces new-tab approach) ─────────────────────────────────────
+  // ─── Open report form in side panel ──────────────────────────────────────────
 
-  function buildUrl(data) {
+  function openInSidePanel(data) {
     const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
-    return APP_URL + '?wmsScan=' + encodeURIComponent(b64) + '&ext=1';
+    const url = APP_URL + '?wmsScan=' + encodeURIComponent(b64) + '&ext=1';
+    chrome.runtime.sendMessage({ action: 'openSidePanel', url });
   }
-
-  function showOverlay(data) {
-    if (overlay) return; // already open
-
-    ensurePulseStyle(); // also injects overlay CSS
-
-    overlay = document.createElement('div');
-    overlay.id = 'wms-report-overlay';
-
-    const frame = document.createElement('iframe');
-    frame.src = buildUrl(data);
-    frame.id  = 'wms-report-frame';
-    frame.allow = '';
-
-    overlay.appendChild(frame);
-
-    // Click backdrop to dismiss
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) removeOverlay();
-    });
-
-    document.body.appendChild(overlay);
-  }
-
-  function removeOverlay() {
-    if (overlay) { overlay.remove(); overlay = null; }
-  }
-
-  // Listen for "submitted — close the overlay" message from the iframe
-  window.addEventListener('message', (e) => {
-    if (e.data && e.data.type === 'wms-close-overlay') removeOverlay();
-  });
 
   // ─── Floating button ─────────────────────────────────────────────────────────
 
@@ -120,7 +88,6 @@
         0%, 100% { transform: scale(1); box-shadow: 0 4px 14px rgba(220,38,38,.45); }
         50%       { transform: scale(1.12); box-shadow: 0 6px 20px rgba(220,38,38,.7); }
       }
-      /* Floating button */
       #wms-report-fab { all: unset; }
       #wms-report-fab button {
         position: fixed !important;
@@ -150,27 +117,6 @@
       #wms-report-fab button.pulsing {
         animation: wms-pulse .5s ease 3 !important;
       }
-      /* Overlay */
-      #wms-report-overlay {
-        position: fixed !important;
-        inset: 0 !important;
-        z-index: 2147483646 !important;
-        background: rgba(0,0,0,0.55) !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        padding: 20px !important;
-        box-sizing: border-box !important;
-      }
-      #wms-report-frame {
-        width: 100% !important;
-        max-width: 640px !important;
-        height: 90vh !important;
-        border: none !important;
-        border-radius: 14px !important;
-        background: #fff !important;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.35) !important;
-      }
     `;
     document.head.appendChild(style);
   }
@@ -198,7 +144,7 @@
         alert('WMS extension: no order loaded on this packing station.');
         return;
       }
-      showOverlay(data);
+      openInSidePanel(data);
     });
 
     document.body.appendChild(wrap);
@@ -213,7 +159,7 @@
     if (!floatingBtn) return;
     const btn = floatingBtn.querySelector('button');
     btn.classList.remove('pulsing');
-    void btn.offsetWidth; // force reflow to restart animation
+    void btn.offsetWidth;
     btn.classList.add('pulsing');
     btn.addEventListener('animationend', () => btn.classList.remove('pulsing'), { once: true });
   }
@@ -239,17 +185,16 @@
       createFloatingBtn();
     } else {
       removeFloatingBtn();
-      removeOverlay();
       errorAutoTriggered = false;
     }
 
-    // AUTO-TRIGGER: "error returned from carrier" notification → open overlay immediately
+    // AUTO-TRIGGER: carrier error → open side panel with pre-filled form
     if (hasOrder && isCarrierError && !errorAutoTriggered) {
       errorAutoTriggered = true;
       pulseBtn();
       setTimeout(() => {
         const data = extractData();
-        if (data.wmsError) showOverlay(data);
+        if (data.wmsError) openInSidePanel(data);
       }, 600);
     }
 
