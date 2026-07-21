@@ -5,33 +5,39 @@ chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
   .catch(err => console.error('sidePanel.setPanelBehavior:', err));
 
-chrome.runtime.onMessage.addListener((msg, sender) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.action === 'openSidePanel' && msg.url && sender.tab) {
     const url   = msg.url;
     const tabId = sender.tab.id;
 
-    sendResponse({ ok: true }); // acknowledge immediately so port closes cleanly
-
-    // Ping the side panel to find out if it is already open.
-    // If it responds → was open → navigate only, don't close after submit.
-    // If no response → was closed → open it and close it after submit.
-    chrome.runtime.sendMessage({ action: 'ping' }, (response) => {
-      const panelWasOpen = !chrome.runtime.lastError && !!response;
-
-      chrome.storage.session.set({
-        pendingScan:      url,
-        autoOpenedPanel:  !panelWasOpen   // true = we opened it, close after submit
-      });
-
-      chrome.sidePanel.open({ tabId });
-
-      if (panelWasOpen) {
-        // Panel already open — tell it to load the new scan directly
-        chrome.runtime.sendMessage({ action: 'loadScan', url }).catch(() => {});
+    // Open the panel immediately while user gesture is still active
+    chrome.sidePanel.open({ tabId }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('[WMS] sidePanel.open failed:', chrome.runtime.lastError.message);
       }
     });
-    return true; // keep channel open until sendResponse is called (already called above)
+
+    // Ping to check if panel was already open before we opened it,
+    // then store the scan URL so the panel can read it on load.
+    chrome.runtime.sendMessage({ action: 'ping' }, (pingResp) => {
+      const panelWasOpen = !chrome.runtime.lastError && !!pingResp;
+
+      chrome.storage.session.set({
+        pendingScan:     url,
+        autoOpenedPanel: !panelWasOpen
+      });
+
+      if (panelWasOpen) {
+        // Panel was already showing — tell it to navigate to the scan
+        chrome.runtime.sendMessage({ action: 'loadScan', url }, () => {
+          void chrome.runtime.lastError;
+        });
+      }
+    });
+
+    sendResponse({ ok: true });
+    return false; // sendResponse already called synchronously
   }
 
   // Open a new tab (fallback)

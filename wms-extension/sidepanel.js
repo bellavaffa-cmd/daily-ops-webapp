@@ -13,12 +13,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 // ── On load: pick up a pending scan URL stored before the panel opened ──
-chrome.storage.session.get('pendingScan', (result) => {
-  if (result.pendingScan) {
-    frame.src = result.pendingScan;
-    chrome.storage.session.remove('pendingScan');
-  }
-});
+// Retry a few times in case background writes storage slightly after panel loads.
+function loadPendingScan(retries) {
+  chrome.storage.session.get('pendingScan', (result) => {
+    if (result.pendingScan) {
+      frame.src = result.pendingScan;
+      chrome.storage.session.remove('pendingScan');
+    } else if (retries > 0) {
+      setTimeout(() => loadPendingScan(retries - 1), 200);
+    }
+  });
+}
+loadPendingScan(5); // retry up to 5× over 1 s
 
 // ── After form submission: close panel if we auto-opened it, else go home ──
 window.addEventListener('message', (e) => {
