@@ -129,10 +129,9 @@
     wrap.id = 'wms-report-fab';
     wrap.innerHTML = `
       <button>
-        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"
-             viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94
-                   a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5"
+             viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" stroke-linecap="round">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
         </svg>
         Report Error
       </button>
