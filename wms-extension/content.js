@@ -102,8 +102,10 @@
     try {
       chrome.runtime.sendMessage({ action: 'openSidePanel', url }, () => {
         if (chrome.runtime.lastError) {
-          // Service worker was dead — page needs a refresh to reconnect
-          console.warn('[WMS ext] sendMessage failed:', chrome.runtime.lastError.message);
+          const msg = chrome.runtime.lastError.message || '';
+          // "port closed" = background handled it but didn't call sendResponse — harmless
+          if (/port closed|receiving end/i.test(msg)) return;
+          console.warn('[WMS ext] sendMessage failed:', msg);
           setBtnError('Reload page & retry');
         }
       });

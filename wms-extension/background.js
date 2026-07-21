@@ -11,6 +11,8 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
     const url   = msg.url;
     const tabId = sender.tab.id;
 
+    sendResponse({ ok: true }); // acknowledge immediately so port closes cleanly
+
     // Ping the side panel to find out if it is already open.
     // If it responds → was open → navigate only, don't close after submit.
     // If no response → was closed → open it and close it after submit.
@@ -29,7 +31,7 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
         chrome.runtime.sendMessage({ action: 'loadScan', url }).catch(() => {});
       }
     });
-    return; // keep listener channel open for async response
+    return true; // keep channel open until sendResponse is called (already called above)
   }
 
   // Open a new tab (fallback)
