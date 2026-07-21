@@ -103,8 +103,8 @@
       chrome.runtime.sendMessage({ action: 'openSidePanel', url }, () => {
         if (chrome.runtime.lastError) {
           const msg = chrome.runtime.lastError.message || '';
-          // "port closed" = background handled it but didn't call sendResponse — harmless
-          if (/port closed|receiving end/i.test(msg)) return;
+          // "port closed" = background handled it but didn't send a response — harmless
+          if (/port closed/i.test(msg)) return;
           console.warn('[WMS ext] sendMessage failed:', msg);
           setBtnError('Reload page & retry');
         }
