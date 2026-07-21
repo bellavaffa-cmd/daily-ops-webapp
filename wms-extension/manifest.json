@@ -23,13 +23,16 @@
     "https://wms.golocad.com/*",
     "https://bellavaffa-cmd.github.io/*"
   ],
-  "permissions": ["tabs"],
+  "permissions": ["tabs", "sidePanel"],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "WMS → Report Error"
+    "default_title": "Daily Ops"
   }
 }
