@@ -1910,6 +1910,7 @@
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:#fcd34d;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Ready to Pick</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:#93c5fd;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Picking Started</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:#86efac;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Ready to Pack</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#c4b5fd;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Packing Started</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--text);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Total</th>
             </tr>
           </thead>
@@ -2385,22 +2386,24 @@
 
     // Grand totals from warehouse rows
     const tot = filtered.reduce((a, r) => ({
-      new:     a.new     + r.new,
-      rfp:     a.rfp     + r.rfp,
-      picking: a.picking + r.picking,
-      picked:  a.picked  + r.picked,
-    }), { new: 0, rfp: 0, picking: 0, picked: 0 });
+      new:     a.new     + (r.new     || 0),
+      rfp:     a.rfp     + (r.rfp     || 0),
+      picking: a.picking + (r.picking || 0),
+      picked:  a.picked  + (r.picked  || 0),
+      packing: a.packing + (r.packing || 0),
+    }), { new: 0, rfp: 0, picking: 0, picked: 0, packing: 0 });
 
-    const total = tot.new + tot.rfp + tot.picking + tot.picked;
+    const total = tot.new + tot.rfp + tot.picking + tot.picked + tot.packing;
     const fmt   = n => n.toLocaleString();
     const pct   = (n, d) => d ? (n / d * 100).toFixed(1) + '%' : '—';
 
     // KPI cards
     const statuses = [
-      { key: 'new',     label: 'Open',               count: tot.new,     color: '#fb923c', bg: '#431407' },
-      { key: 'rfp',     label: 'Ready to Pick',       count: tot.rfp,     color: '#fcd34d', bg: '#451a03' },
-      { key: 'picking', label: 'Picking Started',    count: tot.picking, color: '#93c5fd', bg: '#172554' },
-      { key: 'picked',  label: 'Ready to Pack',      count: tot.picked,  color: '#86efac', bg: '#14532d' },
+      { key: 'new',     label: 'Open',            count: tot.new,     color: '#fb923c', bg: '#431407' },
+      { key: 'rfp',     label: 'Ready to Pick',   count: tot.rfp,     color: '#fcd34d', bg: '#451a03' },
+      { key: 'picking', label: 'Picking Started', count: tot.picking, color: '#93c5fd', bg: '#172554' },
+      { key: 'picked',  label: 'Ready to Pack',   count: tot.picked,  color: '#86efac', bg: '#14532d' },
+      { key: 'packing', label: 'Packing Started', count: tot.packing, color: '#c4b5fd', bg: '#2e1065' },
       { key: 'total',   label: 'Total Orders',       count: total,       color: 'var(--text)', bg: 'var(--surface2)' },
     ];
 
@@ -2417,15 +2420,16 @@
     // Table helpers
     const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color||'var(--text)'};font-size:.82rem">${fmt(n)}</td>`;
     const whRow = (r, indent) => {
-      const t = r.new + r.rfp + r.picking + r.picked;
+      const t = (r.new||0) + (r.rfp||0) + (r.picking||0) + (r.picked||0) + (r.packing||0);
       const pad = indent ? 'padding:9px 18px 9px 28px' : 'padding:10px 18px';
       return `<tr style="border-top:1px solid var(--border)">
         <td style="${pad};color:var(--text);white-space:nowrap;font-size:.82rem">${r.wh}</td>
-        ${tdN(r.new,     '#fb923c')}
-        ${tdN(r.rfp,     '#fcd34d')}
-        ${tdN(r.picking, '#93c5fd')}
-        ${tdN(r.picked,  '#86efac')}
-        ${tdN(t,         'var(--text)')}
+        ${tdN(r.new     || 0, '#fb923c')}
+        ${tdN(r.rfp     || 0, '#fcd34d')}
+        ${tdN(r.picking || 0, '#93c5fd')}
+        ${tdN(r.picked  || 0, '#86efac')}
+        ${tdN(r.packing || 0, '#c4b5fd')}
+        ${tdN(t,              'var(--text)')}
       </tr>`;
     };
 
@@ -2438,14 +2442,15 @@
         const cRow = cRows.find(c => c.country === country);
         const whs  = whRows.filter(r => r.country === country);
         if (cRow) {
-          const ct = cRow.new + cRow.rfp + cRow.picking + cRow.picked;
+          const ct = (cRow.new||0) + (cRow.rfp||0) + (cRow.picking||0) + (cRow.picked||0) + (cRow.packing||0);
           html += `<tr style="border-top:2px solid var(--border);background:var(--surface2)">
             <td style="padding:9px 18px;color:var(--text);font-weight:700;font-size:.8rem">${country}</td>
-            ${tdN(cRow.new,     '#fb923c')}
-            ${tdN(cRow.rfp,     '#fcd34d')}
-            ${tdN(cRow.picking, '#93c5fd')}
-            ${tdN(cRow.picked,  '#86efac')}
-            ${tdN(ct,           'var(--text)')}
+            ${tdN(cRow.new     || 0, '#fb923c')}
+            ${tdN(cRow.rfp     || 0, '#fcd34d')}
+            ${tdN(cRow.picking || 0, '#93c5fd')}
+            ${tdN(cRow.picked  || 0, '#86efac')}
+            ${tdN(cRow.packing || 0, '#c4b5fd')}
+            ${tdN(ct,               'var(--text)')}
           </tr>`;
         }
         html += whs.map(r => whRow(r, true)).join('');
@@ -2460,6 +2465,7 @@
           ${tdN(tot.rfp,     '#fcd34d')}
           ${tdN(tot.picking, '#93c5fd')}
           ${tdN(tot.picked,  '#86efac')}
+          ${tdN(tot.packing, '#c4b5fd')}
           ${tdN(total,       'var(--text)')}
         </tr>`;
       }
@@ -2492,7 +2498,8 @@
           new:     r.new     || 0,
           rfp:     r.rfp     || 0,
           picking: r.picking || 0,
-          picked:  r.picked  || 0
+          picked:  r.picked  || 0,
+          packing: r.packing || 0,
         }));
         renderB2C();
         if (localStorage.getItem('b2cWarehousePicked') === null) showWarehousePicker();
@@ -2538,7 +2545,7 @@
       const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co';
       const SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
       const LG_API = 'https://mywmsquery.logiwa.com';
-      const SM     = { 6:'new', 8:'rfp', 9:'picking', 12:'picked' };
+      const SM     = { 6:'new', 8:'rfp', 9:'picking', 12:'picked', 13:'packing' };
       try {
         let all = [], page = 0, total = 1;
         while (all.length < total) {

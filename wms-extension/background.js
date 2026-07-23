@@ -96,7 +96,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
         // 3. Fetch all unshipped orders from Logiwa
         const LG_API = 'https://mywmsquery.logiwa.com';
-        const SM     = { 6: 'new', 8: 'rfp', 9: 'picking', 12: 'picked' };
+        const SM     = { 6: 'new', 8: 'rfp', 9: 'picking', 12: 'picked', 13: 'packing' };
         let all = [], page = 0, total = 1;
         while (all.length < total) {
           console.log('[WMS bg] Logiwa page', page, '— fetched', all.length, '/', total);
