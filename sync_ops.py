@@ -97,6 +97,8 @@ def pivot_b2c(orders):
     zero = {col: 0 for col in set(B2C_STATUS_MAP.values())}
     warehouses = {}
     for o in orders:
+        if o.get("shipmentOrderTypeName") != "B2C":
+            continue
         wh     = o.get("warehouseCode")
         status = o.get("shipmentOrderStatusId")
         col    = B2C_STATUS_MAP.get(status)

@@ -117,6 +117,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const cols = [...new Set(Object.values(SM))];
         const whs  = {};
         for (const o of all) {
+          if (o.shipmentOrderTypeName !== 'B2C') continue;
           const wh = o.warehouseCode, col = SM[o.shipmentOrderStatusId];
           if (!wh || !col) continue;
           if (!whs[wh]) { whs[wh] = { wh }; cols.forEach(c => whs[wh][c] = 0); }
