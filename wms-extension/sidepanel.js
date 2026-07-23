@@ -27,8 +27,9 @@ function loadPendingScan(retries) {
 loadPendingScan(5); // retry up to 5× over 1 s
 
 // ── Bridge: app iframe → content script on wms.golocad.com ──────────────────
-// The app posts {type:'wms-sync-logiwa'} when the Sync button is clicked.
-// We find the WMS tab, ask content.js to do the sync, and post the result back.
+// Step 1: iframe posts {type:'wms-sync-logiwa'} → we kick off the content script.
+// Step 2: content script fires chrome.runtime.sendMessage({action:'syncLogiwaResult'})
+//         when done → we forward it to the iframe.
 window.addEventListener('message', (e) => {
   if (!e.data || e.data.type !== 'wms-sync-logiwa') return;
 
@@ -46,13 +47,18 @@ window.addEventListener('message', (e) => {
       if (err) {
         frame.contentWindow.postMessage({
           type: 'wms-sync-result', ok: false,
-          error: 'Reload the wms.golocad.com tab and try again (content script not running)'
+          error: 'Reload the wms.golocad.com tab and try again'
         }, '*');
-        return;
       }
-      frame.contentWindow.postMessage({ type: 'wms-sync-result', ...(resp || {}) }, '*');
+      // resp.ok === 'started' means content script acknowledged — result comes via onMessage below
     });
   });
+});
+
+// Step 2: receive the async result from content script and forward to iframe
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.action !== 'syncLogiwaResult') return;
+  frame.contentWindow.postMessage({ type: 'wms-sync-result', ...msg }, '*');
 });
 
 // ── After form submission: close panel if we auto-opened it, else go home ──

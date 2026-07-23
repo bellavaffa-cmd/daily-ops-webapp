@@ -269,15 +269,19 @@
 })();
 
 // ── Logiwa B2C sync — triggered by the side panel app via extension message ──
-// Runs in wms.golocad.com context so it has localStorage access + Logiwa CORS.
+// MV3 pattern: acknowledge immediately, then send result via chrome.runtime.sendMessage
+// (avoids the MV3 message channel closing before async fetch completes).
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action !== 'syncLogiwa') return;
 
   const token = localStorage.getItem('token');
   if (!token) {
     sendResponse({ ok: false, error: 'Not logged in to Logiwa — open wms.golocad.com and log in first.' });
-    return true;
+    return false;
   }
+
+  // Acknowledge immediately so Chrome doesn't close the channel
+  sendResponse({ ok: 'started' });
 
   const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co';
   const SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
@@ -286,7 +290,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   (async () => {
     try {
-      // Paginate all unshipped orders
       let all = [], page = 0, total = 1;
       while (all.length < total) {
         const r = await fetch(LG_API + '/api/shipmentorder/list/unshipped/i/' + page + '/s/1000', {
@@ -301,7 +304,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         page++;
       }
 
-      // Pivot: warehouseCode × status → counts
       const cols = [...new Set(Object.values(SM))];
       const whs  = {};
       for (const o of all) {
@@ -313,24 +315,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
       const rows = Object.values(whs).map(r => ({ ...r, updated_at: new Date().toISOString() }));
 
-      // Upsert to Supabase
       const res = await fetch(SB_URL + '/rest/v1/b2c_data', {
         method: 'POST',
         headers: {
-          apikey:        SB_KEY,
-          Authorization: 'Bearer ' + SB_KEY,
-          'Content-Type': 'application/json',
-          Prefer:        'resolution=merge-duplicates',
+          apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY,
+          'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates',
         },
         body: JSON.stringify(rows),
       });
       if (!res.ok) throw new Error('Supabase error ' + res.status + ': ' + await res.text());
 
-      sendResponse({ ok: true, count: rows.length });
+      chrome.runtime.sendMessage({ action: 'syncLogiwaResult', ok: true, count: rows.length });
     } catch (e) {
-      sendResponse({ ok: false, error: e.message });
+      chrome.runtime.sendMessage({ action: 'syncLogiwaResult', ok: false, error: e.message });
     }
   })();
 
-  return true; // keep message channel open for async response
+  return false;
 });
