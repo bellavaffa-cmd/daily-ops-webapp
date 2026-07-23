@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Logiwa Sync Bookmarklet</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 600px; margin: 60px auto; padding: 0 24px; color: #1a1a2e; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  p { color: #555; font-size: .95rem; margin: 8px 0 24px; }
+  .btn-wrap { text-align: center; margin: 32px 0; }
+  a.bookmarklet {
+    display: inline-block;
+    background: #0d6e2a;
+    color: #fff;
+    padding: 14px 28px;
+    border-radius: 10px;
+    text-decoration: none;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: grab;
+    box-shadow: 0 4px 12px rgba(0,0,0,.15);
+    transition: transform .1s, box-shadow .1s;
+  }
+  a.bookmarklet:hover { transform: scale(1.04); box-shadow: 0 6px 16px rgba(0,0,0,.2); }
+  ol { line-height: 1.9; color: #333; }
+  code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-size: .9em; }
+  .note { background: #fef9c3; border-left: 4px solid #ca8a04; padding: 10px 14px; border-radius: 4px; font-size: .9rem; margin-top: 24px; }
+</style>
+</head>
+<body>
+<h1>🔄 Logiwa → Supabase Sync</h1>
+<p>One-click bookmarklet to push your current WMS fulfillment counts to the ops dashboard.</p>
+
+<div class="btn-wrap">
+  <a class="bookmarklet" href="javascript:(async%20function()%20%7B%20const%20token%20%3D%20localStorage.getItem('token')%3B%20if%20(!token)%20%7B%20alert('Not%20on%20wms.golocad.com%20or%20not%20logged%20in.')%3B%20return%3B%20%7D%20const%20SB_URL%20%3D%20'https%3A%2F%2Fhmpkjmnxoidesnnoecfm.supabase.co'%3B%20const%20SB_KEY%20%3D%20'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP'%3B%20const%20LG_API%20%3D%20'https%3A%2F%2Fmywmsquery.logiwa.com'%3B%20const%20SM%20%3D%20%7B6%3A'new'%2C8%3A'rfp'%2C9%3A'picking'%2C12%3A'picked'%7D%3B%20function%20toast(msg%2C%20ok)%20%7B%20const%20d%20%3D%20document.createElement('div')%3B%20d.textContent%20%3D%20msg%3B%20Object.assign(d.style%2C%20%7Bposition%3A'fixed'%2Ctop%3A'16px'%2Cright%3A'16px'%2CzIndex%3A99999%2Cbackground%3Aok%3F'%230d6e2a'%3A'%231a1a2e'%2Ccolor%3A'%23fff'%2Cpadding%3A'12px%2020px'%2CborderRadius%3A'8px'%2CfontSize%3A'14px'%2CfontFamily%3A'system-ui%2Csans-serif'%2CboxShadow%3A'0%204px%2012px%20rgba(0%2C0%2C0%2C.3)'%2CmaxWidth%3A'360px'%2CwhiteSpace%3A'pre-line'%7D)%3B%20document.body.appendChild(d)%3B%20setTimeout(()%20%3D%3E%20d.remove()%2C%206000)%3B%20%7D%20toast('Syncing%20Logiwa%20%E2%86%92%20Supabase%E2%80%A6'%2C%20false)%3B%20try%20%7B%20let%20all%20%3D%20%5B%5D%2C%20page%20%3D%200%2C%20total%20%3D%201%3B%20while%20(all.length%20%3C%20total)%20%7B%20const%20r%20%3D%20await%20fetch(LG_API%2B'%2Fapi%2Fshipmentorder%2Flist%2Funshipped%2Fi%2F'%2Bpage%2B'%2Fs%2F1000'%2C%20%7Bmethod%3A'POST'%2Cheaders%3A%7B'Content-Type'%3A'application%2Fjson'%2C'Authorization'%3A'Bearer%20'%2Btoken%7D%2Cbody%3A'%7B%7D'%7D)%3B%20if%20(!r.ok)%20throw%20new%20Error('Logiwa%20'%2Br.status)%3B%20const%20d%20%3D%20await%20r.json()%3B%20all%20%3D%20all.concat(d.data%20%7C%7C%20%5B%5D)%3B%20total%20%3D%20d.totalCount%20%7C%7C%200%3B%20page%2B%2B%3B%20%7D%20const%20cols%20%3D%20%5B...new%20Set(Object.values(SM))%5D%3B%20const%20whs%20%3D%20%7B%7D%3B%20for%20(const%20o%20of%20all)%20%7B%20const%20wh%20%3D%20o.warehouseCode%2C%20col%20%3D%20SM%5Bo.shipmentOrderStatusId%5D%3B%20if%20(!wh%20%7C%7C%20!col)%20continue%3B%20if%20(!whs%5Bwh%5D)%20%7B%20whs%5Bwh%5D%20%3D%20%7Bwh%7D%3B%20cols.forEach(c%20%3D%3E%20whs%5Bwh%5D%5Bc%5D%20%3D%200)%3B%20%7D%20whs%5Bwh%5D%5Bcol%5D%2B%2B%3B%20%7D%20const%20rows%20%3D%20Object.values(whs).map(r%20%3D%3E%20(%7B...r%2C%20updated_at%3A%20new%20Date().toISOString()%7D))%3B%20const%20res%20%3D%20await%20fetch(SB_URL%2B'%2Frest%2Fv1%2Fb2c_data'%2C%20%7Bmethod%3A'POST'%2Cheaders%3A%7Bapikey%3ASB_KEY%2CAuthorization%3A'Bearer%20'%2BSB_KEY%2C'Content-Type'%3A'application%2Fjson'%2CPrefer%3A'resolution%3Dmerge-duplicates'%7D%2Cbody%3AJSON.stringify(rows)%7D)%3B%20if%20(!res.ok)%20throw%20new%20Error('Supabase%20'%2Bres.status%2B'%20'%2B(await%20res.text()))%3B%20toast('%E2%9C%85%20Synced%20'%2Brows.length%2B'%20WH%20'%2Brows.map(r%20%3D%3E%20r.wh%2B'%3A%20new%3D'%2Br.new%2B'%20rfp%3D'%2Br.rfp%2B'%20pick%3D'%2Br.picking%2B'%20packed%3D'%2Br.picked).join('%20')%2C%20true)%3B%20%7D%20catch(e)%20%7B%20toast('%E2%9D%8C%20'%2Be.message%2C%20false)%3B%20console.error(e)%3B%20%7D%20%7D)()%3B" title="Drag me to your bookmarks bar">
+    📦 Sync Logiwa B2C
+  </a>
+</div>
+
+<ol>
+  <li>Show your bookmarks bar: <strong>Cmd+Shift+B</strong></li>
+  <li>Drag the green button above to the bookmarks bar</li>
+  <li>Open <code>wms.golocad.com</code> and log in</li>
+  <li>Click <strong>Sync Logiwa B2C</strong> from the bookmarks bar</li>
+  <li>A toast notification will confirm success with a WH breakdown</li>
+</ol>
+
+<div class="note">
+  ⚠️ The bookmarklet reads your active Logiwa session token — it only works on <code>wms.golocad.com</code> while you are logged in.
+</div>
+</body>
+</html>

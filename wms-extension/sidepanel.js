@@ -26,6 +26,34 @@ function loadPendingScan(retries) {
 }
 loadPendingScan(5); // retry up to 5× over 1 s
 
+// ── Bridge: app iframe → content script on wms.golocad.com ──────────────────
+// The app posts {type:'wms-sync-logiwa'} when the Sync button is clicked.
+// We find the WMS tab, ask content.js to do the sync, and post the result back.
+window.addEventListener('message', (e) => {
+  if (!e.data || e.data.type !== 'wms-sync-logiwa') return;
+
+  chrome.tabs.query({ url: 'https://wms.golocad.com/*' }, (tabs) => {
+    if (!tabs || !tabs.length) {
+      frame.contentWindow.postMessage({
+        type: 'wms-sync-result', ok: false,
+        error: 'WMS tab not found — open wms.golocad.com first.'
+      }, '*');
+      return;
+    }
+
+    chrome.tabs.sendMessage(tabs[0].id, { action: 'syncLogiwa' }, (resp) => {
+      const err = chrome.runtime.lastError;
+      if (err) {
+        frame.contentWindow.postMessage({
+          type: 'wms-sync-result', ok: false, error: err.message
+        }, '*');
+        return;
+      }
+      frame.contentWindow.postMessage({ type: 'wms-sync-result', ...(resp || {}) }, '*');
+    });
+  });
+});
+
 // ── After form submission: close panel if we auto-opened it, else go home ──
 window.addEventListener('message', (e) => {
   if (!e.data || e.data.type !== 'wms-close-overlay') return;

@@ -21,7 +21,9 @@
   },
   "host_permissions": [
     "https://wms.golocad.com/*",
-    "https://bellavaffa-cmd.github.io/*"
+    "https://bellavaffa-cmd.github.io/*",
+    "https://mywmsquery.logiwa.com/*",
+    "https://hmpkjmnxoidesnnoecfm.supabase.co/*"
   ],
   "permissions": ["tabs", "sidePanel", "storage"],
   "side_panel": {
