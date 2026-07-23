@@ -1892,11 +1892,6 @@
           <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
           Bookmarklet
         </a>
-        <a href="https://metabase.golocad.com/dashboard/479-daily-ops" target="_blank"
-           style="font-size:.75rem;color:var(--primary);text-decoration:none;display:flex;align-items:center;gap:4px">
-          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-          Open in Metabase
-        </a>
       </div>
     </div>
 
@@ -2512,7 +2507,7 @@
         }
         if (modeEl) { modeEl.textContent = 'Supabase ●'; modeEl.style.color = 'var(--success)'; }
       } else {
-        if (modeEl) { modeEl.textContent = 'Snapshot (run sync_b2c.py to update)'; modeEl.style.color = 'var(--muted)'; }
+        if (modeEl) { modeEl.textContent = 'Snapshot — click Sync Logiwa to update'; modeEl.style.color = 'var(--muted)'; }
       }
     } catch (err) {
       console.error('B2C fetch error:', err);
@@ -2530,10 +2525,11 @@
   //   1. Direct on wms.golocad.com (rare) — runs inline
   //   2. Extension side panel (iframe) — routes via extension → content script
   //   3. Standalone browser tab on github.io — falls back with instructions
-  async function syncLogiwaAndRefresh(btn) {
+  async function syncLogiwaAndRefresh(btn, silent = false) {
     const origHTML = btn ? btn.innerHTML : '';
     const setBusy  = () => { if (btn) { btn.disabled = true;  btn.innerHTML = '<svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" style="animation:spin 1s linear infinite"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.36-3.36L23 10M1 14l5.13 4.36A9 9 0 0020.49 15"/></svg> Syncing…'; } };
     const setIdle  = () => { if (btn) { btn.disabled = false; btn.innerHTML = origHTML; } };
+    const notify   = (msg, ok) => { if (!silent || ok) showToast(msg, ok); };
 
     // ── Path 1: direct token (running on wms.golocad.com itself) ─────────────
     const token = localStorage.getItem('token');
@@ -2570,10 +2566,10 @@
           body: JSON.stringify(rows)
         });
         if (!res.ok) throw new Error('Supabase ' + res.status);
-        showToast('Synced ' + rows.length + ' warehouse(s) from Logiwa ✓', true);
+        notify('Synced ' + rows.length + ' warehouse(s) from Logiwa ✓', true);
         await fetchB2CData();
       } catch (e) {
-        showToast('Sync failed: ' + e.message, false);
+        notify('Sync failed: ' + e.message, false);
       } finally { setIdle(); }
       return;
     }
@@ -2593,10 +2589,10 @@
         window.removeEventListener('message', onResult);
         setIdle();
         if (e.data.ok) {
-          showToast('Synced ' + e.data.count + ' warehouse(s) from Logiwa ✓', true);
+          notify('Synced ' + e.data.count + ' warehouse(s) from Logiwa ✓', true);
           fetchB2CData();
         } else {
-          showToast('Sync failed: ' + (e.data.error || 'unknown error'), false);
+          notify('Sync failed: ' + (e.data.error || 'unknown error'), false);
         }
       }
 
@@ -2606,14 +2602,14 @@
     }
 
     // ── Path 3: standalone tab on github.io — guide the user ─────────────────
-    showToast('Open the app via the WMS Chrome extension, or drag the Bookmarklet to your bar and click it on wms.golocad.com.', false);
+    notify('Open the app via the WMS Chrome extension, or drag the Bookmarklet to your bar and click it on wms.golocad.com.', false);
   }
 
   // Fetch on load, then auto-refresh every 5 min
   // Wait for b2cData (used to match the WMS scan's warehouse hint) before applying a pending scan.
   if (_extMode) document.body.classList.add('ext-mode');
   fetchB2CData().then(applyWmsScanFromUrl);
-  setInterval(fetchB2CData, 5 * 60 * 1000);
+  setInterval(() => syncLogiwaAndRefresh(null, true), 5 * 60 * 1000);
 
   // ── B2B Dashboard ─────────────────────────────────────────────────────
   let b2bData = [
