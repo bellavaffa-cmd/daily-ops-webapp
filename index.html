@@ -1303,7 +1303,7 @@
               <div style="font-size:.85rem;color:var(--text);font-weight:500">Role</div>
               <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Set user role</div>
             </div>
-            <select id="profileRole" onchange="localStorage.setItem('userRole', this.value)" style="font-size:.8rem;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
+            <select id="profileRole" onchange="localStorage.setItem('userRole', this.value); applyRoleVisibility(this.value)" style="font-size:.8rem;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
               <option value="picker">Picker</option>
               <option value="packer">Packer</option>
               <option value="cs">CS</option>
@@ -1313,8 +1313,8 @@
           <!-- Warehouse Filter -->
           <div class="theme-toggle-row" style="align-items:center">
             <div>
-              <div style="font-size:.85rem;color:var(--text);font-weight:500">Warehouse Filter</div>
-              <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Show data for a specific warehouse</div>
+              <div style="font-size:.85rem;color:var(--text);font-weight:500">Warehouse</div>
+              <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Filter by warehouse</div>
             </div>
             <select id="b2cWarehouseFilter" onchange="localStorage.setItem('b2cWarehouseFilter', this.value); renderB2C()" style="font-size:.8rem;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
               <option value="">All Warehouses</option>
@@ -1354,15 +1354,36 @@
         </div>
       </div>
     </div>
-    <div class="settings-group" id="sg-qr">
-      <div class="settings-group-header" onclick="toggleSettingsGroup('sg-qr')">
-        App QR Code
+    <div class="settings-group" id="sg-dev">
+      <div class="settings-group-header" onclick="openDevSettings()">
+        Dev
         <svg class="settings-group-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
-      <div class="settings-group-body" style="padding:16px 14px;text-align:center">
-        <div id="appQRCode" style="display:inline-block;background:#fff;padding:10px;border-radius:8px"></div>
-        <div style="font-size:.75rem;color:var(--muted);margin-top:10px">Scan to open on another device</div>
-        <div style="font-size:.7rem;color:var(--muted);margin-top:2px;word-break:break-all">bellavaffa-cmd.github.io/daily-ops-webapp</div>
+      <div class="settings-group-body">
+        <!-- PIN screen -->
+        <div id="sg-dev-pin" style="text-align:center;padding:12px 0 4px">
+          <div style="font-size:.78rem;color:var(--muted);margin-bottom:12px">Enter PIN to edit dev settings</div>
+          <div style="display:flex;gap:8px;justify-content:center;align-items:center">
+            <input type="password" id="devPinInput" placeholder="•••••" maxlength="5" inputmode="numeric"
+                   style="width:90px;text-align:center;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:.9rem;letter-spacing:4px"
+                   onkeydown="if(event.key==='Enter') verifyDevPin()" />
+            <button onclick="verifyDevPin()" class="btn btn-primary" style="padding:7px 14px;font-size:.82rem">Unlock</button>
+          </div>
+          <div id="devPinError" style="font-size:.72rem;color:var(--danger);margin-top:8px;display:none">Incorrect PIN</div>
+        </div>
+        <!-- Dev content (unlocked) -->
+        <div id="sg-dev-content" style="display:none">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div>
+              <div style="font-size:.85rem;color:var(--text);font-weight:500">Slack Webhook</div>
+              <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Post a message to Slack on every error submission</div>
+            </div>
+            <input type="url" id="slackWebhookInput" placeholder="https://hooks.slack.com/services/…"
+              oninput="saveSlackWebhook(this.value.trim())"
+              style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:.8rem" />
+            <div id="slackWebhookStatus" style="font-size:.75rem;color:var(--muted)"></div>
+          </div>
+        </div>
       </div>
     </div>
     <div class="modal-actions">
@@ -1878,51 +1899,13 @@
   <div class="view" id="view-help">
     <div class="card">
 
-      <!-- Section: Slack Notifications -->
-      <div class="help-section" id="help-s2">
-        <div class="help-section-header" onclick="toggleHelpSection('help-s2')">
-          <span class="help-section-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"/></svg>
-            Slack Notifications
-          </span>
-          <svg class="help-chevron" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-        </div>
-        <div class="help-section-body">
-          <p style="font-size:.875rem;color:var(--muted);margin-bottom:16px;line-height:1.6">
-            Get a Slack message every time a packing error is submitted. You'll need to create an
-            <strong>Incoming Webhook</strong> in your Slack workspace — no coding required.
-          </p>
-          <ol class="step-list">
-            <li>
-              <div>
-                <strong>Create a Slack App.</strong><br>
-                Go to <a href="https://api.slack.com/apps" target="_blank" style="color:var(--primary)">api.slack.com/apps</a> and click <strong>Create New App → From scratch</strong>.
-                Give it a name (e.g. <em>Packing Errors</em>) and choose your workspace.
-              </div>
-            </li>
-            <li>
-              <div>
-                <strong>Enable Incoming Webhooks.</strong><br>
-                In your app settings, go to <strong>Incoming Webhooks</strong> and toggle it <strong>On</strong>.
-                Scroll down and click <strong>Add New Webhook to Workspace</strong>.
-                Choose the channel where errors should be posted, then click <strong>Allow</strong>.
-              </div>
-            </li>
-            <li>
-              <div>
-                <strong>Copy the Webhook URL.</strong><br>
-                After authorising, a Webhook URL will appear on the page — it starts with
-                <code>https://hooks.slack.com/services/…</code>. Copy it and paste it below.
-                <div class="field" style="margin:10px 0 4px">
-                  <input type="url" id="slackWebhookInput" placeholder="https://hooks.slack.com/services/…"
-                    oninput="saveSlackWebhook(this.value.trim())" />
-                  <div id="slackWebhookStatus" style="font-size:.75rem;margin-top:4px;color:var(--muted)"></div>
-                </div>
-              </div>
-            </li>
-          </ol>
-        </div>
+      <!-- QR Code -->
+      <div style="text-align:center;padding:16px 0 12px;border-bottom:1px solid var(--border);margin-bottom:4px">
+        <div id="appQRCode" style="display:inline-block;background:#fff;padding:10px;border-radius:8px"></div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:10px">Scan to open on another device</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:2px;word-break:break-all">bellavaffa-cmd.github.io/daily-ops-webapp</div>
       </div>
+
 
       <!-- Section: Connect to Metabase removed — sync handled by Cowork connector -->
       <div class="help-section" id="help-s4" style="display:none">
@@ -2027,69 +2010,6 @@
               <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
               Open Metabase ↗
             </a>
-          </div>
-        </div>
-      </div>
-
-      <!-- Section: Make Available Online (GitHub Pages) -->
-      <div class="help-section" id="help-s3">
-        <div class="help-section-header" onclick="toggleHelpSection('help-s3')">
-          <span class="help-section-title">
-            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path stroke-linecap="round" d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
-            Make Available Online (GitHub Pages)
-          </span>
-          <svg class="help-chevron" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-        </div>
-        <div class="help-section-body">
-          <p style="font-size:.875rem;color:var(--muted);margin-bottom:16px;line-height:1.6">
-            Host this webapp at a free public URL using GitHub Pages — no server required.
-            Anyone with the link can open it from any device.
-          </p>
-          <ol class="step-list">
-            <li>
-              <div>
-                <strong>Create a GitHub account.</strong><br>
-                Go to <a href="https://github.com" target="_blank" style="color:var(--primary)">github.com</a>
-                and sign up (free). If you already have an account, sign in.
-              </div>
-            </li>
-            <li>
-              <div>
-                <strong>Create a new public repository.</strong><br>
-                Click <strong>+ → New repository</strong>. Give it a name (e.g. <code>daily-ops-webapp</code>).
-                Set visibility to <strong>Public</strong>, then click <strong>Create repository</strong>.
-              </div>
-            </li>
-            <li>
-              <div>
-                <strong>Upload this file renamed as <code>index.html</code>.</strong><br>
-                On the repo page, click <strong>uploading an existing file</strong>.
-                Rename <code>packing-error-report.html</code> to <code>index.html</code> before uploading —
-                GitHub Pages serves <code>index.html</code> as the default page.
-                Click <strong>Commit changes</strong>.
-              </div>
-            </li>
-            <li>
-              <div>
-                <strong>Enable GitHub Pages via GitHub Actions.</strong><br>
-                Go to <strong>Settings → Pages</strong>. Under <em>Source</em>, open the dropdown
-                and select <strong>GitHub Actions</strong>. Two templates appear — click
-                <strong>Configure</strong> on <strong>Static HTML</strong>.
-                Click <strong>Commit changes</strong> to save the workflow.
-              </div>
-            </li>
-            <li>
-              <div>
-                <strong>Wait ~30 s, then open your site.</strong><br>
-                GitHub runs the workflow automatically. Once it shows a green checkmark in the
-                <strong>Actions</strong> tab, your site is live at:<br>
-                <code style="word-break:break-all">https://&lt;your-username&gt;.github.io/&lt;repo-name&gt;</code>
-              </div>
-            </li>
-          </ol>
-          <div style="background:var(--tag-bg);border:1px solid #3b5098;border-radius:8px;padding:12px 14px;margin-top:14px;font-size:.82rem;color:var(--muted);line-height:1.6">
-            💡 <strong style="color:var(--text)">Tip:</strong> Bookmark the URL and share it with your team.
-            Everyone who opens it will always get the latest version of the webapp.
           </div>
         </div>
       </div>
@@ -2349,6 +2269,7 @@
     });
   }
   initTabVisibility();
+  applyRoleVisibility();
 
   // ── B2C Dashboard ─────────────────────────────────────────────────────
   // Data is a snapshot. To refresh, ask Claude: "refresh B2C data".
@@ -3048,6 +2969,17 @@
     if (pinInput) pinInput.value = '';
     if (pinErr) pinErr.style.display = 'none';
     if (group) group.classList.remove('open');
+    // Re-lock dev on close
+    const devPin = document.getElementById('sg-dev-pin');
+    const devContent = document.getElementById('sg-dev-content');
+    const devInput = document.getElementById('devPinInput');
+    const devErr = document.getElementById('devPinError');
+    const devGroup = document.getElementById('sg-dev');
+    if (devPin) devPin.style.display = '';
+    if (devContent) devContent.style.display = 'none';
+    if (devInput) devInput.value = '';
+    if (devErr) devErr.style.display = 'none';
+    if (devGroup) devGroup.classList.remove('open');
   }
 
   function openProfileSettings() {
@@ -3071,6 +3003,48 @@
       document.getElementById('sg-profile-pin').style.display = 'none';
       document.getElementById('sg-profile-content').style.display = '';
       errEl.style.display = 'none';
+    } else {
+      errEl.style.display = '';
+      input.value = '';
+      input.focus();
+    }
+  }
+
+  function applyRoleVisibility(role) {
+    role = role || localStorage.getItem('userRole') || 'picker';
+    const hideDash = role === 'picker' || role === 'packer';
+    localStorage.setItem('packingErrorTabDash', hideDash ? '0' : '1');
+    if (role === 'cs' || role === 'ops_manager') {
+      localStorage.setItem('packingErrorTabB2c', '1');
+      localStorage.setItem('packingErrorTabHelp', '1');
+    }
+    const dashToggle = document.getElementById('tabToggleDash');
+    if (dashToggle) dashToggle.checked = !hideDash;
+    applyTabVisibility();
+  }
+
+  function openDevSettings() {
+    const group = document.getElementById('sg-dev');
+    if (group.classList.contains('open')) {
+      group.classList.remove('open');
+      document.getElementById('sg-dev-pin').style.display = '';
+      document.getElementById('sg-dev-content').style.display = 'none';
+      document.getElementById('devPinInput').value = '';
+      document.getElementById('devPinError').style.display = 'none';
+    } else {
+      group.classList.add('open');
+    }
+  }
+
+  function verifyDevPin() {
+    const input = document.getElementById('devPinInput');
+    const errEl = document.getElementById('devPinError');
+    if (input.value === '12345') {
+      document.getElementById('sg-dev-pin').style.display = 'none';
+      document.getElementById('sg-dev-content').style.display = '';
+      errEl.style.display = 'none';
+      const inp = document.getElementById('slackWebhookInput');
+      if (inp && !inp.value) { inp.value = SLACK_WEBHOOK; saveSlackWebhook(SLACK_WEBHOOK); }
     } else {
       errEl.style.display = '';
       input.value = '';
