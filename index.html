@@ -1200,6 +1200,10 @@
       <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13l-1.4 7h12.8M7 13l-1-5m10 5l1-5M9 21a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z"/></svg>
       B2C Dashboard
     </button>
+    <button class="tab-btn" id="tab-btn-b2b" onclick="showView('b2b')">
+      <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path stroke-linecap="round" d="M16 12h.01"/></svg>
+      B2B Dashboard
+    </button>
     <button class="tab-btn" id="tab-btn-dash" onclick="showView('dash')">
       <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
       Error Dashboard
@@ -1227,6 +1231,10 @@
     <button class="bnav-btn active" id="bnav-btn-b2c" onclick="showView('b2c')">
       <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13l-1.4 7h12.8M7 13l-1-5m10 5l1-5M9 21a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z"/></svg>
       B2C
+    </button>
+    <button class="bnav-btn" id="bnav-btn-b2b" onclick="showView('b2b')">
+      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path stroke-linecap="round" d="M16 12h.01"/></svg>
+      B2B
     </button>
     <button class="bnav-btn" id="bnav-btn-dash" onclick="showView('dash')">
       <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
@@ -1341,6 +1349,13 @@
             <div style="font-size:.85rem;color:var(--text);font-weight:500">B2C Dashboard</div>
             <label class="toggle-switch">
               <input type="checkbox" id="tabToggleB2c" onchange="applyTabVisibility()" checked />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+          <div class="theme-toggle-row">
+            <div style="font-size:.85rem;color:var(--text);font-weight:500">B2B Dashboard</div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="tabToggleB2b" onchange="applyTabVisibility()" checked />
               <span class="toggle-track"></span>
             </label>
           </div>
@@ -1895,6 +1910,69 @@
 
   </div>
 
+  <!-- ── B2B DASHBOARD VIEW ── -->
+  <div class="view" id="view-b2b">
+
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Ops — B2B Fulfillment</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">
+          <span id="b2bDataMode">Snapshot</span> · <span id="b2bSyncTime">—</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <button id="b2bRefreshBtn" class="btn btn-ghost btn-sm" onclick="refreshB2B(this)"
+          style="display:flex;align-items:center;gap:5px;font-size:.75rem;padding:5px 10px">
+          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.36-3.36L23 10M1 14l5.13 4.36A9 9 0 0020.49 15"/></svg>
+          Refresh
+        </button>
+        <select id="b2bWarehouseFilter" onchange="localStorage.setItem('b2cWarehouseFilter', this.value); document.getElementById('b2cWarehouseFilter').value = this.value; renderB2B()"
+          style="font-size:.8rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
+          <option value="">All Warehouses</option>
+          <option value="LOCAD Bekasi FC">LOCAD Bekasi FC</option>
+          <option value="LOCAD Cabuyao (LISP) FC">LOCAD Cabuyao (LISP) FC</option>
+          <option value="LOCAD Hicom FC">LOCAD Hicom FC</option>
+          <option value="LOCAD Joo Koon FC">LOCAD Joo Koon FC</option>
+          <option value="LOCAD Lat Krabang FC">LOCAD Lat Krabang FC</option>
+          <option value="LOCAD Mesquite (TX-015) FC">LOCAD Mesquite (TX-015) FC</option>
+          <option value="LOCAD Santa Fe Springs FC (US-SAN)">LOCAD Santa Fe Springs FC</option>
+          <option value="LOCAD Umm Ramool FC">LOCAD Umm Ramool FC</option>
+        </select>
+        <a href="https://wms.golocad.com/en/wms/shipment-order/list?sot=%255B%2522814c0655-e231-45a3-9f15-1154b844f69e%2522%255D&sotqt=in&sotlbl=B2B&sos=%255B6%252C8%252C9%252C12%252C13%255D&sosqt=in&soslbl=Open,%20Ready%20to%20Pick,%20Picking%20Started,%20Ready%20to%20Pack,%20Packing%20Started" target="_blank"
+           style="font-size:.75rem;color:var(--primary);text-decoration:none;display:flex;align-items:center;gap:4px">
+          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+          Open in WMS
+        </a>
+      </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div id="b2bKpis" style="margin-bottom:20px"></div>
+
+    <!-- Warehouse Breakdown -->
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Warehouse Breakdown</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+          <thead>
+            <tr style="background:var(--surface2)">
+              <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Warehouse</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#fb923c;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Open</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#fcd34d;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Ready to Pick</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#93c5fd;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Picking Started</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#86efac;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Ready to Pack</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#a78bfa;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Packing Started</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--text);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Total</th>
+            </tr>
+          </thead>
+          <tbody id="b2bWHTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
   <!-- ── HELP VIEW ── -->
   <div class="view" id="view-help">
     <div class="card">
@@ -2224,6 +2302,7 @@
   // ── Tab visibility ─────────────────────────────────────────────────────
   const TAB_KEYS = [
     { key: 'packingErrorTabB2c',  btnId: 'tab-btn-b2c',  bnavId: 'bnav-btn-b2c',  view: 'b2c',   toggleId: 'tabToggleB2c'  },
+    { key: 'packingErrorTabB2b',  btnId: 'tab-btn-b2b',  bnavId: 'bnav-btn-b2b',  view: 'b2b',   toggleId: 'tabToggleB2b'  },
     { key: 'packingErrorTabDash', btnId: 'tab-btn-dash', bnavId: 'bnav-btn-dash', view: 'dash',  toggleId: 'tabToggleDash' },
     { key: 'packingErrorTabHelp', btnId: 'tab-btn-help', bnavId: 'bnav-btn-help', view: 'help',  toggleId: 'tabToggleHelp' },
   ];
@@ -2437,6 +2516,136 @@
   if (_extMode) document.body.classList.add('ext-mode');
   fetchB2CData().then(applyWmsScanFromUrl);
   setInterval(fetchB2CData, 5 * 60 * 1000);
+
+  // ── B2B Dashboard ─────────────────────────────────────────────────────
+  let b2bData = [
+    { wh: 'LOCAD Bekasi FC',                    open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0 },
+    { wh: 'LOCAD Cabuyao (LISP) FC',            open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0 },
+    { wh: 'LOCAD Hicom FC',                     open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0 },
+    { wh: 'LOCAD Joo Koon FC',                  open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0 },
+    { wh: 'LOCAD Lat Krabang FC',               open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0 },
+    { wh: 'LOCAD Mesquite (TX-015) FC',         open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0 },
+    { wh: 'LOCAD Santa Fe Springs FC (US-SAN)', open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0 },
+    { wh: 'LOCAD Umm Ramool FC',                open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0 },
+  ];
+
+  function renderB2B() {
+    const filter = localStorage.getItem('b2cWarehouseFilter') || '';
+    const sel = document.getElementById('b2bWarehouseFilter');
+    if (sel && sel.value !== filter) sel.value = filter;
+
+    const filtered = filter ? b2bData.filter(r => r.wh === filter) : b2bData;
+
+    const tot = filtered.reduce((a, r) => ({
+      open:       a.open       + (r.open       || 0),
+      rfp:        a.rfp        + (r.rfp        || 0),
+      picking:    a.picking    + (r.picking    || 0),
+      pack_ready: a.pack_ready + (r.pack_ready || 0),
+      packing:    a.packing    + (r.packing    || 0),
+    }), { open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0 });
+
+    const total = tot.open + tot.rfp + tot.picking + tot.pack_ready + tot.packing;
+    const fmt   = n => n.toLocaleString();
+    const pct   = (n, d) => d ? (n / d * 100).toFixed(1) + '%' : '—';
+
+    // KPI cards
+    const statuses = [
+      { label: 'Open',             count: tot.open,       color: '#fb923c' },
+      { label: 'Ready to Pick',    count: tot.rfp,        color: '#fcd34d' },
+      { label: 'Picking Started',  count: tot.picking,    color: '#93c5fd' },
+      { label: 'Ready to Pack',    count: tot.pack_ready, color: '#86efac' },
+      { label: 'Packing Started',  count: tot.packing,    color: '#a78bfa' },
+      { label: 'Total Orders',     count: total,          color: 'var(--text)' },
+    ];
+
+    const kpiEl = document.getElementById('b2bKpis');
+    if (kpiEl) kpiEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px">
+      ${statuses.map(s => `
+        <div class="card" style="padding:16px 18px">
+          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px">${s.label}</div>
+          <div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${fmt(s.count)}</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${s.label === 'Total Orders' ? 'across all statuses' : pct(s.count, total) + ' of total'}</div>
+        </div>`).join('')}
+    </div>`;
+
+    const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color||'var(--text)'};font-size:.82rem">${fmt(n)}</td>`;
+    let html = filtered.map(r => {
+      const t = (r.open||0) + (r.rfp||0) + (r.picking||0) + (r.pack_ready||0) + (r.packing||0);
+      return `<tr style="border-top:1px solid var(--border)">
+        <td style="padding:10px 18px;color:var(--text);white-space:nowrap;font-size:.82rem">${r.wh}</td>
+        ${tdN(r.open       || 0, '#fb923c')}
+        ${tdN(r.rfp        || 0, '#fcd34d')}
+        ${tdN(r.picking    || 0, '#93c5fd')}
+        ${tdN(r.pack_ready || 0, '#86efac')}
+        ${tdN(r.packing    || 0, '#a78bfa')}
+        ${tdN(t,                 'var(--text)')}
+      </tr>`;
+    }).join('');
+    if (filtered.length > 1) {
+      html += `<tr style="border-top:2px solid var(--border);background:var(--surface2)">
+        <td style="padding:10px 18px;color:var(--text);font-weight:700;font-size:.82rem">Total</td>
+        ${tdN(tot.open,       '#fb923c')}
+        ${tdN(tot.rfp,        '#fcd34d')}
+        ${tdN(tot.picking,    '#93c5fd')}
+        ${tdN(tot.pack_ready, '#86efac')}
+        ${tdN(tot.packing,    '#a78bfa')}
+        ${tdN(total,          'var(--text)')}
+      </tr>`;
+    }
+    const tbl = document.getElementById('b2bWHTable');
+    if (tbl) tbl.innerHTML = html;
+  }
+
+  async function fetchB2BData() {
+    const modeEl = document.getElementById('b2bDataMode');
+    if (modeEl) { modeEl.textContent = 'Loading…'; modeEl.style.color = 'var(--muted)'; }
+    try {
+      const res = await fetch(SB_URL + '/b2b_data?select=*&order=wh.asc', { headers: SB_HDR });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const rows = await res.json();
+      if (rows && rows.length) {
+        b2bData = rows.map(r => ({
+          wh:         r.wh,
+          open:       r.open       || 0,
+          rfp:        r.rfp        || 0,
+          picking:    r.picking    || 0,
+          pack_ready: r.pack_ready || 0,
+          packing:    r.packing    || 0,
+        }));
+        renderB2B();
+        const latest = rows.reduce((a, b) => (a.updated_at > b.updated_at ? a : b), rows[0]);
+        if (latest && latest.updated_at) {
+          const st = document.getElementById('b2bSyncTime');
+          if (st) st.textContent = new Date(latest.updated_at).toLocaleString('en-GB', {
+            day: 'numeric', month: 'short', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
+          });
+        }
+        if (modeEl) { modeEl.textContent = 'Supabase ●'; modeEl.style.color = 'var(--success)'; }
+      } else {
+        if (modeEl) { modeEl.textContent = 'Snapshot — no data yet'; modeEl.style.color = 'var(--muted)'; }
+      }
+    } catch (err) {
+      console.error('B2B fetch error:', err);
+      if (modeEl) { modeEl.textContent = 'Offline — using snapshot'; modeEl.style.color = 'var(--danger)'; }
+    }
+  }
+
+  async function refreshB2B(btn) {
+    if (btn) { btn.disabled = true; btn.style.opacity = '.5'; }
+    await fetchB2BData();
+    if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+  }
+
+  // Restore warehouse filter and init B2B
+  (function initB2B() {
+    const saved = localStorage.getItem('b2cWarehouseFilter') || '';
+    const sel = document.getElementById('b2bWarehouseFilter');
+    if (sel) sel.value = saved;
+    renderB2B();
+  })();
+  fetchB2BData();
+  setInterval(fetchB2BData, 5 * 60 * 1000);
 
   // ── Warehouse Picker ──────────────────────────────────────────────────
   function showWarehousePicker() {
