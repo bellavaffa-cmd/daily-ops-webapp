@@ -28,18 +28,38 @@ loadPendingScan(5); // retry up to 5× over 1 s
 
 // ── Bridge: iframe "Sync Logiwa" → background service worker ────────────────
 // Background service worker bypasses CORS for host_permissions URLs reliably.
-// Sidepanel just relays the trigger and forwards the result back to the iframe.
+// Sidepanel relays the trigger and forwards the result back to the iframe via
+// two paths: runtime.sendMessage (fast) and storage.onChanged (fallback).
+
+let _syncPendingSince = 0; // timestamp when sync was last triggered
+
 window.addEventListener('message', (e) => {
   if (!e.data || e.data.type !== 'wms-sync-logiwa') return;
+  _syncPendingSince = Date.now();
+  // Clear any stale result from a previous sync so storage fallback fires fresh
+  chrome.storage.session.remove('logiwaSync');
   chrome.runtime.sendMessage({ action: 'triggerLogiwaSync' }, () => {
     void chrome.runtime.lastError; // background handles everything async
   });
 });
 
-// Forward the async result from background → iframe
+// Fast path: runtime message from background
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.action !== 'syncLogiwaResult') return;
+  console.log('[WMS sp] syncLogiwaResult (fast path):', msg.ok, msg.error || '');
+  _syncPendingSince = 0;
   frame.contentWindow.postMessage({ type: 'wms-sync-result', ...msg }, '*');
+});
+
+// Fallback path: background writes to session storage → sidepanel picks it up
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'session' || !changes.logiwaSync) return;
+  const result = changes.logiwaSync.newValue;
+  if (!result || !_syncPendingSince) return; // no sync in progress
+  if (result.ts < _syncPendingSince) return;  // stale result from a previous sync
+  console.log('[WMS sp] syncLogiwaResult (storage fallback):', result.ok, result.error || '');
+  _syncPendingSince = 0;
+  frame.contentWindow.postMessage({ type: 'wms-sync-result', ...result }, '*');
 });
 
 // ── After form submission: close panel if we auto-opened it, else go home ──

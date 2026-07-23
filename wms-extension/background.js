@@ -58,18 +58,29 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // ── Logiwa B2C sync ────────────────────────────────────────────────────────
   // Runs in the background service worker which reliably bypasses CORS for
   // URLs in host_permissions (unlike extension pages such as sidepanel.html).
+  // IMPORTANT: return true keeps the message port open, which acts as a
+  // service-worker keepalive in MV3. Without it the SW can be terminated
+  // mid-fetch (between returning from the handler and the first network call).
   if (msg.action === 'triggerLogiwaSync') {
     (async () => {
-      const broadcast = (payload) => {
+      // Notify the sidepanel of the result via both sendMessage (fast path)
+      // and storage (reliable fallback in case the port closes first).
+      const broadcast = async (payload) => {
+        // Write to session storage first — sidepanel polls this as fallback
+        await chrome.storage.session.set({ logiwaSync: { ...payload, ts: Date.now() } });
+        // Also send a runtime message for the fast path
         chrome.runtime.sendMessage({ action: 'syncLogiwaResult', ...payload }, () => {
           void chrome.runtime.lastError; // suppress "no listener" if sidepanel closed
         });
       };
 
       try {
+        console.log('[WMS bg] triggerLogiwaSync — querying WMS tabs');
+
         // 1. Find a WMS tab with the content script running
         const tabs = await chrome.tabs.query({ url: 'https://wms.golocad.com/*' });
         if (!tabs || !tabs.length) throw new Error('WMS tab not found — open wms.golocad.com first.');
+        console.log('[WMS bg] WMS tab found:', tabs[0].id, tabs[0].url);
 
         // 2. Get the Logiwa session token from the page's localStorage
         const tokenResp = await new Promise((resolve) => {
@@ -80,12 +91,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         });
         if (!tokenResp || !tokenResp.token) throw new Error('Reload the wms.golocad.com tab and try again.');
         const token = tokenResp.token;
+        console.log('[WMS bg] got token, fetching Logiwa...');
 
         // 3. Fetch all unshipped orders from Logiwa
         const LG_API = 'https://mywmsquery.logiwa.com';
         const SM     = { 6: 'new', 8: 'rfp', 9: 'picking', 12: 'picked' };
         let all = [], page = 0, total = 1;
         while (all.length < total) {
+          console.log('[WMS bg] Logiwa page', page, '— fetched', all.length, '/', total);
           const r = await fetch(`${LG_API}/api/shipmentorder/list/unshipped/i/${page}/s/1000`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
@@ -97,6 +110,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           total = d.totalCount || 0;
           page++;
         }
+        console.log('[WMS bg] Logiwa fetch done — total orders:', all.length);
 
         // 4. Pivot: warehouseCode × status → counts
         const cols = [...new Set(Object.values(SM))];
@@ -108,6 +122,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           whs[wh][col]++;
         }
         const rows = Object.values(whs).map(r => ({ ...r, updated_at: new Date().toISOString() }));
+        console.log('[WMS bg] pivoted rows:', rows.length, 'warehouses');
 
         // 5. Upsert to Supabase
         const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co';
@@ -121,12 +136,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           body: JSON.stringify(rows)
         });
         if (!res.ok) throw new Error('Supabase error ' + res.status + ': ' + await res.text());
+        console.log('[WMS bg] Supabase upsert OK');
 
-        broadcast({ ok: true, count: rows.length });
+        await broadcast({ ok: true, count: rows.length });
       } catch (e) {
-        broadcast({ ok: false, error: e.message });
+        console.error('[WMS bg] sync error:', e.message);
+        await broadcast({ ok: false, error: e.message });
+      } finally {
+        sendResponse({}); // close the port — signals async work is done
       }
     })();
-    return false;
+    return true; // ← keep message port open as SW keepalive until finally{} runs
   }
 });
