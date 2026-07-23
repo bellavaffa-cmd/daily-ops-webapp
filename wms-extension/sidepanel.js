@@ -45,7 +45,8 @@ window.addEventListener('message', (e) => {
       const err = chrome.runtime.lastError;
       if (err) {
         frame.contentWindow.postMessage({
-          type: 'wms-sync-result', ok: false, error: err.message
+          type: 'wms-sync-result', ok: false,
+          error: 'Reload the wms.golocad.com tab and try again (content script not running)'
         }, '*');
         return;
       }
