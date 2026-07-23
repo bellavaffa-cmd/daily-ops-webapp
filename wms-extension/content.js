@@ -268,68 +268,10 @@
 
 })();
 
-// ── Logiwa B2C sync — triggered by the side panel app via extension message ──
-// MV3 pattern: acknowledge immediately, then send result via chrome.runtime.sendMessage
-// (avoids the MV3 message channel closing before async fetch completes).
+// ── Logiwa token getter — sidepanel does the actual API fetch (bypasses CORS) ──
+// Content script only reads localStorage; sidepanel.js handles Logiwa + Supabase calls.
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.action !== 'syncLogiwa') return;
-
-  const token = localStorage.getItem('token');
-  if (!token) {
-    sendResponse({ ok: false, error: 'Not logged in to Logiwa — open wms.golocad.com and log in first.' });
-    return false;
-  }
-
-  // Acknowledge immediately so Chrome doesn't close the channel
-  sendResponse({ ok: 'started' });
-
-  const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co';
-  const SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
-  const LG_API = 'https://mywmsquery.logiwa.com';
-  const SM     = { 6: 'new', 8: 'rfp', 9: 'picking', 12: 'picked' };
-
-  (async () => {
-    try {
-      let all = [], page = 0, total = 1;
-      while (all.length < total) {
-        const r = await fetch(LG_API + '/api/shipmentorder/list/unshipped/i/' + page + '/s/1000', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-          body: '{}'
-        });
-        if (!r.ok) throw new Error('Logiwa API error ' + r.status);
-        const d = await r.json();
-        all   = all.concat(d.data || []);
-        total = d.totalCount || 0;
-        page++;
-      }
-
-      const cols = [...new Set(Object.values(SM))];
-      const whs  = {};
-      for (const o of all) {
-        const wh  = o.warehouseCode;
-        const col = SM[o.shipmentOrderStatusId];
-        if (!wh || !col) continue;
-        if (!whs[wh]) { whs[wh] = { wh }; cols.forEach(c => whs[wh][c] = 0); }
-        whs[wh][col]++;
-      }
-      const rows = Object.values(whs).map(r => ({ ...r, updated_at: new Date().toISOString() }));
-
-      const res = await fetch(SB_URL + '/rest/v1/b2c_data', {
-        method: 'POST',
-        headers: {
-          apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY,
-          'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates',
-        },
-        body: JSON.stringify(rows),
-      });
-      if (!res.ok) throw new Error('Supabase error ' + res.status + ': ' + await res.text());
-
-      chrome.runtime.sendMessage({ action: 'syncLogiwaResult', ok: true, count: rows.length });
-    } catch (e) {
-      chrome.runtime.sendMessage({ action: 'syncLogiwaResult', ok: false, error: e.message });
-    }
-  })();
-
+  if (msg.action !== 'getLogiwaToken') return;
+  sendResponse({ token: localStorage.getItem('token') || null });
   return false;
 });
