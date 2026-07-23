@@ -2,13 +2,15 @@
 """
 sync_ops.py — Sync B2C and B2B fulfillment data from Metabase to Supabase.
 
+Queries Metabase directly via MBQL (no dashboard card scanning needed).
+
 Usage:
-  1. Fill in METABASE_API_KEY below.
-  2. Run:  python3 sync_ops.py          # sync both B2C and B2B
-           python3 sync_ops.py --b2c    # B2C only
-           python3 sync_ops.py --b2b    # B2B only
-           python3 sync_ops.py --list   # list all cards in each dashboard
-  3. Schedule with cron:  0 * * * * python3 /path/to/sync_ops.py
+  python3 sync_ops.py          # sync both B2C and B2B
+  python3 sync_ops.py --b2c    # B2C only
+  python3 sync_ops.py --b2b    # B2B only
+  python3 sync_ops.py --dry    # print results without writing to Supabase
+
+Schedule with cron:  0 * * * * python3 /path/to/sync_ops.py
 """
 
 import requests
@@ -22,46 +24,43 @@ METABASE_API_KEY = ""          # Paste your API key here
 SUPABASE_URL = "https://hmpkjmnxoidesnnoecfm.supabase.co"
 SUPABASE_KEY = "sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP"
 
-B2C_DASHBOARD_ID = 479         # Daily Ops B2C dashboard
-B2B_DASHBOARD_ID = 0           # Set to your B2B Metabase dashboard ID (run --list to find it)
+# ── Metabase field IDs (discovered via API — do not change) ───────────────────
+# fct_warehouse_performance (table 27) — B2C
+B2C_TABLE          = 27
+B2C_FIELD_WAREHOUSE = 539   # "warehouse"
+B2C_FIELD_STATUS    = 524   # "fulfilment_status"
 
-# ── Column maps ───────────────────────────────────────────────────────────────
-B2C_COL_MAP = {
-    "warehouse":          "wh",
-    "wh":                 "wh",
-    "warehouse_name":     "wh",
-    "new":                "new",
-    "new_orders":         "new",
-    "rfp":                "rfp",
-    "ready_for_picking":  "rfp",
-    "picking":            "picking",
-    "in_picking":         "picking",
-    "picked":             "picked",
-    "total_picked":       "picked",
-    "ready_to_pack":      "picked",   # B2C "Ready to Pack" = picked column
-    "type":               "type",
-    "country":            "country",
+# fct_outbound_bulk_orders (table 28) — B2B
+B2B_TABLE              = 28
+B2B_FIELD_WAREHOUSE    = 558   # "warehouse_name"
+B2B_FIELD_STATUS       = 567   # "consignment_status"
+
+DATABASE_ID = 2
+
+# ── Status mappings ───────────────────────────────────────────────────────────
+# B2C: fulfilment_status → Supabase column
+B2C_STATUS_MAP = {
+    "NEW":               "new",      # Open — just arrived, not yet in picking
+    "RELEASED":          "new",      # Released to warehouse floor (still Open)
+    "READY_FOR_PICKING": "rfp",      # Ready for Picking
+    "PICKING":           "picking",  # Picking Started
+    "PICKED":            "picked",   # Ready to Pack (items picked, awaiting packing)
 }
 
-B2B_COL_MAP = {
-    "warehouse":          "wh",
-    "wh":                 "wh",
-    "warehouse_name":     "wh",
-    "open":               "open",
-    "new":                "open",     # "Open" status in B2B
-    "rfp":                "rfp",
-    "ready_to_pick":      "rfp",
-    "ready_for_picking":  "rfp",
-    "picking":            "picking",
-    "picking_started":    "picking",
-    "in_picking":         "picking",
-    "pack_ready":         "pack_ready",
-    "ready_to_pack":      "pack_ready",
-    "packing":            "packing",
-    "packing_started":    "packing",
+# B2B: consignment_status → Supabase column
+B2B_STATUS_MAP = {
+    "CONFIRMED":         "open",       # Open (confirmed, not yet in picking)
+    "READY_FOR_PICKING": "rfp",        # Ready to Pick
+    "PICKING":           "picking",    # Picking Started
+    "PICKED":            "pack_ready", # Ready to Pack
+    "PACKING":           "packing",    # Packing Started
 }
 
-# ── HTTP helpers ──────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
+def now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+
 def mb_headers():
     if not METABASE_API_KEY:
         print("ERROR: METABASE_API_KEY is not set. Edit sync_ops.py and add your API key.")
@@ -78,152 +77,115 @@ def sb_headers():
     }
 
 
-# ── Metabase helpers ──────────────────────────────────────────────────────────
-def get_dashboard_cards(dashboard_id):
-    url = f"{METABASE_URL}/api/dashboard/{dashboard_id}"
-    res = requests.get(url, headers=mb_headers(), timeout=30)
+def run_mbql(table_id, warehouse_field_id, status_field_id, statuses):
+    """Run a grouped MBQL query: count(*) GROUP BY warehouse, status WHERE status IN (...)"""
+    query = {
+        "database": DATABASE_ID,
+        "type":     "query",
+        "query": {
+            "source-table": table_id,
+            "aggregation":  [["count"]],
+            "breakout": [
+                ["field", warehouse_field_id, None],
+                ["field", status_field_id,   None],
+            ],
+            "filter": ["=", ["field", status_field_id, None]] + list(statuses),
+        }
+    }
+    url = f"{METABASE_URL}/api/dataset"
+    res = requests.post(url, headers=mb_headers(), json=query, timeout=60)
     res.raise_for_status()
-    return res.json().get("dashcards", [])
+    d = res.json()
+    if "error" in d:
+        raise RuntimeError(f"Metabase query error: {d['error']}")
+    cols = [c["name"] for c in d["data"]["cols"]]
+    return [dict(zip(cols, row)) for row in d["data"]["rows"]]
 
 
-def execute_card(card_id):
-    url = f"{METABASE_URL}/api/card/{card_id}/query/json"
-    res = requests.post(url, headers=mb_headers(), timeout=60)
-    res.raise_for_status()
-    return res.json()
-
-
-# ── Card detection ────────────────────────────────────────────────────────────
-def _has_wh_and_metrics(rows, col_map, metric_keys):
-    if not rows or not isinstance(rows[0], dict):
-        return False
-    keys = {k.lower().strip() for k in rows[0].keys()}
-    has_wh     = any(k in col_map for k in keys)
-    has_metric = any(k in metric_keys for k in keys)
-    return has_wh and has_metric
-
-
-def looks_like_b2c_card(rows):
-    return _has_wh_and_metrics(rows, B2C_COL_MAP,
-        {"new", "rfp", "picking", "picked", "new_orders",
-         "ready_for_picking", "in_picking", "total_picked", "ready_to_pack"})
-
-
-def looks_like_b2b_card(rows):
-    return _has_wh_and_metrics(rows, B2B_COL_MAP,
-        {"open", "rfp", "picking", "pack_ready", "packing",
-         "ready_to_pick", "picking_started", "ready_to_pack", "packing_started"})
-
-
-# ── Row mappers ───────────────────────────────────────────────────────────────
-def map_b2c_row(row):
-    out = {"updated_at": datetime.now(timezone.utc).isoformat()}
-    for k, v in row.items():
-        mapped = B2C_COL_MAP.get(k.lower().strip())
+def pivot_to_warehouses(rows, warehouse_col, status_col, status_map):
+    """Group rows by warehouse and pivot status counts into columns."""
+    zero_row = {col: 0 for col in set(status_map.values())}
+    warehouses = {}
+    for r in rows:
+        wh     = r.get(warehouse_col)
+        status = r.get(status_col)
+        count  = r.get("count", 0) or 0
+        if not wh:
+            continue
+        if wh not in warehouses:
+            warehouses[wh] = {"wh": wh, **zero_row}
+        mapped = status_map.get(status)
         if mapped:
-            out[mapped] = v
-    return out if "wh" in out else None
+            warehouses[wh][mapped] += count
+    return list(warehouses.values())
 
 
-def map_b2b_row(row):
-    out = {"updated_at": datetime.now(timezone.utc).isoformat()}
-    for k, v in row.items():
-        mapped = B2B_COL_MAP.get(k.lower().strip())
-        if mapped:
-            out[mapped] = v
-    return out if "wh" in out else None
-
-
-# ── Supabase upserts ──────────────────────────────────────────────────────────
-def upsert(table, rows):
+def upsert(table, rows, dry_run=False):
+    ts = now_iso()
+    payload = [{**r, "updated_at": ts} for r in rows]
+    if dry_run:
+        print(f"  [dry] Would upsert {len(payload)} rows to {table}:")
+        for r in payload:
+            print(f"    {r}")
+        return
     url = f"{SUPABASE_URL}/rest/v1/{table}"
-    res = requests.post(url, headers=sb_headers(), json=rows, timeout=30)
+    res = requests.post(url, headers=sb_headers(), json=payload, timeout=30)
     if not res.ok:
         print(f"  Supabase error {res.status_code}: {res.text}")
         res.raise_for_status()
-    print(f"  ✓ Upserted {len(rows)} rows to {table}")
+    print(f"  ✓ Upserted {len(payload)} rows to {table}")
 
 
 # ── Sync functions ────────────────────────────────────────────────────────────
-def sync_dashboard(dashboard_id, label, card_detector, row_mapper, table):
-    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Syncing {label} (dashboard {dashboard_id})…")
-    if not dashboard_id:
-        print(f"  Skipped — {label}_DASHBOARD_ID not set. Run --list to find it.")
-        return False
-
-    cards = get_dashboard_cards(dashboard_id)
-    print(f"  Found {len(cards)} cards")
-
-    synced = False
-    for dc in cards:
-        card = dc.get("card", {})
-        card_id   = card.get("id")
-        card_name = card.get("name", "?")
-        if not card_id:
-            continue
-        print(f"  Trying card {card_id}: {card_name}…")
-        try:
-            rows = execute_card(card_id)
-        except Exception as e:
-            print(f"    Skipped ({e})")
-            continue
-
-        if card_detector(rows):
-            print(f"  ✓ Matched: {card_name}")
-            mapped = [row_mapper(r) for r in rows]
-            mapped = [r for r in mapped if r and r.get("wh")]
-            if mapped:
-                upsert(table, mapped)
-                synced = True
-        else:
-            print(f"    Not a {label} card — skipping")
-
-    return synced
+def sync_b2c(dry_run=False):
+    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Syncing B2C…")
+    rows = run_mbql(
+        B2C_TABLE, B2C_FIELD_WAREHOUSE, B2C_FIELD_STATUS,
+        list(B2C_STATUS_MAP.keys())
+    )
+    print(f"  Metabase returned {len(rows)} rows")
+    warehouses = pivot_to_warehouses(
+        rows, "warehouse", "fulfilment_status", B2C_STATUS_MAP
+    )
+    print(f"  Pivoted to {len(warehouses)} warehouses")
+    for w in warehouses:
+        print(f"    {w['wh']}: new={w['new']} rfp={w['rfp']} picking={w['picking']} picked={w['picked']}")
+    upsert("b2c_data", warehouses, dry_run)
 
 
-def list_all_cards():
-    for label, did in [("B2C", B2C_DASHBOARD_ID), ("B2B", B2B_DASHBOARD_ID)]:
-        if not did:
-            print(f"\n{label}: dashboard ID not set")
-            continue
-        print(f"\nCards in {label} dashboard ({did}):")
-        try:
-            cards = get_dashboard_cards(did)
-            for dc in cards:
-                card = dc.get("card", {})
-                print(f"  [{card.get('id')}] {card.get('name', '?')}")
-        except Exception as e:
-            print(f"  Error: {e}")
+def sync_b2b(dry_run=False):
+    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Syncing B2B…")
+    rows = run_mbql(
+        B2B_TABLE, B2B_FIELD_WAREHOUSE, B2B_FIELD_STATUS,
+        list(B2B_STATUS_MAP.keys())
+    )
+    print(f"  Metabase returned {len(rows)} rows")
+    warehouses = pivot_to_warehouses(
+        rows, "warehouse_name", "consignment_status", B2B_STATUS_MAP
+    )
+    print(f"  Pivoted to {len(warehouses)} warehouses")
+    for w in warehouses:
+        print(f"    {w['wh']}: open={w['open']} rfp={w['rfp']} picking={w['picking']} pack_ready={w['pack_ready']} packing={w['packing']}")
+    upsert("b2b_data", warehouses, dry_run)
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main():
     args = set(sys.argv[1:])
-    run_b2c = "--b2b" not in args  # default: both; --b2c or neither → run B2C
-    run_b2b = "--b2c" not in args  # default: both; --b2b or neither → run B2B
+    dry  = "--dry" in args
+    run_b2c = "--b2b" not in args
+    run_b2b = "--b2c" not in args
 
-    results = []
+    if dry:
+        print("=== DRY RUN — no data will be written to Supabase ===")
 
     if run_b2c:
-        ok = sync_dashboard(B2C_DASHBOARD_ID, "B2C",
-                            looks_like_b2c_card, map_b2c_row, "b2c_data")
-        results.append(("B2C", ok))
-
+        sync_b2c(dry)
     if run_b2b:
-        ok = sync_dashboard(B2B_DASHBOARD_ID, "B2B",
-                            looks_like_b2b_card, map_b2b_row, "b2b_data")
-        results.append(("B2B", ok))
+        sync_b2b(dry)
 
-    print()
-    for label, ok in results:
-        if ok:
-            print(f"✅ {label} sync complete — press Refresh in the app to see updated data.")
-        else:
-            print(f"⚠️  {label}: no matching card found. Run --list to see available cards.")
+    print("\n✅ Done. Open the app and press Refresh to see updated data.")
 
 
 if __name__ == "__main__":
-    if "--list" in sys.argv:
-        list_all_cards()
-    else:
-        main()
+    main()
