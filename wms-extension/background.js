@@ -56,32 +56,30 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     chrome.tabs.remove(sender.tab.id);
   }
 
-  // ── Logiwa B2C sync ────────────────────────────────────────────────────────
-  // Runs in the background service worker which reliably bypasses CORS for
-  // URLs in host_permissions (unlike extension pages such as sidepanel.html).
-  // IMPORTANT: return true keeps the message port open, which acts as a
-  // service-worker keepalive in MV3. Without it the SW can be terminated
-  // mid-fetch (between returning from the handler and the first network call).
-  if (msg.action === 'triggerLogiwaSync') {
+  // ── Shared Logiwa sync helper ──────────────────────────────────────────────
+  // config: { orderType, statusMap, sbTable, resultAction, storageKey }
+  // return true keeps the message port open as a SW keepalive in MV3.
+  if (msg.action === 'triggerLogiwaSync' || msg.action === 'triggerLogiwaB2BSync') {
+    const isB2B = msg.action === 'triggerLogiwaB2BSync';
+    const config = isB2B
+      ? { orderType: 'B2B', statusMap: { 6:'open', 8:'rfp', 9:'picking', 12:'pack_ready', 13:'packing' }, sbTable: 'b2b_data', resultAction: 'syncLogiwaB2BResult', storageKey: 'logiwaB2BSync' }
+      : { orderType: 'B2C', statusMap: { 6:'new',  8:'rfp', 9:'picking', 12:'picked',     13:'packing' }, sbTable: 'b2c_data', resultAction: 'syncLogiwaResult',    storageKey: 'logiwaSync'    };
+
     (async () => {
-      // Notify the sidepanel of the result via both sendMessage (fast path)
-      // and storage (reliable fallback in case the port closes first).
       const broadcast = async (payload) => {
-        // Write to session storage first — sidepanel polls this as fallback
-        await chrome.storage.session.set({ logiwaSync: { ...payload, ts: Date.now() } });
-        // Also send a runtime message for the fast path
-        chrome.runtime.sendMessage({ action: 'syncLogiwaResult', ...payload }, () => {
-          void chrome.runtime.lastError; // suppress "no listener" if sidepanel closed
+        await chrome.storage.session.set({ [config.storageKey]: { ...payload, ts: Date.now() } });
+        chrome.runtime.sendMessage({ action: config.resultAction, ...payload }, () => {
+          void chrome.runtime.lastError;
         });
       };
 
       try {
-        console.log('[WMS bg] triggerLogiwaSync — querying WMS tabs');
+        console.log('[WMS bg]', config.orderType, 'sync — querying WMS tabs');
 
         // 1. Find a WMS tab with the content script running
         const tabs = await chrome.tabs.query({ url: 'https://wms.golocad.com/*' });
         if (!tabs || !tabs.length) throw new Error('WMS tab not found — open wms.golocad.com first.');
-        console.log('[WMS bg] WMS tab found:', tabs[0].id, tabs[0].url);
+        console.log('[WMS bg] WMS tab found:', tabs[0].id);
 
         // 2. Get the Logiwa session token from the page's localStorage
         const tokenResp = await new Promise((resolve) => {
@@ -96,7 +94,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
         // 3. Fetch all unshipped orders from Logiwa
         const LG_API = 'https://mywmsquery.logiwa.com';
-        const SM     = { 6: 'new', 8: 'rfp', 9: 'picking', 12: 'picked', 13: 'packing' };
+        const SM     = config.statusMap;
         let all = [], page = 0, total = 1;
         while (all.length < total) {
           console.log('[WMS bg] Logiwa page', page, '— fetched', all.length, '/', total);
@@ -113,11 +111,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
         console.log('[WMS bg] Logiwa fetch done — total orders:', all.length);
 
-        // 4. Pivot: warehouseCode × status → counts
+        // 4. Pivot: warehouseCode × status → counts (filter by orderType)
         const cols = [...new Set(Object.values(SM))];
         const whs  = {};
         for (const o of all) {
-          if (o.shipmentOrderTypeName !== 'B2C') continue;
+          if (o.shipmentOrderTypeName !== config.orderType) continue;
           const wh = o.warehouseCode, col = SM[o.shipmentOrderStatusId];
           if (!wh || !col) continue;
           if (!whs[wh]) { whs[wh] = { wh }; cols.forEach(c => whs[wh][c] = 0); }
@@ -129,7 +127,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // 5. Upsert to Supabase
         const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co';
         const SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
-        const res = await fetch(`${SB_URL}/rest/v1/b2c_data`, {
+        const res = await fetch(`${SB_URL}/rest/v1/${config.sbTable}`, {
           method: 'POST',
           headers: {
             apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY,
@@ -145,9 +143,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         console.error('[WMS bg] sync error:', e.message);
         await broadcast({ ok: false, error: e.message });
       } finally {
-        sendResponse({}); // close the port — signals async work is done
+        sendResponse({});
       }
     })();
-    return true; // ← keep message port open as SW keepalive until finally{} runs
+    return true;
   }
 });

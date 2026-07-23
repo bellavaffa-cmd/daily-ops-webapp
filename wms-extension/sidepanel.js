@@ -33,35 +33,56 @@ loadPendingScan(5); // retry up to 5× over 1 s
 
 let _syncPendingSince = 0; // timestamp when sync was last triggered
 
-window.addEventListener('message', (e) => {
-  if (!e.data || e.data.type !== 'wms-sync-logiwa') return;
-  console.log('[WMS sp] wms-sync-logiwa received — relaying to background');
-  _syncPendingSince = Date.now();
-  // Clear any stale result from a previous sync so storage fallback fires fresh
-  chrome.storage.session.remove('logiwaSync');
-  chrome.runtime.sendMessage({ action: 'triggerLogiwaSync' }, (resp) => {
-    console.log('[WMS sp] sendMessage cb — lastError:', chrome.runtime.lastError?.message, 'resp:', resp);
-    void chrome.runtime.lastError;
+// Generic sync relay: handles both B2C and B2B
+// config: { msgType, bgAction, storageKey, resultMsgType, resultBgAction }
+function setupSyncRelay({ msgType, bgAction, storageKey, resultMsgType, resultBgAction }) {
+  let pendingSince = 0;
+
+  window.addEventListener('message', (e) => {
+    if (!e.data || e.data.type !== msgType) return;
+    console.log('[WMS sp]', msgType, 'received — relaying to background');
+    pendingSince = Date.now();
+    chrome.storage.session.remove(storageKey);
+    chrome.runtime.sendMessage({ action: bgAction }, (resp) => {
+      console.log('[WMS sp]', bgAction, 'cb — lastError:', chrome.runtime.lastError?.message, 'resp:', resp);
+      void chrome.runtime.lastError;
+    });
   });
+
+  // Fast path: runtime message from background
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.action !== resultBgAction) return;
+    console.log('[WMS sp]', resultBgAction, '(fast path):', msg.ok, msg.error || '');
+    pendingSince = 0;
+    frame.contentWindow.postMessage({ type: resultMsgType, ...msg }, '*');
+  });
+
+  // Fallback path: session storage change
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'session' || !changes[storageKey]) return;
+    const result = changes[storageKey].newValue;
+    if (!result || !pendingSince) return;
+    if (result.ts < pendingSince) return;
+    console.log('[WMS sp]', storageKey, '(storage fallback):', result.ok, result.error || '');
+    pendingSince = 0;
+    frame.contentWindow.postMessage({ type: resultMsgType, ...result }, '*');
+  });
+}
+
+setupSyncRelay({
+  msgType:       'wms-sync-logiwa',
+  bgAction:      'triggerLogiwaSync',
+  storageKey:    'logiwaSync',
+  resultMsgType: 'wms-sync-result',
+  resultBgAction:'syncLogiwaResult',
 });
 
-// Fast path: runtime message from background
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.action !== 'syncLogiwaResult') return;
-  console.log('[WMS sp] syncLogiwaResult (fast path):', msg.ok, msg.error || '');
-  _syncPendingSince = 0;
-  frame.contentWindow.postMessage({ type: 'wms-sync-result', ...msg }, '*');
-});
-
-// Fallback path: background writes to session storage → sidepanel picks it up
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== 'session' || !changes.logiwaSync) return;
-  const result = changes.logiwaSync.newValue;
-  if (!result || !_syncPendingSince) return; // no sync in progress
-  if (result.ts < _syncPendingSince) return;  // stale result from a previous sync
-  console.log('[WMS sp] syncLogiwaResult (storage fallback):', result.ok, result.error || '');
-  _syncPendingSince = 0;
-  frame.contentWindow.postMessage({ type: 'wms-sync-result', ...result }, '*');
+setupSyncRelay({
+  msgType:       'wms-sync-b2b-logiwa',
+  bgAction:      'triggerLogiwaB2BSync',
+  storageKey:    'logiwaB2BSync',
+  resultMsgType: 'wms-sync-b2b-result',
+  resultBgAction:'syncLogiwaB2BResult',
 });
 
 // ── After form submission: close panel if we auto-opened it, else go home ──
