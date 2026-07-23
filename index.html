@@ -1278,64 +1278,79 @@
         </div>
       </div>
     </div>
-    <div class="settings-group" id="sg-tabs">
-      <div class="settings-group-header" onclick="toggleSettingsGroup('sg-tabs')">
-        Tabs
+    <div class="settings-group" id="sg-profile">
+      <div class="settings-group-header" onclick="openProfileSettings()">
+        Profile
         <svg class="settings-group-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="settings-group-body">
-        <div class="theme-toggle-row">
-          <div style="font-size:.85rem;color:var(--text);font-weight:500">Error Dashboard</div>
-          <label class="toggle-switch">
-            <input type="checkbox" id="tabToggleDash" onchange="applyTabVisibility()" checked />
-            <span class="toggle-track"></span>
-          </label>
-        </div>
-        <div class="theme-toggle-row">
-          <div style="font-size:.85rem;color:var(--text);font-weight:500">B2C Dashboard</div>
-          <label class="toggle-switch">
-            <input type="checkbox" id="tabToggleB2c" onchange="applyTabVisibility()" checked />
-            <span class="toggle-track"></span>
-          </label>
-        </div>
-        <div class="theme-toggle-row">
-          <div style="font-size:.85rem;color:var(--text);font-weight:500">Help</div>
-          <label class="toggle-switch">
-            <input type="checkbox" id="tabToggleHelp" onchange="applyTabVisibility()" checked />
-            <span class="toggle-track"></span>
-          </label>
-        </div>
-      </div>
-    </div>
-    <div class="settings-group" id="sg-b2c">
-      <div class="settings-group-header" onclick="toggleSettingsGroup('sg-b2c')">
-        B2C Dashboard
-        <svg class="settings-group-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="settings-group-body">
-        <div class="theme-toggle-row" style="align-items:center">
-          <div>
-            <div style="font-size:.85rem;color:var(--text);font-weight:500">Warehouse Filter</div>
-            <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Show data for a specific warehouse</div>
+        <!-- PIN screen -->
+        <div id="sg-profile-pin" style="text-align:center;padding:12px 0 4px">
+          <div style="font-size:.78rem;color:var(--muted);margin-bottom:12px">Enter PIN to edit profile settings</div>
+          <div style="display:flex;gap:8px;justify-content:center;align-items:center">
+            <input type="password" id="profilePinInput" placeholder="•••••" maxlength="5" inputmode="numeric"
+                   style="width:90px;text-align:center;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:.9rem;letter-spacing:4px"
+                   onkeydown="if(event.key==='Enter') verifyProfilePin()" />
+            <button onclick="verifyProfilePin()" class="btn btn-primary" style="padding:7px 14px;font-size:.82rem">Unlock</button>
           </div>
-          <select id="b2cWarehouseFilter" onchange="localStorage.setItem('b2cWarehouseFilter', this.value); renderB2C()" style="font-size:.8rem;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
-            <option value="">All Warehouses</option>
-            <option value="LOCAD Bekasi FC">LOCAD Bekasi FC</option>
-            <option value="LOCAD Cabuyao (LISP) FC">LOCAD Cabuyao (LISP) FC</option>
-            <option value="LOCAD Hicom FC">LOCAD Hicom FC</option>
-            <option value="LOCAD Joo Koon FC">LOCAD Joo Koon FC</option>
-            <option value="LOCAD Lat Krabang FC">LOCAD Lat Krabang FC</option>
-            <option value="LOCAD Mesquite (TX-015) FC">LOCAD Mesquite (TX-015) FC</option>
-            <option value="LOCAD Santa Fe Springs FC (US-SAN)">LOCAD Santa Fe Springs FC</option>
-            <option value="LOCAD Umm Ramool FC">LOCAD Umm Ramool FC</option>
-          </select>
+          <div id="profilePinError" style="font-size:.72rem;color:var(--danger);margin-top:8px;display:none">Incorrect PIN</div>
         </div>
-        <div class="theme-toggle-row" style="align-items:center">
-          <div>
-            <div style="font-size:.85rem;color:var(--text);font-weight:500">Live Data Source</div>
-            <div style="font-size:.75rem;color:var(--muted);margin-top:2px" id="b2cLiveSourceNote">Syncs to shared Google Sheet via Apps Script</div>
+        <!-- Profile content (unlocked) -->
+        <div id="sg-profile-content" style="display:none">
+          <!-- Role -->
+          <div class="theme-toggle-row" style="align-items:center">
+            <div>
+              <div style="font-size:.85rem;color:var(--text);font-weight:500">Role</div>
+              <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Set user role</div>
+            </div>
+            <select id="profileRole" onchange="localStorage.setItem('userRole', this.value)" style="font-size:.8rem;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
+              <option value="picker">Picker</option>
+              <option value="packer">Packer</option>
+              <option value="cs">CS</option>
+              <option value="ops_manager">Ops Manager</option>
+            </select>
           </div>
-          <span id="b2cLiveSourceStatus" style="font-size:.75rem;font-weight:600;color:var(--muted)">—</span>
+          <!-- Warehouse Filter -->
+          <div class="theme-toggle-row" style="align-items:center">
+            <div>
+              <div style="font-size:.85rem;color:var(--text);font-weight:500">Warehouse Filter</div>
+              <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Show data for a specific warehouse</div>
+            </div>
+            <select id="b2cWarehouseFilter" onchange="localStorage.setItem('b2cWarehouseFilter', this.value); renderB2C()" style="font-size:.8rem;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
+              <option value="">All Warehouses</option>
+              <option value="LOCAD Bekasi FC">LOCAD Bekasi FC</option>
+              <option value="LOCAD Cabuyao (LISP) FC">LOCAD Cabuyao (LISP) FC</option>
+              <option value="LOCAD Hicom FC">LOCAD Hicom FC</option>
+              <option value="LOCAD Joo Koon FC">LOCAD Joo Koon FC</option>
+              <option value="LOCAD Lat Krabang FC">LOCAD Lat Krabang FC</option>
+              <option value="LOCAD Mesquite (TX-015) FC">LOCAD Mesquite (TX-015) FC</option>
+              <option value="LOCAD Santa Fe Springs FC (US-SAN)">LOCAD Santa Fe Springs FC</option>
+              <option value="LOCAD Umm Ramool FC">LOCAD Umm Ramool FC</option>
+            </select>
+          </div>
+          <!-- Tabs section label -->
+          <div style="font-size:.72rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin:14px 0 6px">Visible Tabs</div>
+          <div class="theme-toggle-row">
+            <div style="font-size:.85rem;color:var(--text);font-weight:500">Error Dashboard</div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="tabToggleDash" onchange="applyTabVisibility()" />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+          <div class="theme-toggle-row">
+            <div style="font-size:.85rem;color:var(--text);font-weight:500">B2C Dashboard</div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="tabToggleB2c" onchange="applyTabVisibility()" checked />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+          <div class="theme-toggle-row">
+            <div style="font-size:.85rem;color:var(--text);font-weight:500">Help</div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="tabToggleHelp" onchange="applyTabVisibility()" checked />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
         </div>
       </div>
     </div>
@@ -3001,6 +3016,11 @@
       const el = document.getElementById(t.toggleId);
       if (el) el.checked = (localStorage.getItem(t.key) ?? '1') !== '0';
     });
+    // Populate warehouse filter and role (profile section — values pre-loaded even if PIN-locked)
+    const wfEl = document.getElementById('b2cWarehouseFilter');
+    if (wfEl) wfEl.value = localStorage.getItem('b2cWarehouseFilter') || '';
+    const roleEl = document.getElementById('profileRole');
+    if (roleEl) roleEl.value = localStorage.getItem('userRole') || 'picker';
     // Populate layout toggle
     const layoutEl = document.getElementById('layoutToggle');
     const savedLayout = localStorage.getItem('packingErrorLayout');
@@ -3012,17 +3032,50 @@
     if (layoutNote) layoutNote.textContent = savedLayout
       ? 'Wider layout (1200px vs 600px)'
       : 'Auto-detected (' + (isDesktopNow ? 'desktop' : 'mobile') + ')';
-    // Show B2C live source status
-    const b2cStatusEl = document.getElementById('b2cLiveSourceStatus');
-    if (b2cStatusEl) {
-      if (SCRIPT_URL) { b2cStatusEl.textContent = '● Connected'; b2cStatusEl.style.color = 'var(--success)'; }
-      else { b2cStatusEl.textContent = 'Not set up'; b2cStatusEl.style.color = 'var(--muted)'; }
-    }
     document.getElementById('settingsModal').classList.add('open');
   }
 
   function closeSettings() {
     document.getElementById('settingsModal').classList.remove('open');
+    // Re-lock profile on close
+    const pinScreen = document.getElementById('sg-profile-pin');
+    const content = document.getElementById('sg-profile-content');
+    const pinInput = document.getElementById('profilePinInput');
+    const pinErr = document.getElementById('profilePinError');
+    const group = document.getElementById('sg-profile');
+    if (pinScreen) pinScreen.style.display = '';
+    if (content) content.style.display = 'none';
+    if (pinInput) pinInput.value = '';
+    if (pinErr) pinErr.style.display = 'none';
+    if (group) group.classList.remove('open');
+  }
+
+  function openProfileSettings() {
+    const group = document.getElementById('sg-profile');
+    if (group.classList.contains('open')) {
+      group.classList.remove('open');
+      // Re-lock
+      document.getElementById('sg-profile-pin').style.display = '';
+      document.getElementById('sg-profile-content').style.display = 'none';
+      document.getElementById('profilePinInput').value = '';
+      document.getElementById('profilePinError').style.display = 'none';
+    } else {
+      group.classList.add('open');
+    }
+  }
+
+  function verifyProfilePin() {
+    const input = document.getElementById('profilePinInput');
+    const errEl = document.getElementById('profilePinError');
+    if (input.value === '12345') {
+      document.getElementById('sg-profile-pin').style.display = 'none';
+      document.getElementById('sg-profile-content').style.display = '';
+      errEl.style.display = 'none';
+    } else {
+      errEl.style.display = '';
+      input.value = '';
+      input.focus();
+    }
   }
 
   // Close modal on backdrop click
