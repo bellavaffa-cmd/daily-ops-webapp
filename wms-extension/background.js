@@ -6,6 +6,7 @@ chrome.sidePanel
   .catch(err => console.error('[WMS bg] setPanelBehavior:', err));
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  console.log('[WMS bg] onMessage:', msg.action);
 
   if (msg.action === 'openSidePanel' && msg.url && sender.tab) {
     const url   = msg.url;

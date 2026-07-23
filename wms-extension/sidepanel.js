@@ -35,11 +35,13 @@ let _syncPendingSince = 0; // timestamp when sync was last triggered
 
 window.addEventListener('message', (e) => {
   if (!e.data || e.data.type !== 'wms-sync-logiwa') return;
+  console.log('[WMS sp] wms-sync-logiwa received — relaying to background');
   _syncPendingSince = Date.now();
   // Clear any stale result from a previous sync so storage fallback fires fresh
   chrome.storage.session.remove('logiwaSync');
-  chrome.runtime.sendMessage({ action: 'triggerLogiwaSync' }, () => {
-    void chrome.runtime.lastError; // background handles everything async
+  chrome.runtime.sendMessage({ action: 'triggerLogiwaSync' }, (resp) => {
+    console.log('[WMS sp] sendMessage cb — lastError:', chrome.runtime.lastError?.message, 'resp:', resp);
+    void chrome.runtime.lastError;
   });
 });
 
