@@ -2908,6 +2908,14 @@
   }
 
   // ── B2B individual orders ────────────────────────────────────────────
+  // Order number → link that opens that exact order in WMS (Logiwa list page
+  // filtered by code, ?code=…&codeqt=eq — the pattern Logiwa's own UI uses).
+  function wmsOrderLink(code) {
+    const safe = String(code).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+    const url  = 'https://wms.golocad.com/en/wms/shipment-order/list?code=' + encodeURIComponent(code) + '&codeqt=eq';
+    return `<a href="${url}" target="_blank" title="Open in WMS" style="color:var(--primary);text-decoration:none">${safe}</a>`;
+  }
+
   const B2B_STATUS_META = {
     open:       { label: 'Open',            color: '#fb923c' },
     rfp:        { label: 'Ready to Pick',   color: '#fcd34d' },
@@ -2933,7 +2941,7 @@
     tbl.innerHTML = filtered.map(o => {
       const meta = B2B_STATUS_META[o.status] || { label: o.status || 'Unknown', color: 'var(--text)' };
       return `<tr style="border-top:1px solid var(--border)">
-        <td style="padding:8px 18px;color:var(--text);font-size:.82rem;white-space:nowrap">${o.order_id}</td>
+        <td style="padding:8px 18px;font-size:.82rem;white-space:nowrap">${wmsOrderLink(o.order_id)}</td>
         <td style="padding:8px 14px;color:var(--text);font-size:.82rem;white-space:nowrap">${o.wh}</td>
         <td style="padding:8px 14px;font-size:.82rem;white-space:nowrap;color:${meta.color}">${meta.label}</td>
       </tr>`;
@@ -3106,7 +3114,7 @@
     tbl.innerHTML = filtered.map(o => {
       const ageColor = o.age > 7 ? '#f87171' : o.age > 3 ? '#fcd34d' : '#86efac';
       return `<tr style="border-top:1px solid var(--border)">
-        <td style="padding:8px 18px;color:var(--text);font-size:.82rem;white-space:nowrap">${o.order_id}</td>
+        <td style="padding:8px 18px;font-size:.82rem;white-space:nowrap">${wmsOrderLink(o.order_id)}</td>
         <td style="padding:8px 14px;color:var(--text);font-size:.82rem;white-space:nowrap">${o.wh}</td>
         <td style="padding:8px 14px;color:var(--text);font-size:.82rem;white-space:nowrap">${o.order_type || '—'}</td>
         <td style="padding:8px 14px;text-align:right;font-size:.82rem;white-space:nowrap;color:${ageColor}">${o.age ?? '—'}</td>
