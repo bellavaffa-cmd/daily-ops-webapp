@@ -2612,7 +2612,7 @@
           whs[wh][col]++;
         }
         const rows = Object.values(whs).map(r => ({ ...r, updated_at: new Date().toISOString() }));
-        const res  = await fetch(SB_URL + '/rest/v1/b2c_data', {
+        const res  = await fetch(SB_URL + '/rest/v1/b2c_data?on_conflict=wh', {
           method: 'POST',
           headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' },
           body: JSON.stringify(rows)

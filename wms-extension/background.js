@@ -136,7 +136,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // 5. Upsert to Supabase
         const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co';
         const SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
-        const res = await fetch(`${SB_URL}/rest/v1/${config.sbTable}`, {
+        const res = await fetch(`${SB_URL}/rest/v1/${config.sbTable}?on_conflict=wh`, {
           method: 'POST',
           headers: {
             apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY,
@@ -147,7 +147,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (!res.ok) throw new Error('Supabase error ' + res.status + ': ' + await res.text());
 
         if (b2bOrders.length) {
-          const b2bRes = await fetch(`${SB_URL}/rest/v1/b2b_orders`, {
+          const b2bRes = await fetch(`${SB_URL}/rest/v1/b2b_orders?on_conflict=order_id`, {
             method: 'POST',
             headers: {
               apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY,

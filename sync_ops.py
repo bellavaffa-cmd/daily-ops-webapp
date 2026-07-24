@@ -119,7 +119,7 @@ def upsert(table, rows, dry_run=False):
         for r in payload:
             print(f"    {r}")
         return
-    url = f"{SUPABASE_URL}/rest/v1/{table}"
+    url = f"{SUPABASE_URL}/rest/v1/{table}?on_conflict=wh"
     res = requests.post(url, headers=sb_headers(), json=payload, timeout=30)
     if not res.ok:
         print(f"  Supabase error {res.status_code}: {res.text}")
