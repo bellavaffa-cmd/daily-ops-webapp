@@ -110,15 +110,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const rows = Object.values(whs).map(r => ({ ...r, updated_at: new Date().toISOString() }));
 
         // 4b. B2B: one row per order (not pivoted) — order_id/wh/status only.
-        // NOTE: order_id field name is a best guess (Logiwa's list endpoint has
-        // never been inspected for its B2B order-identifier field) — verify
-        // against a real response and adjust the fallback chain below if the
-        // synced order_id values come back blank or wrong.
+        // order_id is Logiwa's "code" (human-readable, e.g. "585181359330264214",
+        // same value as channelOrderNumber) — falls back to the internal GUID
+        // "identifier" on the rare order missing a code.
         const B2B_SM = { 6: 'open', 8: 'rfp', 9: 'picking', 12: 'pack_ready', 13: 'packing' };
         const b2bOrders = all
           .filter(o => o.shipmentOrderTypeName === 'B2B')
           .map(o => ({
-            order_id: String(o.orderNumber ?? o.referenceNumber ?? o.shipmentOrderNumber ?? o.shipmentOrderId ?? o.id ?? ''),
+            order_id: String(o.code ?? o.identifier ?? ''),
             wh: o.warehouseCode,
             status: B2B_SM[o.shipmentOrderStatusId] || null,
             updated_at: new Date().toISOString()
