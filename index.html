@@ -5,34 +5,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Daily B2C</title>
   <link rel="manifest" href="/daily-ops-webapp/manifest.json" />
-  <meta name="theme-color" content="#0f1117" />
+  <meta name="theme-color" content="#060a06" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Daily B2C" />
+  <link rel="icon" href="/daily-ops-webapp/icons/locad-favicon.ico" />
   <link rel="apple-touch-icon" href="/daily-ops-webapp/icons/icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg: #0f1117;
-      --surface: #1a1d27;
-      --surface2: #22263a;
-      --border: #2e3347;
-      --primary: #4f8ef7;
-      --primary-hover: #3b7af0;
+      --bg: #0a0d0a;
+      --surface: #14170f;
+      --surface2: #1b1f17;
+      --border: #2a2f27;
+      --primary: #94ffa1;
+      --primary-hover: #7aeb8c;
+      --on-primary: #06120a;
       --danger: #f87171;
       --success: #4ade80;
       --text: #ffffff;
-      --muted: #6b7a99;
-      --tag-bg: #1e2a47;
-      --tag-text: #7eb3ff;
+      --muted: #8a9088;
+      --tag-bg: #1e2a1e;
+      --tag-text: #94ffa1;
       --radius: 10px;
       --shadow: 0 2px 8px rgba(0,0,0,.4);
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
@@ -61,7 +66,6 @@
       white-space: nowrap;
       flex-shrink: 0;
     }
-    header .logo svg { color: var(--primary); }
 
     /* ── Full-width tab bar ── */
     .tab-bar {
@@ -93,7 +97,7 @@
     .tab-btn:hover:not(.active) { color: var(--text); }
     .tab-count {
       background: var(--primary);
-      color: #fff;
+      color: var(--on-primary);
       border-radius: 12px;
       font-size: .7rem;
       font-weight: 700;
@@ -253,16 +257,16 @@
       transition: background .15s, transform .1s;
     }
     .btn:active { transform: scale(.98); }
-    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary { background: var(--primary); color: var(--on-primary); }
     .btn-primary:hover { background: var(--primary-hover); }
     .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
-    .btn-ghost:hover { background: #2a2f45; }
+    .btn-ghost:hover { background: #232820; }
 
     /* Toast */
     #toast {
       position: fixed;
       bottom: 24px; right: 24px;
-      background: #2e3347;
+      background: var(--surface2);
       color: var(--text);
       padding: 12px 18px;
       border-radius: 8px;
@@ -392,7 +396,7 @@
     }
     tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
     tbody tr:last-child { border-bottom: none; }
-    tbody tr:hover { background: #1e2235; }
+    tbody tr:hover { background: #1a1f18; }
     tbody tr.row-selected { background: color-mix(in srgb, var(--primary) 10%, transparent); }
     tbody td { padding: 10px 12px; vertical-align: middle; }
     .td-muted { color: var(--muted); font-size: .8rem; }
@@ -549,25 +553,25 @@
 
     /* ── Setup banner ── */
     .setup-banner {
-      background: #1e2a47;
-      border: 1px solid #3b5098;
+      background: #16281c;
+      border: 1px solid #2f6b45;
       border-radius: var(--radius);
       padding: 18px 22px;
       margin-bottom: 20px;
       display: none;
     }
     .setup-banner.show { display: block; }
-    .setup-banner h3 { color: #7eb3ff; font-size: .95rem; margin-bottom: 8px; }
+    .setup-banner h3 { color: var(--primary); font-size: .95rem; margin-bottom: 8px; }
     .setup-banner ol { padding-left: 18px; color: var(--muted); font-size: .85rem; line-height: 1.9; }
     .setup-banner ol li strong { color: var(--text); }
     .setup-banner code {
-      background: #0f1117;
+      background: var(--bg);
       border: 1px solid var(--border);
       border-radius: 4px;
       padding: 1px 6px;
       font-size: .8rem;
       font-family: "SF Mono","Fira Code",monospace;
-      color: #7eb3ff;
+      color: var(--primary);
     }
     .setup-banner .dismiss {
       float: right;
@@ -656,13 +660,13 @@
     }
     .step-list li strong { color: var(--text); }
     .step-list li code {
-      background: #0f1117;
+      background: var(--bg);
       border: 1px solid var(--border);
       border-radius: 4px;
       padding: 1px 7px;
       font-size: .78rem;
       font-family: "SF Mono","Fira Code",monospace;
-      color: #7eb3ff;
+      color: var(--primary);
     }
 
     .code-block-wrap { position: relative; }
@@ -694,10 +698,10 @@
       cursor: pointer;
       transition: background .15s, color .15s;
     }
-    .copy-btn:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .copy-btn:hover { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
     .connect-cta {
       background: var(--tag-bg);
-      border: 1px solid #3b5098;
+      border: 1px solid #2f6b45;
       border-radius: var(--radius);
       padding: 16px 18px;
       display: flex;
@@ -858,7 +862,7 @@
     .status-select.status-open { background: #3a1212; color: #f87171; border-color: #7f1d1d; }
     .status-select.status-inprogress { background: #3a2a10; color: #fbbf24; border-color: #78350f; }
     .status-select.status-resolved { background: #0f2e1a; color: #4ade80; border-color: #14532d; }
-    .status-select option { background: #1a1d27; color: #ffffff; }
+    .status-select option { background: var(--surface); color: #ffffff; }
 
     /* ── Settings collapsible sections ── */
     .settings-group { border: 1px solid var(--border); border-radius: 8px; margin-top: 12px; overflow: hidden; }
@@ -918,14 +922,16 @@
       --surface: #ffffff;
       --surface2: #f1f3f7;
       --border: #e2e6ea;
-      --primary: #2563eb;
-      --primary-hover: #1d4ed8;
+      --primary: #15803d;
+      --primary-hover: #166534;
+      --on-primary: #ffffff;
       --text: #111827;
       --muted: #6b7280;
-      --tag-bg: #eff6ff;
-      --tag-text: #1d4ed8;
+      --tag-bg: #ecfdf3;
+      --tag-text: #15803d;
       --shadow: 0 1px 4px rgba(0,0,0,.08);
     }
+    html[data-theme="light"] header .logo img { filter: invert(1); }
     html[data-theme="light"] input,
     html[data-theme="light"] select,
     html[data-theme="light"] textarea { color-scheme: light; }
@@ -944,9 +950,9 @@
     html[data-theme="light"] .status-select.status-inprogress { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
     html[data-theme="light"] .status-select.status-resolved   { background: #dcfce7; color: #15803d; border-color: #86efac; }
     html[data-theme="light"] .status-select option            { background: #fff; color: #111827; }
-    html[data-theme="light"] .setup-banner   { background: #eff6ff; border-color: #bfdbfe; }
-    html[data-theme="light"] .setup-banner h3 { color: #1d4ed8; }
-    html[data-theme="light"] .setup-banner code { background: #f1f5f9; border-color: #e2e8f0; color: #1d4ed8; }
+    html[data-theme="light"] .setup-banner   { background: #ecfdf3; border-color: #86efac; }
+    html[data-theme="light"] .setup-banner h3 { color: #15803d; }
+    html[data-theme="light"] .setup-banner code { background: #f1f5f9; border-color: #e2e8f0; color: #15803d; }
     html[data-theme="light"] .code-block     { background: #f8fafc; color: #1e293b; border-color: #e2e8f0; }
     html[data-theme="light"] .copy-btn       { background: #f1f5f9; border-color: #e2e8f0; color: #475569; }
     html[data-theme="light"] #toast          { background: #1e293b; color: #ffffff; }
@@ -991,7 +997,7 @@
       top: 6px;
       right: calc(50% - 18px);
       background: var(--primary);
-      color: #fff;
+      color: var(--on-primary);
       border-radius: 10px;
       font-size: .6rem;
       font-weight: 700;
@@ -1102,7 +1108,7 @@
     }
     .qty-step-btn:first-child { border-radius: 7px 0 0 7px; border-right: none; }
     .qty-step-btn:last-child  { border-radius: 0 7px 7px 0; border-left: none; }
-    .qty-step-btn:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .qty-step-btn:hover { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
     .scan-input-wrap { display: flex; gap: 6px; align-items: center; }
     .scan-input-wrap input { flex: 1; min-width: 0; }
     #scannerOverlay {
@@ -1160,7 +1166,7 @@
       align-items: center;
       justify-content: center;
       background: var(--primary);
-      color: #fff;
+      color: var(--on-primary);
       border: none;
       border-radius: 50%;
       padding: 14px;
@@ -1189,12 +1195,8 @@
 
 <header>
   <div class="logo">
-    <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-      <path stroke-linecap="round" stroke-linejoin="round"
-        d="M20 7H4a2 2 0 00-2 2v10a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/>
-      <path stroke-linecap="round" stroke-linejoin="round" d="M16 3H8a2 2 0 00-2 2v2h12V5a2 2 0 00-2-2z"/>
-    </svg>
-    Daily B2C
+    <img src="/daily-ops-webapp/icons/locad-logo.png" alt="LOCAD" height="22" style="display:block" />
+    <span style="color:var(--muted);font-weight:500">Daily B2C</span>
   </div>
   <div class="tab-bar">
     <button class="tab-btn active" id="tab-btn-b2c" onclick="showView('b2c')">
@@ -2026,7 +2028,7 @@
               Google
             </button>
             <button id="mb-tab-apikey" onclick="switchMbTab('apikey')"
-              style="flex:1;padding:7px 0;font-size:.8rem;font-weight:600;border:none;cursor:pointer;background:var(--primary);color:#fff;transition:background .15s">
+              style="flex:1;padding:7px 0;font-size:.8rem;font-weight:600;border:none;cursor:pointer;background:var(--primary);color:var(--on-primary);transition:background .15s">
               API Key
             </button>
             <button id="mb-tab-login" onclick="switchMbTab('login')"
@@ -2135,7 +2137,7 @@
           <!-- ── Option 1: Chrome Extension ───────────────────────────────── -->
           <div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:12px">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-              <span style="font-size:.8rem;font-weight:700;background:var(--primary);color:#fff;padding:2px 8px;border-radius:20px;letter-spacing:.03em">RECOMMENDED</span>
+              <span style="font-size:.8rem;font-weight:700;background:var(--primary);color:var(--on-primary);padding:2px 8px;border-radius:20px;letter-spacing:.03em">RECOMMENDED</span>
               <strong style="font-size:.9rem">Chrome Extension</strong>
             </div>
             <p style="font-size:.82rem;color:var(--muted);margin:0 0 10px;line-height:1.5">
@@ -2149,7 +2151,7 @@
                   <strong>Install</strong> from the Chrome Web Store:
                   <div style="margin:8px 0 2px">
                     <a href="https://chromewebstore.google.com/detail/wms-%E2%86%92-report-error/aaicnmndjpfenmniilhjdofolgkkknfa" target="_blank"
-                       style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:var(--primary);color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:.85rem">
+                       style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:var(--primary);color:var(--on-primary);border-radius:8px;text-decoration:none;font-weight:600;font-size:.85rem">
                       <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                       Get "WMS → Report Error"
                     </a>

@@ -6,8 +6,8 @@
   "scope": "/daily-ops-webapp/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "theme_color": "#0f1117",
-  "background_color": "#0f1117",
+  "theme_color": "#060a06",
+  "background_color": "#060a06",
   "icons": [
     {
       "src": "/daily-ops-webapp/icons/icon-192.png",
