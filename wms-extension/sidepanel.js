@@ -35,12 +35,10 @@ let _syncPendingSince = 0; // timestamp when sync was last triggered
 
 window.addEventListener('message', (e) => {
   if (!e.data || e.data.type !== 'wms-sync-logiwa') return;
-  console.log('[WMS sp] wms-sync-logiwa received — relaying to background');
   _syncPendingSince = Date.now();
   // Clear any stale result from a previous sync so storage fallback fires fresh
   chrome.storage.session.remove('logiwaSync');
-  chrome.runtime.sendMessage({ action: 'triggerLogiwaSync' }, (resp) => {
-    console.log('[WMS sp] sendMessage cb — lastError:', chrome.runtime.lastError?.message, 'resp:', resp);
+  chrome.runtime.sendMessage({ action: 'triggerLogiwaSync' }, () => {
     void chrome.runtime.lastError;
   });
 });
@@ -48,7 +46,6 @@ window.addEventListener('message', (e) => {
 // Fast path: runtime message from background
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.action !== 'syncLogiwaResult') return;
-  console.log('[WMS sp] syncLogiwaResult (fast path):', msg.ok, msg.error || '');
   _syncPendingSince = 0;
   frame.contentWindow.postMessage({ type: 'wms-sync-result', ...msg }, '*');
 });
@@ -59,7 +56,6 @@ chrome.storage.onChanged.addListener((changes, area) => {
   const result = changes.logiwaSync.newValue;
   if (!result || !_syncPendingSince) return; // no sync in progress
   if (result.ts < _syncPendingSince) return;  // stale result from a previous sync
-  console.log('[WMS sp] syncLogiwaResult (storage fallback):', result.ok, result.error || '');
   _syncPendingSince = 0;
   frame.contentWindow.postMessage({ type: 'wms-sync-result', ...result }, '*');
 });

@@ -6,33 +6,25 @@ chrome.sidePanel
   .catch(err => console.error('[WMS bg] setPanelBehavior:', err));
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  console.log('[WMS bg] onMessage:', msg.action);
-
   if (msg.action === 'openSidePanel' && msg.url && sender.tab) {
     const url   = msg.url;
     const tabId = sender.tab.id;
-
-    console.log('[WMS bg] openSidePanel received, tabId:', tabId);
 
     // Open the panel immediately while user gesture is still active
     chrome.sidePanel.open({ tabId }, () => {
       if (chrome.runtime.lastError) {
         console.error('[WMS bg] sidePanel.open FAILED:', chrome.runtime.lastError.message);
-      } else {
-        console.log('[WMS bg] sidePanel.open SUCCESS');
       }
     });
 
     // Ping to check if panel was already open before we opened it
     chrome.runtime.sendMessage({ action: 'ping' }, (pingResp) => {
       const panelWasOpen = !chrome.runtime.lastError && !!pingResp;
-      console.log('[WMS bg] panelWasOpen:', panelWasOpen);
 
       chrome.storage.session.set({
         pendingScan:     url,
         autoOpenedPanel: !panelWasOpen
       }, () => {
-        console.log('[WMS bg] pendingScan stored');
         if (panelWasOpen) {
           // Panel was already showing — tell it to navigate to the scan
           chrome.runtime.sendMessage({ action: 'loadScan', url }, () => {
@@ -76,12 +68,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       };
 
       try {
-        console.log('[WMS bg] triggerLogiwaSync — querying WMS tabs');
-
         // 1. Find a WMS tab with the content script running
         const tabs = await chrome.tabs.query({ url: 'https://wms.golocad.com/*' });
         if (!tabs || !tabs.length) throw new Error('WMS tab not found — open wms.golocad.com first.');
-        console.log('[WMS bg] WMS tab found:', tabs[0].id, tabs[0].url);
 
         // 2. Get the Logiwa session token from the page's localStorage
         const tokenResp = await new Promise((resolve) => {
@@ -92,14 +81,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         });
         if (!tokenResp || !tokenResp.token) throw new Error('Reload the wms.golocad.com tab and try again.');
         const token = tokenResp.token;
-        console.log('[WMS bg] got token, fetching Logiwa...');
 
         // 3. Fetch all unshipped orders from Logiwa
         const LG_API = 'https://mywmsquery.logiwa.com';
         const SM     = { 6: 'new', 8: 'rfp', 9: 'picking', 12: 'picked' };
         let all = [], page = 0, total = 1;
         while (all.length < total) {
-          console.log('[WMS bg] Logiwa page', page, '— fetched', all.length, '/', total);
           const r = await fetch(`${LG_API}/api/shipmentorder/list/unshipped/i/${page}/s/1000`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
@@ -111,7 +98,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           total = d.totalCount || 0;
           page++;
         }
-        console.log('[WMS bg] Logiwa fetch done — total orders:', all.length);
 
         // 4. Pivot: warehouseCode × status → counts
         const cols = [...new Set(Object.values(SM))];
@@ -124,7 +110,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           whs[wh][col]++;
         }
         const rows = Object.values(whs).map(r => ({ ...r, updated_at: new Date().toISOString() }));
-        console.log('[WMS bg] pivoted rows:', rows.length, 'warehouses');
 
         // 5. Upsert to Supabase
         const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co';
@@ -138,7 +123,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           body: JSON.stringify(rows)
         });
         if (!res.ok) throw new Error('Supabase error ' + res.status + ': ' + await res.text());
-        console.log('[WMS bg] Supabase upsert OK');
 
         await broadcast({ ok: true, count: rows.length });
       } catch (e) {

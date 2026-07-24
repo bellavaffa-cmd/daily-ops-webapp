@@ -99,10 +99,8 @@
   function openInSidePanel(data) {
     const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
     const url = APP_URL + '?wmsScan=' + encodeURIComponent(b64) + '&ext=1';
-    console.log('[WMS ext] sending openSidePanel message...');
     try {
-      chrome.runtime.sendMessage({ action: 'openSidePanel', url }, (response) => {
-        console.log('[WMS ext] sendMessage response:', response, 'lastError:', chrome.runtime.lastError?.message);
+      chrome.runtime.sendMessage({ action: 'openSidePanel', url }, () => {
         if (chrome.runtime.lastError) {
           const msg = chrome.runtime.lastError.message || '';
           if (/port closed/i.test(msg)) return;
@@ -190,9 +188,7 @@
     `;
 
     wrap.querySelector('button').addEventListener('click', () => {
-      console.log('[WMS ext] FAB clicked');
       const data = extractData();
-      console.log('[WMS ext] extracted:', JSON.stringify(data));
       if (!data.orderId && !data.toteNum) {
         alert('WMS extension: no order loaded on this packing station.');
         return;
