@@ -54,7 +54,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'triggerLogiwaSync' || msg.action === 'triggerLogiwaB2BSync') {
     const isB2B = msg.action === 'triggerLogiwaB2BSync';
     const config = isB2B
-      ? { orderType: 'B2B', statusMap: { 6:'open', 8:'rfp', 9:'picking', 12:'pack_ready', 13:'packing' }, sbTable: 'b2b_data', resultAction: 'syncLogiwaB2BResult', storageKey: 'logiwaB2BSync' }
+      ? { orderType: 'B2B', statusMap: { 6:'open', 8:'rfp', 9:'picking', 12:'pack_ready', 13:'packing', 16:'ready_ship' }, sbTable: 'b2b_data', resultAction: 'syncLogiwaB2BResult', storageKey: 'logiwaB2BSync' }
       : { orderType: 'B2C', statusMap: { 6:'new',  8:'rfp', 9:'picking', 12:'picked',     13:'packing' }, sbTable: 'b2c_data', resultAction: 'syncLogiwaResult',    storageKey: 'logiwaSync'    };
 
     (async () => {
@@ -122,13 +122,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // order_id is Logiwa's "code" (human-readable, e.g. "585181359330264214",
         // same value as channelOrderNumber) — falls back to the internal GUID
         // "identifier" on the rare order missing a code.
-        const B2B_SM = { 6: 'open', 8: 'rfp', 9: 'picking', 12: 'pack_ready', 13: 'packing' };
+        // brand = Logiwa clientDisplayName (the seller/brand). collected_by is
+        // deliberately NOT sent: it's user-set in the app and a partial upsert
+        // (merge-duplicates only touches the columns in the body) preserves it.
+        const B2B_SM = { 6: 'open', 8: 'rfp', 9: 'picking', 12: 'pack_ready', 13: 'packing', 16: 'ready_ship' };
         const b2bOrders = all
           .filter(o => o.shipmentOrderTypeName === 'B2B')
           .map(o => ({
             order_id: String(o.code ?? o.identifier ?? ''),
             wh: o.warehouseCode,
             status: B2B_SM[o.shipmentOrderStatusId] || null,
+            brand: o.clientDisplayName || null,
+            expected_ship_date: o.expectedShipmentDate || null,
             updated_at: new Date().toISOString()
           }))
           .filter(o => o.order_id && o.wh && o.status);
@@ -161,6 +166,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             wh: o.warehouseCode,
             order_type: o.shipmentOrderTypeName || null,
             age: o.orderAge ?? null,
+            brand: o.clientDisplayName || null,
             updated_at: new Date().toISOString()
           }))
           .filter(o => o.order_id && o.wh);

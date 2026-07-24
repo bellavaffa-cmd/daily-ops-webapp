@@ -1360,66 +1360,65 @@
               <option value="LOCAD Umm Ramool FC">LOCAD Umm Ramool FC</option>
             </select>
           </div>
-          <!-- Tabs section label -->
-          <div style="font-size:.72rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin:14px 0 6px">Visible Tabs</div>
-          <div class="theme-toggle-row">
-            <div style="font-size:.85rem;color:var(--text);font-weight:500">Error Dashboard</div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="tabToggleDash" onchange="applyTabVisibility()" />
-              <span class="toggle-track"></span>
-            </label>
+          <!-- Carriers -->
+          <div style="margin-top:16px">
+            <div style="font-size:.72rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Carriers</div>
+            <div style="font-size:.75rem;color:var(--muted);margin-bottom:8px">Options for the “Collected By” dropdown on B2B orders</div>
+            <div style="display:flex;gap:6px;margin-bottom:8px">
+              <input type="text" id="carrierInput" placeholder="Add a carrier…" onkeydown="if(event.key==='Enter'){event.preventDefault();addCarrier();}"
+                style="flex:1;min-width:0;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:.8rem" />
+              <button onclick="addCarrier()" class="btn btn-primary btn-sm" style="font-size:.8rem;padding:6px 12px">Add</button>
+            </div>
+            <div id="carrierList"></div>
           </div>
-          <div class="theme-toggle-row">
-            <div style="font-size:.85rem;color:var(--text);font-weight:500">B2C Dashboard</div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="tabToggleB2c" onchange="applyTabVisibility()" checked />
-              <span class="toggle-track"></span>
-            </label>
+
+          <!-- Visible Tabs (collapsible) -->
+          <div style="margin-top:16px">
+            <div onclick="toggleTabsSection()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;font-size:.72rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:2px 0;user-select:none">
+              <span>Visible Tabs</span>
+              <svg id="tabsSectionChevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition:transform .15s"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div id="tabsSectionBody" style="display:none;margin-top:4px">
+              <div class="theme-toggle-row">
+                <div style="font-size:.85rem;color:var(--text);font-weight:500">Error Dashboard</div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="tabToggleDash" onchange="applyTabVisibility()" />
+                  <span class="toggle-track"></span>
+                </label>
+              </div>
+              <div class="theme-toggle-row">
+                <div style="font-size:.85rem;color:var(--text);font-weight:500">B2C Dashboard</div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="tabToggleB2c" onchange="applyTabVisibility()" checked />
+                  <span class="toggle-track"></span>
+                </label>
+              </div>
+              <div class="theme-toggle-row">
+                <div style="font-size:.85rem;color:var(--text);font-weight:500">B2B Dashboard</div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="tabToggleB2b" onchange="applyTabVisibility()" checked />
+                  <span class="toggle-track"></span>
+                </label>
+              </div>
+              <div class="theme-toggle-row">
+                <div style="font-size:.85rem;color:var(--text);font-weight:500">Shortage</div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="tabToggleShortage" onchange="applyTabVisibility()" checked />
+                  <span class="toggle-track"></span>
+                </label>
+              </div>
+              <div class="theme-toggle-row">
+                <div style="font-size:.85rem;color:var(--text);font-weight:500">Help</div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="tabToggleHelp" onchange="applyTabVisibility()" checked />
+                  <span class="toggle-track"></span>
+                </label>
+              </div>
+            </div>
           </div>
-          <div class="theme-toggle-row">
-            <div style="font-size:.85rem;color:var(--text);font-weight:500">B2B Dashboard</div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="tabToggleB2b" onchange="applyTabVisibility()" checked />
-              <span class="toggle-track"></span>
-            </label>
-          </div>
-          <div class="theme-toggle-row">
-            <div style="font-size:.85rem;color:var(--text);font-weight:500">Shortage</div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="tabToggleShortage" onchange="applyTabVisibility()" checked />
-              <span class="toggle-track"></span>
-            </label>
-          </div>
-          <div class="theme-toggle-row">
-            <div style="font-size:.85rem;color:var(--text);font-weight:500">Help</div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="tabToggleHelp" onchange="applyTabVisibility()" checked />
-              <span class="toggle-track"></span>
-            </label>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="settings-group" id="sg-dev">
-      <div class="settings-group-header" onclick="openDevSettings()">
-        Dev
-        <svg class="settings-group-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="settings-group-body">
-        <!-- PIN screen -->
-        <div id="sg-dev-pin" style="text-align:center;padding:12px 0 4px">
-          <div style="font-size:.78rem;color:var(--muted);margin-bottom:12px">Enter PIN to edit dev settings</div>
-          <div style="display:flex;gap:8px;justify-content:center;align-items:center">
-            <input type="password" id="devPinInput" placeholder="•••••" maxlength="5" inputmode="numeric"
-                   style="width:90px;text-align:center;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:.9rem;letter-spacing:4px"
-                   onkeydown="if(event.key==='Enter') verifyDevPin()" />
-            <button onclick="verifyDevPin()" class="btn btn-primary" style="padding:7px 14px;font-size:.82rem">Unlock</button>
-          </div>
-          <div id="devPinError" style="font-size:.72rem;color:var(--danger);margin-top:8px;display:none">Incorrect PIN</div>
-        </div>
-        <!-- Dev content (unlocked) -->
-        <div id="sg-dev-content" style="display:none">
-          <div style="display:flex;flex-direction:column;gap:6px">
+
+          <!-- Slack Webhook -->
+          <div style="margin-top:16px;display:flex;flex-direction:column;gap:6px">
             <div>
               <div style="font-size:.85rem;color:var(--text);font-weight:500">Slack Webhook</div>
               <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Post a message to Slack on every error submission</div>
@@ -1977,6 +1976,7 @@
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:#93c5fd;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Picking Started</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:#86efac;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Ready to Pack</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:#a78bfa;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Packing Started</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#5eead4;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Ready to Ship</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--text);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Total</th>
             </tr>
           </thead>
@@ -1995,8 +1995,11 @@
           <thead>
             <tr style="background:var(--surface2)">
               <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Order ID</th>
+              <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Brand</th>
               <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Warehouse</th>
               <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Status</th>
+              <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Expected Ship</th>
+              <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Collected By</th>
             </tr>
           </thead>
           <tbody id="b2bOrdersTable"></tbody>
@@ -2060,6 +2063,7 @@
           <thead>
             <tr style="background:var(--surface2)">
               <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Order ID</th>
+              <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Brand</th>
               <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Warehouse</th>
               <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Type</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Age (days)</th>
@@ -2438,8 +2442,8 @@
   // (?sot=[typeGuid]&sos=[statusIds]…). Used to make the KPI status boxes open
   // the matching order list in WMS.
   const WMS_TYPE_GUID  = { B2C: '2857373d-e9ed-41ac-aa11-1441b42b6152', B2B: '814c0655-e231-45a3-9f15-1154b844f69e' };
-  const WMS_STATUS_ID  = { 'Open': 6, 'Ready to Pick': 8, 'Picking Started': 9, 'Ready to Pack': 12, 'Packing Started': 13 };
-  const WMS_ALL_STATUS = [6, 8, 9, 12, 13];
+  const WMS_STATUS_ID  = { 'Open': 6, 'Ready to Pick': 8, 'Picking Started': 9, 'Ready to Pack': 12, 'Packing Started': 13, 'Ready to Ship': 16 };
+  const WMS_ALL_STATUS = [6, 8, 9, 12, 13, 16];
   function wmsStatusUrl(typeLbl, statusIds, statusLbl) {
     const enc2 = v => encodeURIComponent(encodeURIComponent(JSON.stringify(v)));
     let url = 'https://wms.golocad.com/en/wms/shipment-order/list?sos=' + enc2(statusIds)
@@ -2775,9 +2779,10 @@
       picking:    a.picking    + (r.picking    || 0),
       pack_ready: a.pack_ready + (r.pack_ready || 0),
       packing:    a.packing    + (r.packing    || 0),
-    }), { open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0 });
+      ready_ship: a.ready_ship + (r.ready_ship || 0),
+    }), { open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0, ready_ship: 0 });
 
-    const total = tot.open + tot.rfp + tot.picking + tot.pack_ready + tot.packing;
+    const total = tot.open + tot.rfp + tot.picking + tot.pack_ready + tot.packing + tot.ready_ship;
     const fmt   = n => n.toLocaleString();
     const pct   = (n, d) => d ? (n / d * 100).toFixed(1) + '%' : '—';
 
@@ -2788,6 +2793,7 @@
       { label: 'Picking Started',  count: tot.picking,    color: '#93c5fd' },
       { label: 'Ready to Pack',    count: tot.pack_ready, color: '#86efac' },
       { label: 'Packing Started',  count: tot.packing,    color: '#a78bfa' },
+      { label: 'Ready to Ship',    count: tot.ready_ship, color: '#5eead4' },
       { label: 'Total Orders',     count: total,          color: 'var(--text)' },
     ];
 
@@ -2807,7 +2813,7 @@
 
     const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color||'var(--text)'};font-size:.82rem">${fmt(n)}</td>`;
     const whRow = (r, indent) => {
-      const t = (r.open||0) + (r.rfp||0) + (r.picking||0) + (r.pack_ready||0) + (r.packing||0);
+      const t = (r.open||0) + (r.rfp||0) + (r.picking||0) + (r.pack_ready||0) + (r.packing||0) + (r.ready_ship||0);
       const pad = indent ? 'padding:9px 18px 9px 28px' : 'padding:10px 18px';
       return `<tr style="border-top:1px solid var(--border)">
         <td style="${pad};color:var(--text);white-space:nowrap;font-size:.82rem">${r.wh}</td>
@@ -2816,6 +2822,7 @@
         ${tdN(r.picking    || 0, '#93c5fd')}
         ${tdN(r.pack_ready || 0, '#86efac')}
         ${tdN(r.packing    || 0, '#a78bfa')}
+        ${tdN(r.ready_ship || 0, '#5eead4')}
         ${tdN(t,                 'var(--text)')}
       </tr>`;
     };
@@ -2836,8 +2843,9 @@
           picking:    a.picking    + (r.picking    || 0),
           pack_ready: a.pack_ready + (r.pack_ready || 0),
           packing:    a.packing    + (r.packing    || 0),
-        }), { open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0 });
-        const ctTotal = ct.open + ct.rfp + ct.picking + ct.pack_ready + ct.packing;
+          ready_ship: a.ready_ship + (r.ready_ship || 0),
+        }), { open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0, ready_ship: 0 });
+        const ctTotal = ct.open + ct.rfp + ct.picking + ct.pack_ready + ct.packing + ct.ready_ship;
         html += `<tr style="border-top:2px solid var(--border);background:var(--surface2)">
           <td style="padding:9px 18px;color:var(--text);font-weight:700;font-size:.8rem">${country}</td>
           ${tdN(ct.open,       '#fb923c')}
@@ -2845,6 +2853,7 @@
           ${tdN(ct.picking,    '#93c5fd')}
           ${tdN(ct.pack_ready, '#86efac')}
           ${tdN(ct.packing,    '#a78bfa')}
+          ${tdN(ct.ready_ship, '#5eead4')}
           ${tdN(ctTotal,       'var(--text)')}
         </tr>`;
         html += whs.map(r => whRow(r, true)).join('');
@@ -2861,6 +2870,7 @@
           ${tdN(tot.picking,    '#93c5fd')}
           ${tdN(tot.pack_ready, '#86efac')}
           ${tdN(tot.packing,    '#a78bfa')}
+          ${tdN(tot.ready_ship, '#5eead4')}
           ${tdN(total,          'var(--text)')}
         </tr>`;
       }
@@ -2884,6 +2894,7 @@
           picking:    r.picking    || 0,
           pack_ready: r.pack_ready || 0,
           packing:    r.packing    || 0,
+          ready_ship: r.ready_ship || 0,
         }));
         renderB2B();
         const latest = rows.reduce((a, b) => (a.updated_at > b.updated_at ? a : b), rows[0]);
@@ -2920,8 +2931,21 @@
     picking:    { label: 'Picking Started', color: '#93c5fd' },
     pack_ready: { label: 'Ready to Pack',   color: '#86efac' },
     packing:    { label: 'Packing Started', color: '#a78bfa' },
+    ready_ship: { label: 'Ready to Ship',   color: '#5eead4' },
   };
   let b2bOrders = [];
+
+  function escHtml(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function fmtShipDate(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return isNaN(d) ? '—' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  }
+  // Carriers the user manages in Settings → Profile, feeding the Collected By dropdown.
+  function getCarriers() {
+    try { const a = JSON.parse(localStorage.getItem('carriers') || '[]'); return Array.isArray(a) ? a : []; }
+    catch { return []; }
+  }
 
   function renderB2BOrders() {
     const filter = localStorage.getItem('b2cWarehouseFilter') || '';
@@ -2933,15 +2957,26 @@
     const tbl = document.getElementById('b2bOrdersTable');
     if (!tbl) return;
     if (!filtered.length) {
-      tbl.innerHTML = `<tr><td colspan="3" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No B2B orders synced yet.</td></tr>`;
+      tbl.innerHTML = `<tr><td colspan="6" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No B2B orders synced yet.</td></tr>`;
       return;
     }
     tbl.innerHTML = filtered.map(o => {
       const meta = B2B_STATUS_META[o.status] || { label: o.status || 'Unknown', color: 'var(--text)' };
+      // Include a removed/unknown carrier as an option so an existing selection stays visible.
+      const carriers = getCarriers().slice();
+      if (o.collected_by && !carriers.includes(o.collected_by)) carriers.unshift(o.collected_by);
+      const jsId = String(o.order_id).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const collectedSel = `<select onchange="setCollectedBy('${jsId}', this.value)" style="font-size:.78rem;padding:3px 6px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;max-width:150px">
+        <option value="">—</option>
+        ${carriers.map(c => `<option value="${escHtml(c)}"${c === o.collected_by ? ' selected' : ''}>${escHtml(c)}</option>`).join('')}
+      </select>`;
       return `<tr style="border-top:1px solid var(--border)">
         <td style="padding:8px 18px;font-size:.82rem;white-space:nowrap">${wmsOrderLink(o.order_id)}</td>
-        <td style="padding:8px 14px;color:var(--text);font-size:.82rem;white-space:nowrap">${o.wh}</td>
+        <td style="padding:8px 14px;color:var(--text);font-size:.82rem;white-space:nowrap">${escHtml(o.brand) || '—'}</td>
+        <td style="padding:8px 14px;color:var(--text);font-size:.82rem;white-space:nowrap">${escHtml(o.wh)}</td>
         <td style="padding:8px 14px;font-size:.82rem;white-space:nowrap;color:${meta.color}">${meta.label}</td>
+        <td style="padding:8px 14px;color:var(--text);font-size:.82rem;white-space:nowrap">${fmtShipDate(o.expected_ship_date)}</td>
+        <td style="padding:6px 14px;font-size:.82rem;white-space:nowrap">${collectedSel}</td>
       </tr>`;
     }).join('');
   }
@@ -2954,6 +2989,24 @@
       renderB2BOrders();
     } catch (err) {
       console.error('B2B orders fetch error:', err);
+    }
+  }
+
+  // Save the Collected By carrier for one B2B order to Supabase. The extension
+  // never writes collected_by, so this survives future syncs (partial upsert).
+  async function setCollectedBy(orderId, value) {
+    const o = b2bOrders.find(x => x.order_id === orderId);
+    if (o) o.collected_by = value || null;
+    try {
+      const res = await fetch(SB_URL + '/b2b_orders?order_id=eq.' + encodeURIComponent(orderId), {
+        method: 'PATCH',
+        headers: { ...SB_HDR, Prefer: 'return=minimal' },
+        body: JSON.stringify({ collected_by: value || null })
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+    } catch (err) {
+      console.error('Set collected_by failed:', err);
+      showToast('Could not save Collected By — try again.', false);
     }
   }
 
@@ -3115,14 +3168,15 @@
     const tbl = document.getElementById('shortageOrdersTable');
     if (!tbl) return;
     if (!filtered.length) {
-      tbl.innerHTML = `<tr><td colspan="4" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No shortage orders synced yet.</td></tr>`;
+      tbl.innerHTML = `<tr><td colspan="5" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No shortage orders synced yet.</td></tr>`;
       return;
     }
     tbl.innerHTML = filtered.map(o => {
       const ageColor = o.age > 7 ? '#f87171' : o.age > 3 ? '#fcd34d' : '#86efac';
       return `<tr style="border-top:1px solid var(--border)">
         <td style="padding:8px 18px;font-size:.82rem;white-space:nowrap">${wmsOrderLink(o.order_id)}</td>
-        <td style="padding:8px 14px;color:var(--text);font-size:.82rem;white-space:nowrap">${o.wh}</td>
+        <td style="padding:8px 14px;color:var(--text);font-size:.82rem;white-space:nowrap">${escHtml(o.brand) || '—'}</td>
+        <td style="padding:8px 14px;color:var(--text);font-size:.82rem;white-space:nowrap">${escHtml(o.wh)}</td>
         <td style="padding:8px 14px;color:var(--text);font-size:.82rem;white-space:nowrap">${o.order_type || '—'}</td>
         <td style="padding:8px 14px;text-align:right;font-size:.82rem;white-space:nowrap;color:${ageColor}">${o.age ?? '—'}</td>
       </tr>`;
@@ -3692,6 +3746,10 @@
     if (wfEl) wfEl.value = localStorage.getItem('defaultWarehouse') || '';
     const roleEl = document.getElementById('profileRole');
     if (roleEl) roleEl.value = localStorage.getItem('userRole') || 'picker';
+    // Carriers list + Slack webhook (both now live under Profile)
+    renderCarrierList();
+    const slackEl = document.getElementById('slackWebhookInput');
+    if (slackEl) slackEl.value = SLACK_WEBHOOK || '';
     // Populate layout toggle
     const layoutEl = document.getElementById('layoutToggle');
     const savedLayout = localStorage.getItem('packingErrorLayout');
@@ -3719,17 +3777,11 @@
     if (pinInput) pinInput.value = '';
     if (pinErr) pinErr.style.display = 'none';
     if (group) group.classList.remove('open');
-    // Re-lock dev on close
-    const devPin = document.getElementById('sg-dev-pin');
-    const devContent = document.getElementById('sg-dev-content');
-    const devInput = document.getElementById('devPinInput');
-    const devErr = document.getElementById('devPinError');
-    const devGroup = document.getElementById('sg-dev');
-    if (devPin) devPin.style.display = '';
-    if (devContent) devContent.style.display = 'none';
-    if (devInput) devInput.value = '';
-    if (devErr) devErr.style.display = 'none';
-    if (devGroup) devGroup.classList.remove('open');
+    // Collapse the Visible Tabs sub-section again
+    const tabsBody = document.getElementById('tabsSectionBody');
+    const tabsChev = document.getElementById('tabsSectionChevron');
+    if (tabsBody) tabsBody.style.display = 'none';
+    if (tabsChev) tabsChev.style.transform = '';
   }
 
   function openProfileSettings() {
@@ -3773,33 +3825,55 @@
     applyTabVisibility();
   }
 
-  function openDevSettings() {
-    const group = document.getElementById('sg-dev');
-    if (group.classList.contains('open')) {
-      group.classList.remove('open');
-      document.getElementById('sg-dev-pin').style.display = '';
-      document.getElementById('sg-dev-content').style.display = 'none';
-      document.getElementById('devPinInput').value = '';
-      document.getElementById('devPinError').style.display = 'none';
-    } else {
-      group.classList.add('open');
-    }
+  // Collapsible "Visible Tabs" sub-section inside Profile.
+  function toggleTabsSection() {
+    const body = document.getElementById('tabsSectionBody');
+    const chev = document.getElementById('tabsSectionChevron');
+    if (!body) return;
+    const show = body.style.display === 'none';
+    body.style.display = show ? '' : 'none';
+    if (chev) chev.style.transform = show ? 'rotate(180deg)' : '';
   }
 
-  function verifyDevPin() {
-    const input = document.getElementById('devPinInput');
-    const errEl = document.getElementById('devPinError');
-    if (input.value === '12345') {
-      document.getElementById('sg-dev-pin').style.display = 'none';
-      document.getElementById('sg-dev-content').style.display = '';
-      errEl.style.display = 'none';
-      const inp = document.getElementById('slackWebhookInput');
-      if (inp && !inp.value) { inp.value = SLACK_WEBHOOK; saveSlackWebhook(SLACK_WEBHOOK); }
-    } else {
-      errEl.style.display = '';
-      input.value = '';
-      input.focus();
+  // ── Carriers (feed the B2B "Collected By" dropdown) ────────────────────
+  function saveCarriers(arr) { localStorage.setItem('carriers', JSON.stringify(arr)); }
+
+  function addCarrier() {
+    const input = document.getElementById('carrierInput');
+    if (!input) return;
+    const name = input.value.trim();
+    if (!name) return;
+    const list = getCarriers();
+    if (!list.some(c => c.toLowerCase() === name.toLowerCase())) {
+      list.push(name);
+      saveCarriers(list);
     }
+    input.value = '';
+    input.focus();
+    renderCarrierList();
+    renderB2BOrders(); // refresh the dropdowns with the new option
+  }
+
+  function removeCarrier(name) {
+    saveCarriers(getCarriers().filter(c => c !== name));
+    renderCarrierList();
+    renderB2BOrders();
+  }
+
+  function renderCarrierList() {
+    const el = document.getElementById('carrierList');
+    if (!el) return;
+    const list = getCarriers();
+    if (!list.length) {
+      el.innerHTML = `<div style="font-size:.78rem;color:var(--muted);padding:2px 0">No carriers yet.</div>`;
+      return;
+    }
+    el.innerHTML = list.map(c => `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--surface2)">
+        <span style="font-size:.82rem;color:var(--text)">${escHtml(c)}</span>
+        <button onclick="removeCarrier('${String(c).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')" title="Remove"
+          style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:1rem;line-height:1;padding:0 4px">✕</button>
+      </div>`).join('');
   }
 
   // Close modal on backdrop click
