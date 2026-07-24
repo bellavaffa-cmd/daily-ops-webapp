@@ -100,11 +100,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // 4. Pivot: warehouseCode × status → counts (filter by orderType)
         const cols = [...new Set(Object.values(SM))];
         const whs  = {};
+        // Seed a zeroed row for every warehouse this session can see at all
+        // (any order type/status) — otherwise a warehouse whose count for
+        // this orderType drops to zero just keeps its last nonzero value
+        // stuck in Supabase forever, since it'd never get touched again.
+        for (const o of all) {
+          const wh = o.warehouseCode;
+          if (!wh || whs[wh]) continue;
+          whs[wh] = { wh };
+          cols.forEach(c => whs[wh][c] = 0);
+        }
         for (const o of all) {
           if (o.shipmentOrderTypeName !== config.orderType) continue;
           const wh = o.warehouseCode, col = SM[o.shipmentOrderStatusId];
           if (!wh || !col) continue;
-          if (!whs[wh]) { whs[wh] = { wh }; cols.forEach(c => whs[wh][c] = 0); }
           whs[wh][col]++;
         }
         const rows = Object.values(whs).map(r => ({ ...r, updated_at: new Date().toISOString() }));
