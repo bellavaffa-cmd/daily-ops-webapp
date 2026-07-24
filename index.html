@@ -142,6 +142,9 @@
     }
     .card h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
     .card .subtitle { font-size: .85rem; color: var(--muted); margin-bottom: 24px; }
+    /* Clickable KPI status boxes (open the matching order list in WMS) */
+    .kpi-link { cursor: pointer; transition: border-color .15s, transform .1s; }
+    .kpi-link:hover { border-color: var(--primary); transform: translateY(-1px); }
 
     /* ── Form ── */
     .form-grid {
@@ -1899,24 +1902,14 @@
           <span id="b2cDataMode">Snapshot</span> · <span id="b2cSyncTime">6 Jul 2026, 09:47 SGT</span>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
         <select id="b2cViewWarehouse" onchange="onViewWarehouseChange(this.value)"
-          style="font-size:.8rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer"></select>
+          style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;flex:0 1 180px;min-width:120px;max-width:200px"></select>
         <button id="b2cSyncBtn" class="btn btn-primary btn-sm" onclick="syncLogiwaAndRefresh(this)"
           style="display:flex;align-items:center;gap:5px;font-size:.75rem;padding:5px 12px">
           <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
           Sync Logiwa
         </button>
-        <button id="b2cRefreshBtn" class="btn btn-ghost btn-sm" onclick="refreshB2C(this)"
-          style="display:flex;align-items:center;gap:5px;font-size:.75rem;padding:5px 10px">
-          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.36-3.36L23 10M1 14l5.13 4.36A9 9 0 0020.49 15"/></svg>
-          Refresh
-        </button>
-        <a href="https://wms.golocad.com/en/wms/shipment-order/list?sot=%255B%25222857373d-e9ed-41ac-aa11-1441b42b6152%2522%255D&sotqt=in&sotlbl=B2C&sos=%255B6%252C8%252C9%252C12%252C13%255D&sosqt=in&soslbl=Open,%20Ready%20to%20Pick,%20Picking%20Started,%20Ready%20to%20Pack,%20Packing%20Started" target="_blank"
-           style="font-size:.75rem;color:var(--primary);text-decoration:none;display:flex;align-items:center;gap:4px">
-          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-          Open in WMS
-        </a>
       </div>
     </div>
 
@@ -1957,24 +1950,14 @@
           <span id="b2bDataMode">Snapshot</span> · <span id="b2bSyncTime">—</span>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
         <select id="b2bViewWarehouse" onchange="onViewWarehouseChange(this.value)"
-          style="font-size:.8rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer"></select>
+          style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;flex:0 1 180px;min-width:120px;max-width:200px"></select>
         <button id="b2bSyncBtn" class="btn btn-primary btn-sm" onclick="syncLogiwaB2BAndRefresh(this)"
           style="display:flex;align-items:center;gap:5px;font-size:.75rem;padding:5px 12px">
           <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
           Sync Logiwa
         </button>
-        <button id="b2bRefreshBtn" class="btn btn-ghost btn-sm" onclick="refreshB2B(this)"
-          style="display:flex;align-items:center;gap:5px;font-size:.75rem;padding:5px 10px">
-          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.36-3.36L23 10M1 14l5.13 4.36A9 9 0 0020.49 15"/></svg>
-          Refresh
-        </button>
-        <a href="https://wms.golocad.com/en/wms/shipment-order/list?sot=%255B%2522814c0655-e231-45a3-9f15-1154b844f69e%2522%255D&sotqt=in&sotlbl=B2B&sos=%255B6%252C8%252C9%252C12%252C13%255D&sosqt=in&soslbl=Open,%20Ready%20to%20Pick,%20Picking%20Started,%20Ready%20to%20Pack,%20Packing%20Started" target="_blank"
-           style="font-size:.75rem;color:var(--primary);text-decoration:none;display:flex;align-items:center;gap:4px">
-          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-          Open in WMS
-        </a>
       </div>
     </div>
 
@@ -2034,24 +2017,14 @@
           <span id="shortageDataMode">Snapshot</span> · <span id="shortageSyncTime">—</span>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
         <select id="shortageViewWarehouse" onchange="onViewWarehouseChange(this.value)"
-          style="font-size:.8rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer"></select>
+          style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;flex:0 1 180px;min-width:120px;max-width:200px"></select>
         <button id="shortageSyncBtn" class="btn btn-primary btn-sm" onclick="syncLogiwaAndRefresh(this)"
           style="display:flex;align-items:center;gap:5px;font-size:.75rem;padding:5px 12px">
           <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
           Sync Logiwa
         </button>
-        <button id="shortageRefreshBtn" class="btn btn-ghost btn-sm" onclick="refreshShortage(this)"
-          style="display:flex;align-items:center;gap:5px;font-size:.75rem;padding:5px 10px">
-          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.36-3.36L23 10M1 14l5.13 4.36A9 9 0 0020.49 15"/></svg>
-          Refresh
-        </button>
-        <a href="https://wms.golocad.com/en/wms/shipment-order/list?sos=%255B2%255D&sosqt=in&soslbl=Shortage" target="_blank"
-           style="font-size:.75rem;color:var(--primary);text-decoration:none;display:flex;align-items:center;gap:4px">
-          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-          Open in WMS
-        </a>
       </div>
     </div>
 
@@ -2459,6 +2432,24 @@
   initTabVisibility();
   applyRoleVisibility();
 
+  // ── WMS deep-links ────────────────────────────────────────────────────
+  // Build a Logiwa shipment-order list URL filtered by order type + status(es),
+  // matching the double-URL-encoded param format Logiwa's own UI uses
+  // (?sot=[typeGuid]&sos=[statusIds]…). Used to make the KPI status boxes open
+  // the matching order list in WMS.
+  const WMS_TYPE_GUID  = { B2C: '2857373d-e9ed-41ac-aa11-1441b42b6152', B2B: '814c0655-e231-45a3-9f15-1154b844f69e' };
+  const WMS_STATUS_ID  = { 'Open': 6, 'Ready to Pick': 8, 'Picking Started': 9, 'Ready to Pack': 12, 'Packing Started': 13 };
+  const WMS_ALL_STATUS = [6, 8, 9, 12, 13];
+  function wmsStatusUrl(typeLbl, statusIds, statusLbl) {
+    const enc2 = v => encodeURIComponent(encodeURIComponent(JSON.stringify(v)));
+    let url = 'https://wms.golocad.com/en/wms/shipment-order/list?sos=' + enc2(statusIds)
+            + '&sosqt=in&soslbl=' + encodeURIComponent(statusLbl);
+    if (typeLbl && WMS_TYPE_GUID[typeLbl]) {
+      url += '&sot=' + enc2([WMS_TYPE_GUID[typeLbl]]) + '&sotqt=in&sotlbl=' + encodeURIComponent(typeLbl);
+    }
+    return url;
+  }
+
   // ── B2C Dashboard ─────────────────────────────────────────────────────
   // Data is a snapshot. To refresh, ask Claude: "refresh B2C data".
   let b2cData = [
@@ -2507,12 +2498,15 @@
 
     const kpiEl = document.getElementById('b2cKpis');
     kpiEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
-      ${statuses.map(s => `
-        <div class="card" style="padding:16px 18px">
+      ${statuses.map(s => {
+        const url = wmsStatusUrl('B2C', s.key === 'total' ? WMS_ALL_STATUS : [WMS_STATUS_ID[s.label]], s.key === 'total' ? 'All' : s.label);
+        return `
+        <a class="card kpi-link" href="${url}" target="_blank" title="Open in WMS" style="padding:16px 18px;text-decoration:none;color:inherit;display:block">
           <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px">${s.label}</div>
           <div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${fmt(s.count)}</div>
           <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${s.key === 'total' ? 'across all statuses' : pct(s.count, total) + ' of total'}</div>
-        </div>`).join('')}
+        </a>`;
+      }).join('')}
     </div>`;
 
     // Table helpers
@@ -2663,11 +2657,6 @@
     }
   }
 
-  async function refreshB2C(btn) {
-    if (btn) { btn.disabled = true; btn.style.opacity = '.5'; }
-    await fetchB2CData();
-    if (btn) { btn.disabled = false; btn.style.opacity = ''; }
-  }
 
   // ── Logiwa sync — works in 3 contexts: ───────────────────────────────────
   //   1. Direct on wms.golocad.com (rare) — runs inline
@@ -2804,12 +2793,16 @@
 
     const kpiEl = document.getElementById('b2bKpis');
     if (kpiEl) kpiEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
-      ${statuses.map(s => `
-        <div class="card" style="padding:16px 18px">
+      ${statuses.map(s => {
+        const isTotal = s.label === 'Total Orders';
+        const url = wmsStatusUrl('B2B', isTotal ? WMS_ALL_STATUS : [WMS_STATUS_ID[s.label]], isTotal ? 'All' : s.label);
+        return `
+        <a class="card kpi-link" href="${url}" target="_blank" title="Open in WMS" style="padding:16px 18px;text-decoration:none;color:inherit;display:block">
           <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px">${s.label}</div>
           <div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${fmt(s.count)}</div>
-          <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${s.label === 'Total Orders' ? 'across all statuses' : pct(s.count, total) + ' of total'}</div>
-        </div>`).join('')}
+          <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${isTotal ? 'across all statuses' : pct(s.count, total) + ' of total'}</div>
+        </a>`;
+      }).join('')}
     </div>`;
 
     const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color||'var(--text)'};font-size:.82rem">${fmt(n)}</td>`;
@@ -2911,11 +2904,6 @@
     }
   }
 
-  async function refreshB2B(btn) {
-    if (btn) { btn.disabled = true; btn.style.opacity = '.5'; }
-    await Promise.all([fetchB2BData(), fetchB2BOrders()]);
-    if (btn) { btn.disabled = false; btn.style.opacity = ''; }
-  }
 
   // ── B2B individual orders ────────────────────────────────────────────
   // Order number → link that opens that exact order in WMS (Logiwa list page
@@ -3043,14 +3031,17 @@
       { label: 'Total Orders', count: total,          color: 'var(--text)' },
     ];
 
+    // Shortage boxes are age buckets, but Logiwa's list filters by status, not
+    // age — so every box opens the same Shortage (statusId 2) order list.
+    const shortageUrl = wmsStatusUrl(null, [2], 'Shortage');
     const kpiEl = document.getElementById('shortageKpis');
     if (kpiEl) kpiEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
       ${statuses.map(s => `
-        <div class="card" style="padding:16px 18px">
+        <a class="card kpi-link" href="${shortageUrl}" target="_blank" title="Open in WMS" style="padding:16px 18px;text-decoration:none;color:inherit;display:block">
           <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px">${s.label}</div>
           <div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${fmt(s.count)}</div>
           <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${s.label === 'Total Orders' ? 'across all ages' : pct(s.count, total) + ' of total'}</div>
-        </div>`).join('')}
+        </a>`).join('')}
     </div>`;
 
     const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color||'var(--text)'};font-size:.82rem">${fmt(n)}</td>`;
@@ -3176,11 +3167,6 @@
     }
   }
 
-  async function refreshShortage(btn) {
-    if (btn) { btn.disabled = true; btn.style.opacity = '.5'; }
-    await Promise.all([fetchShortageData(), fetchShortageOrders()]);
-    if (btn) { btn.disabled = false; btn.style.opacity = ''; }
-  }
 
   renderShortage();
   renderShortageOrders();
@@ -3222,6 +3208,12 @@
   function selectWarehouse(value) {
     localStorage.setItem('b2cWarehousePicked', '1');
     localStorage.setItem('b2cWarehouseFilter', value);
+    // First-run picker also sets the default warehouse used to pre-fill error
+    // reports. Only this picker does — the header dropdown just changes the view
+    // filter and deliberately leaves the default alone.
+    localStorage.setItem('defaultWarehouse', value);
+    const dw = document.getElementById('settingsDefaultWarehouse');
+    if (dw) dw.value = value;
     populateViewWarehouseSelects();
     document.getElementById('warehousePickerModal').classList.remove('open');
     renderB2C();
