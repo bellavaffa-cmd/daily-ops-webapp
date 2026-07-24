@@ -1207,6 +1207,10 @@
       <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path stroke-linecap="round" d="M16 12h.01"/></svg>
       B2B Dashboard
     </button>
+    <button class="tab-btn" id="tab-btn-shortage" onclick="showView('shortage')">
+      <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13" stroke-linecap="round"/><line x1="12" y1="17" x2="12.01" y2="17" stroke-linecap="round"/></svg>
+      Shortage
+    </button>
     <button class="tab-btn" id="tab-btn-dash" onclick="showView('dash')">
       <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
       Error Dashboard
@@ -1238,6 +1242,10 @@
     <button class="bnav-btn" id="bnav-btn-b2b" onclick="showView('b2b')">
       <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path stroke-linecap="round" d="M16 12h.01"/></svg>
       B2B
+    </button>
+    <button class="bnav-btn" id="bnav-btn-shortage" onclick="showView('shortage')">
+      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13" stroke-linecap="round"/><line x1="12" y1="17" x2="12.01" y2="17" stroke-linecap="round"/></svg>
+      Shortage
     </button>
     <button class="bnav-btn" id="bnav-btn-dash" onclick="showView('dash')">
       <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
@@ -1359,6 +1367,13 @@
             <div style="font-size:.85rem;color:var(--text);font-weight:500">B2B Dashboard</div>
             <label class="toggle-switch">
               <input type="checkbox" id="tabToggleB2b" onchange="applyTabVisibility()" checked />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+          <div class="theme-toggle-row">
+            <div style="font-size:.85rem;color:var(--text);font-weight:500">Shortage</div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="tabToggleShortage" onchange="applyTabVisibility()" checked />
               <span class="toggle-track"></span>
             </label>
           </div>
@@ -1998,6 +2013,82 @@
 
   </div>
 
+  <!-- ── SHORTAGE DASHBOARD VIEW ── -->
+  <div class="view" id="view-shortage">
+
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Ops — Shortage</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">
+          <span id="shortageDataMode">Snapshot</span> · <span id="shortageSyncTime">—</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <select id="shortageViewWarehouse" onchange="onViewWarehouseChange(this.value)"
+          style="font-size:.8rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer"></select>
+        <button id="shortageSyncBtn" class="btn btn-primary btn-sm" onclick="syncLogiwaAndRefresh(this)"
+          style="display:flex;align-items:center;gap:5px;font-size:.75rem;padding:5px 12px">
+          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+          Sync Logiwa
+        </button>
+        <button id="shortageRefreshBtn" class="btn btn-ghost btn-sm" onclick="refreshShortage(this)"
+          style="display:flex;align-items:center;gap:5px;font-size:.75rem;padding:5px 10px">
+          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.36-3.36L23 10M1 14l5.13 4.36A9 9 0 0020.49 15"/></svg>
+          Refresh
+        </button>
+        <a href="https://wms.golocad.com/en/wms/shipment-order/list?sos=%255B2%255D&sosqt=in&soslbl=Shortage" target="_blank"
+           style="font-size:.75rem;color:var(--primary);text-decoration:none;display:flex;align-items:center;gap:4px">
+          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+          Open in WMS
+        </a>
+      </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div id="shortageKpis" style="margin-bottom:20px"></div>
+
+    <!-- Warehouse Breakdown -->
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Warehouse Breakdown</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+          <thead>
+            <tr style="background:var(--surface2)">
+              <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Warehouse</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#86efac;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">1-3 Days</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#fcd34d;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">4-7 Days</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#f87171;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">7+ Days</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--text);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Total</th>
+            </tr>
+          </thead>
+          <tbody id="shortageWHTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Individual Orders -->
+    <div class="card" style="padding:0;overflow:hidden;margin-top:16px">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">
+        Orders <span id="shortageOrdersCount" style="font-weight:400;color:var(--muted)"></span>
+      </div>
+      <div style="overflow:auto;max-height:480px">
+        <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+          <thead>
+            <tr style="background:var(--surface2)">
+              <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Order ID</th>
+              <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Warehouse</th>
+              <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Type</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Age (days)</th>
+            </tr>
+          </thead>
+          <tbody id="shortageOrdersTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
   <!-- ── HELP VIEW ── -->
   <div class="view" id="view-help">
     <div class="card">
@@ -2308,10 +2399,11 @@
 
   // ── Tab visibility ─────────────────────────────────────────────────────
   const TAB_KEYS = [
-    { key: 'packingErrorTabB2c',  btnId: 'tab-btn-b2c',  bnavId: 'bnav-btn-b2c',  view: 'b2c',   toggleId: 'tabToggleB2c'  },
-    { key: 'packingErrorTabB2b',  btnId: 'tab-btn-b2b',  bnavId: 'bnav-btn-b2b',  view: 'b2b',   toggleId: 'tabToggleB2b'  },
-    { key: 'packingErrorTabDash', btnId: 'tab-btn-dash', bnavId: 'bnav-btn-dash', view: 'dash',  toggleId: 'tabToggleDash' },
-    { key: 'packingErrorTabHelp', btnId: 'tab-btn-help', bnavId: 'bnav-btn-help', view: 'help',  toggleId: 'tabToggleHelp' },
+    { key: 'packingErrorTabB2c',      btnId: 'tab-btn-b2c',      bnavId: 'bnav-btn-b2c',      view: 'b2c',      toggleId: 'tabToggleB2c'      },
+    { key: 'packingErrorTabB2b',      btnId: 'tab-btn-b2b',      bnavId: 'bnav-btn-b2b',      view: 'b2b',      toggleId: 'tabToggleB2b'      },
+    { key: 'packingErrorTabShortage', btnId: 'tab-btn-shortage', bnavId: 'bnav-btn-shortage', view: 'shortage', toggleId: 'tabToggleShortage' },
+    { key: 'packingErrorTabDash',     btnId: 'tab-btn-dash',     bnavId: 'bnav-btn-dash',     view: 'dash',     toggleId: 'tabToggleDash'     },
+    { key: 'packingErrorTabHelp',     btnId: 'tab-btn-help',     bnavId: 'bnav-btn-help',     view: 'help',     toggleId: 'tabToggleHelp'     },
   ];
 
   function applyTabVisibility() {
@@ -2496,7 +2588,7 @@
   function populateViewWarehouseSelects() {
     const html = warehouseOptionsHTML();
     const filter = localStorage.getItem('b2cWarehouseFilter') || '';
-    ['b2cViewWarehouse', 'b2bViewWarehouse'].forEach(id => {
+    ['b2cViewWarehouse', 'b2bViewWarehouse', 'shortageViewWarehouse'].forEach(id => {
       const el = document.getElementById(id);
       if (!el) return;
       el.innerHTML = html;
@@ -2511,6 +2603,8 @@
     renderB2C();
     renderB2B();
     renderB2BOrders();
+    renderShortage();
+    renderShortageOrders();
   }
 
   populateViewWarehouseSelects();
@@ -2537,7 +2631,8 @@
         }));
         populateViewWarehouseSelects(); // rebuild optgroups now that b2cData has real country info
         renderB2C();
-        renderB2B(); // b2b_data has no country field of its own; re-group once b2cData's arrives
+        renderB2B();       // b2b_data has no country field of its own; re-group once b2cData's arrives
+        renderShortage();  // same — shortage_data has no country field either
         if (localStorage.getItem('b2cWarehousePicked') === null) showWarehousePicker();
         // Show last sync time from most recently updated row
         const latest = rows.reduce((a, b) => (a.updated_at > b.updated_at ? a : b), rows[0]);
@@ -2611,6 +2706,8 @@
         if (!res.ok) throw new Error('Supabase ' + res.status);
         notify('Synced ' + rows.length + ' warehouse(s) from Logiwa ✓', true);
         await fetchB2CData();
+        fetchShortageData();
+        fetchShortageOrders();
       } catch (e) {
         notify('Sync failed: ' + e.message, false);
       } finally { setIdle(); }
@@ -2634,6 +2731,8 @@
         if (e.data.ok) {
           notify('Synced ' + e.data.count + ' warehouse(s) from Logiwa ✓', true);
           fetchB2CData();
+          fetchShortageData();
+          fetchShortageOrders();
         } else {
           notify('Sync failed: ' + (e.data.error || 'unknown error'), false);
         }
@@ -2876,6 +2975,8 @@
           notify('B2B synced ' + e.data.count + ' warehouse(s) from Logiwa ✓', true);
           fetchB2BData();
           fetchB2BOrders();
+          fetchShortageData();
+          fetchShortageOrders();
         } else {
           notify('B2B sync failed: ' + (e.data.error || 'unknown error'), false);
         }
@@ -2894,6 +2995,179 @@
   fetchB2BData();
   fetchB2BOrders();
   setInterval(() => syncLogiwaB2BAndRefresh(null, true), 5 * 60 * 1000);
+
+  // ── Shortage Dashboard ────────────────────────────────────────────────
+  // Computed server-side by the same Logiwa sync as B2C/B2B (statusId 2 =
+  // "Shortage", any order type) — see wms-extension/background.js. No
+  // dedicated sync action; either the B2C or B2B "Sync Logiwa" button
+  // refreshes this data too, since they all share one Logiwa fetch.
+  let shortageData = [];   // aggregate: { wh, age_1_3, age_4_7, age_7_plus }
+  let shortageOrders = []; // individual: { order_id, wh, order_type, age }
+
+  function renderShortage() {
+    const filter = localStorage.getItem('b2cWarehouseFilter') || '';
+    const filtered = filter ? shortageData.filter(r => r.wh === filter) : shortageData;
+
+    const tot = filtered.reduce((a, r) => ({
+      age_1_3:    a.age_1_3    + (r.age_1_3    || 0),
+      age_4_7:    a.age_4_7    + (r.age_4_7    || 0),
+      age_7_plus: a.age_7_plus + (r.age_7_plus || 0),
+    }), { age_1_3: 0, age_4_7: 0, age_7_plus: 0 });
+
+    const total = tot.age_1_3 + tot.age_4_7 + tot.age_7_plus;
+    const fmt   = n => n.toLocaleString();
+    const pct   = (n, d) => d ? (n / d * 100).toFixed(1) + '%' : '—';
+
+    const statuses = [
+      { label: '1-3 Days',     count: tot.age_1_3,    color: '#86efac' },
+      { label: '4-7 Days',     count: tot.age_4_7,    color: '#fcd34d' },
+      { label: '7+ Days',      count: tot.age_7_plus, color: '#f87171' },
+      { label: 'Total Orders', count: total,          color: 'var(--text)' },
+    ];
+
+    const kpiEl = document.getElementById('shortageKpis');
+    if (kpiEl) kpiEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px">
+      ${statuses.map(s => `
+        <div class="card" style="padding:16px 18px">
+          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px">${s.label}</div>
+          <div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${fmt(s.count)}</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${s.label === 'Total Orders' ? 'across all ages' : pct(s.count, total) + ' of total'}</div>
+        </div>`).join('')}
+    </div>`;
+
+    const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color||'var(--text)'};font-size:.82rem">${fmt(n)}</td>`;
+    const whRow = (r, indent) => {
+      const t = (r.age_1_3||0) + (r.age_4_7||0) + (r.age_7_plus||0);
+      const pad = indent ? 'padding:9px 18px 9px 28px' : 'padding:10px 18px';
+      return `<tr style="border-top:1px solid var(--border)">
+        <td style="${pad};color:var(--text);white-space:nowrap;font-size:.82rem">${r.wh}</td>
+        ${tdN(r.age_1_3    || 0, '#86efac')}
+        ${tdN(r.age_4_7    || 0, '#fcd34d')}
+        ${tdN(r.age_7_plus || 0, '#f87171')}
+        ${tdN(t,                 'var(--text)')}
+      </tr>`;
+    };
+
+    // Reuse B2C's warehouse→country mapping, same trick as B2B's breakdown.
+    const countryOf = {};
+    for (const r of b2cData) { if (r.wh && r.country) countryOf[r.wh] = r.country; }
+    const countries = [...new Set(filtered.map(r => countryOf[r.wh]).filter(Boolean))];
+
+    let html = '';
+    if (!filter && countries.length) {
+      for (const country of countries) {
+        const whs = filtered.filter(r => countryOf[r.wh] === country);
+        const ct = whs.reduce((a, r) => ({
+          age_1_3:    a.age_1_3    + (r.age_1_3    || 0),
+          age_4_7:    a.age_4_7    + (r.age_4_7    || 0),
+          age_7_plus: a.age_7_plus + (r.age_7_plus || 0),
+        }), { age_1_3: 0, age_4_7: 0, age_7_plus: 0 });
+        const ctTotal = ct.age_1_3 + ct.age_4_7 + ct.age_7_plus;
+        html += `<tr style="border-top:2px solid var(--border);background:var(--surface2)">
+          <td style="padding:9px 18px;color:var(--text);font-weight:700;font-size:.8rem">${country}</td>
+          ${tdN(ct.age_1_3,    '#86efac')}
+          ${tdN(ct.age_4_7,    '#fcd34d')}
+          ${tdN(ct.age_7_plus, '#f87171')}
+          ${tdN(ctTotal,       'var(--text)')}
+        </tr>`;
+        html += whs.map(r => whRow(r, true)).join('');
+      }
+      const uncategorized = filtered.filter(r => !countryOf[r.wh]);
+      html += uncategorized.map(r => whRow(r, false)).join('');
+    } else {
+      html += filtered.map(r => whRow(r, false)).join('');
+      if (filtered.length > 1) {
+        html += `<tr style="border-top:2px solid var(--border);background:var(--surface2)">
+          <td style="padding:10px 18px;color:var(--text);font-weight:700;font-size:.82rem">Total</td>
+          ${tdN(tot.age_1_3,    '#86efac')}
+          ${tdN(tot.age_4_7,    '#fcd34d')}
+          ${tdN(tot.age_7_plus, '#f87171')}
+          ${tdN(total,          'var(--text)')}
+        </tr>`;
+      }
+    }
+    const tbl = document.getElementById('shortageWHTable');
+    if (tbl) tbl.innerHTML = html;
+  }
+
+  function renderShortageOrders() {
+    const filter = localStorage.getItem('b2cWarehouseFilter') || '';
+    const filtered = filter ? shortageOrders.filter(o => o.wh === filter) : shortageOrders;
+
+    const countEl = document.getElementById('shortageOrdersCount');
+    if (countEl) countEl.textContent = filtered.length ? `(${filtered.length.toLocaleString()})` : '';
+
+    const tbl = document.getElementById('shortageOrdersTable');
+    if (!tbl) return;
+    if (!filtered.length) {
+      tbl.innerHTML = `<tr><td colspan="4" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No shortage orders synced yet.</td></tr>`;
+      return;
+    }
+    tbl.innerHTML = filtered.map(o => {
+      const ageColor = o.age > 7 ? '#f87171' : o.age > 3 ? '#fcd34d' : '#86efac';
+      return `<tr style="border-top:1px solid var(--border)">
+        <td style="padding:8px 18px;color:var(--text);font-size:.82rem;white-space:nowrap">${o.order_id}</td>
+        <td style="padding:8px 14px;color:var(--text);font-size:.82rem;white-space:nowrap">${o.wh}</td>
+        <td style="padding:8px 14px;color:var(--text);font-size:.82rem;white-space:nowrap">${o.order_type || '—'}</td>
+        <td style="padding:8px 14px;text-align:right;font-size:.82rem;white-space:nowrap;color:${ageColor}">${o.age ?? '—'}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function fetchShortageData() {
+    const modeEl = document.getElementById('shortageDataMode');
+    if (modeEl) { modeEl.textContent = 'Loading…'; modeEl.style.color = 'var(--muted)'; }
+    try {
+      const res = await fetch(SB_URL + '/shortage_data?select=*&order=wh.asc', { headers: SB_HDR });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const rows = await res.json();
+      if (rows && rows.length) {
+        shortageData = rows.map(r => ({
+          wh:         r.wh,
+          age_1_3:    r.age_1_3    || 0,
+          age_4_7:    r.age_4_7    || 0,
+          age_7_plus: r.age_7_plus || 0,
+        }));
+        renderShortage();
+        const latest = rows.reduce((a, b) => (a.updated_at > b.updated_at ? a : b), rows[0]);
+        if (latest && latest.updated_at) {
+          const st = document.getElementById('shortageSyncTime');
+          if (st) st.textContent = new Date(latest.updated_at).toLocaleString('en-GB', {
+            day: 'numeric', month: 'short', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
+          });
+        }
+        if (modeEl) { modeEl.textContent = 'Supabase ●'; modeEl.style.color = 'var(--success)'; }
+      } else {
+        if (modeEl) { modeEl.textContent = 'Snapshot — no data yet'; modeEl.style.color = 'var(--muted)'; }
+      }
+    } catch (err) {
+      console.error('Shortage fetch error:', err);
+      if (modeEl) { modeEl.textContent = 'Offline — using snapshot'; modeEl.style.color = 'var(--danger)'; }
+    }
+  }
+
+  async function fetchShortageOrders() {
+    try {
+      const res = await fetch(SB_URL + '/shortage_orders?select=*&order=wh.asc,order_id.asc', { headers: SB_HDR });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      shortageOrders = await res.json();
+      renderShortageOrders();
+    } catch (err) {
+      console.error('Shortage orders fetch error:', err);
+    }
+  }
+
+  async function refreshShortage(btn) {
+    if (btn) { btn.disabled = true; btn.style.opacity = '.5'; }
+    await Promise.all([fetchShortageData(), fetchShortageOrders()]);
+    if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+  }
+
+  renderShortage();
+  renderShortageOrders();
+  fetchShortageData();
+  fetchShortageOrders();
 
   // ── Warehouse Picker ──────────────────────────────────────────────────
   function showWarehousePicker() {
@@ -2935,6 +3209,8 @@
     renderB2C();
     renderB2B();
     renderB2BOrders();
+    renderShortage();
+    renderShortageOrders();
   }
 
   // ── Picking Issues ────────────────────────────────────────────────────
@@ -3690,7 +3966,7 @@
   }
 
   // ── View switching ─────────────────────────────────────────────────────
-  const VIEW_ORDER = ['b2c', 'dash', 'help'];
+  const VIEW_ORDER = ['b2c', 'b2b', 'shortage', 'dash', 'help'];
   function showView(v) {
     if (!document.getElementById('view-' + v)) return;
     document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));

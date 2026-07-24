@@ -133,6 +133,38 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           }))
           .filter(o => o.order_id && o.wh && o.status);
 
+        // 4c. Shortage: age-bucket pivot (any order type, statusId 2 = "Shortage" —
+        // confirmed via a real Logiwa WMS filter URL, not guessed) + one row per
+        // shortage order. Same zero-seeding as the main pivot above, so a
+        // warehouse whose shortage count drops to zero actually gets written.
+        const ageCols = ['age_1_3', 'age_4_7', 'age_7_plus'];
+        const ageBucket = age => (age <= 3 ? 'age_1_3' : age <= 7 ? 'age_4_7' : 'age_7_plus');
+        const shortageWhs = {};
+        for (const o of all) {
+          const wh = o.warehouseCode;
+          if (!wh || shortageWhs[wh]) continue;
+          shortageWhs[wh] = { wh };
+          ageCols.forEach(c => shortageWhs[wh][c] = 0);
+        }
+        for (const o of all) {
+          if (o.shipmentOrderStatusId !== 2) continue;
+          const wh = o.warehouseCode;
+          if (!wh) continue;
+          shortageWhs[wh][ageBucket(o.orderAge || 0)]++;
+        }
+        const shortageRows = Object.values(shortageWhs).map(r => ({ ...r, updated_at: new Date().toISOString() }));
+
+        const shortageOrders = all
+          .filter(o => o.shipmentOrderStatusId === 2)
+          .map(o => ({
+            order_id: String(o.code ?? o.identifier ?? ''),
+            wh: o.warehouseCode,
+            order_type: o.shipmentOrderTypeName || null,
+            age: o.orderAge ?? null,
+            updated_at: new Date().toISOString()
+          }))
+          .filter(o => o.order_id && o.wh);
+
         // 5. Upsert to Supabase
         const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co';
         const SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
@@ -158,7 +190,29 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           if (!b2bRes.ok) throw new Error('Supabase b2b_orders error ' + b2bRes.status + ': ' + await b2bRes.text());
         }
 
-        await broadcast({ ok: true, count: rows.length, b2bCount: b2bOrders.length });
+        const shortageRes = await fetch(`${SB_URL}/rest/v1/shortage_data?on_conflict=wh`, {
+          method: 'POST',
+          headers: {
+            apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY,
+            'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates'
+          },
+          body: JSON.stringify(shortageRows)
+        });
+        if (!shortageRes.ok) throw new Error('Supabase shortage_data error ' + shortageRes.status + ': ' + await shortageRes.text());
+
+        if (shortageOrders.length) {
+          const shortageOrdersRes = await fetch(`${SB_URL}/rest/v1/shortage_orders?on_conflict=order_id`, {
+            method: 'POST',
+            headers: {
+              apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY,
+              'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates'
+            },
+            body: JSON.stringify(shortageOrders)
+          });
+          if (!shortageOrdersRes.ok) throw new Error('Supabase shortage_orders error ' + shortageOrdersRes.status + ': ' + await shortageOrdersRes.text());
+        }
+
+        await broadcast({ ok: true, count: rows.length, b2bCount: b2bOrders.length, shortageCount: shortageOrders.length });
       } catch (e) {
         console.error('[WMS bg] sync error:', e.message);
         await broadcast({ ok: false, error: e.message });
