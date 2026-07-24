@@ -1937,7 +1937,7 @@
           <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.36-3.36L23 10M1 14l5.13 4.36A9 9 0 0020.49 15"/></svg>
           Refresh
         </button>
-        <select id="b2bWarehouseFilter" onchange="localStorage.setItem('b2cWarehouseFilter', this.value); document.getElementById('b2cWarehouseFilter').value = this.value; renderB2B()"
+        <select id="b2bWarehouseFilter" onchange="localStorage.setItem('b2cWarehouseFilter', this.value); document.getElementById('b2cWarehouseFilter').value = this.value; renderB2B(); renderB2BOrders()"
           style="font-size:.8rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
           <option value="">All Warehouses</option>
           <option value="LOCAD Bekasi FC">LOCAD Bekasi FC</option>
@@ -1977,6 +1977,25 @@
             </tr>
           </thead>
           <tbody id="b2bWHTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Individual Orders -->
+    <div class="card" style="padding:0;overflow:hidden;margin-top:16px">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">
+        Orders <span id="b2bOrdersCount" style="font-weight:400;color:var(--muted)"></span>
+      </div>
+      <div style="overflow:auto;max-height:480px">
+        <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+          <thead>
+            <tr style="background:var(--surface2)">
+              <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Order ID</th>
+              <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Warehouse</th>
+              <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Status</th>
+            </tr>
+          </thead>
+          <tbody id="b2bOrdersTable"></tbody>
         </table>
       </div>
     </div>
@@ -2727,8 +2746,52 @@
 
   async function refreshB2B(btn) {
     if (btn) { btn.disabled = true; btn.style.opacity = '.5'; }
-    await fetchB2BData();
+    await Promise.all([fetchB2BData(), fetchB2BOrders()]);
     if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+  }
+
+  // ── B2B individual orders ────────────────────────────────────────────
+  const B2B_STATUS_META = {
+    open:       { label: 'Open',            color: '#fb923c' },
+    rfp:        { label: 'Ready to Pick',   color: '#fcd34d' },
+    picking:    { label: 'Picking Started', color: '#93c5fd' },
+    pack_ready: { label: 'Ready to Pack',   color: '#86efac' },
+    packing:    { label: 'Packing Started', color: '#a78bfa' },
+  };
+  let b2bOrders = [];
+
+  function renderB2BOrders() {
+    const filter = localStorage.getItem('b2cWarehouseFilter') || '';
+    const filtered = filter ? b2bOrders.filter(o => o.wh === filter) : b2bOrders;
+
+    const countEl = document.getElementById('b2bOrdersCount');
+    if (countEl) countEl.textContent = filtered.length ? `(${filtered.length.toLocaleString()})` : '';
+
+    const tbl = document.getElementById('b2bOrdersTable');
+    if (!tbl) return;
+    if (!filtered.length) {
+      tbl.innerHTML = `<tr><td colspan="3" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No B2B orders synced yet.</td></tr>`;
+      return;
+    }
+    tbl.innerHTML = filtered.map(o => {
+      const meta = B2B_STATUS_META[o.status] || { label: o.status || 'Unknown', color: 'var(--text)' };
+      return `<tr style="border-top:1px solid var(--border)">
+        <td style="padding:8px 18px;color:var(--text);font-size:.82rem;white-space:nowrap">${o.order_id}</td>
+        <td style="padding:8px 14px;color:var(--text);font-size:.82rem;white-space:nowrap">${o.wh}</td>
+        <td style="padding:8px 14px;font-size:.82rem;white-space:nowrap;color:${meta.color}">${meta.label}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function fetchB2BOrders() {
+    try {
+      const res = await fetch(SB_URL + '/b2b_orders?select=*&order=wh.asc,order_id.asc', { headers: SB_HDR });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      b2bOrders = await res.json();
+      renderB2BOrders();
+    } catch (err) {
+      console.error('B2B orders fetch error:', err);
+    }
   }
 
   // Restore warehouse filter and init B2B
@@ -2737,9 +2800,12 @@
     const sel = document.getElementById('b2bWarehouseFilter');
     if (sel) sel.value = saved;
     renderB2B();
+    renderB2BOrders();
   })();
   fetchB2BData();
+  fetchB2BOrders();
   setInterval(fetchB2BData, 5 * 60 * 1000);
+  setInterval(fetchB2BOrders, 5 * 60 * 1000);
 
   // ── Warehouse Picker ──────────────────────────────────────────────────
   function showWarehousePicker() {

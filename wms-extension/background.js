@@ -111,6 +111,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
         const rows = Object.values(whs).map(r => ({ ...r, updated_at: new Date().toISOString() }));
 
+        // 4b. B2B: one row per order (not pivoted) — order_id/wh/status only.
+        // NOTE: order_id field name is a best guess (Logiwa's list endpoint has
+        // never been inspected for its B2B order-identifier field) — verify
+        // against a real response and adjust the fallback chain below if the
+        // synced order_id values come back blank or wrong.
+        const B2B_SM = { 6: 'open', 8: 'rfp', 9: 'picking', 12: 'pack_ready', 13: 'packing' };
+        const b2bOrders = all
+          .filter(o => o.shipmentOrderTypeName === 'B2B')
+          .map(o => ({
+            order_id: String(o.orderNumber ?? o.referenceNumber ?? o.shipmentOrderNumber ?? o.shipmentOrderId ?? o.id ?? ''),
+            wh: o.warehouseCode,
+            status: B2B_SM[o.shipmentOrderStatusId] || null,
+            updated_at: new Date().toISOString()
+          }))
+          .filter(o => o.order_id && o.wh && o.status);
+
         // 5. Upsert to Supabase
         const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co';
         const SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
@@ -124,7 +140,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         });
         if (!res.ok) throw new Error('Supabase error ' + res.status + ': ' + await res.text());
 
-        await broadcast({ ok: true, count: rows.length });
+        if (b2bOrders.length) {
+          const b2bRes = await fetch(`${SB_URL}/rest/v1/b2b_orders`, {
+            method: 'POST',
+            headers: {
+              apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY,
+              'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates'
+            },
+            body: JSON.stringify(b2bOrders)
+          });
+          if (!b2bRes.ok) throw new Error('Supabase b2b_orders error ' + b2bRes.status + ': ' + await b2bRes.text());
+        }
+
+        await broadcast({ ok: true, count: rows.length, b2bCount: b2bOrders.length });
       } catch (e) {
         console.error('[WMS bg] sync error:', e.message);
         await broadcast({ ok: false, error: e.message });
