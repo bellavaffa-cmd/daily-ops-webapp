@@ -2232,8 +2232,6 @@
 
 <script>
   // ── Theme ──────────────────────────────────────────────────────────────
-  const _sysDark = window.matchMedia('(prefers-color-scheme: dark)');
-
   function setThemeAttr(isLight) {
     document.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
   }
@@ -2246,12 +2244,12 @@
   }
 
   function resetTheme() {
-    // Remove manual override — follow system
+    // Remove manual override — default to dark
     localStorage.removeItem('packingErrorTheme');
-    setThemeAttr(!_sysDark.matches); // system says dark → isLight = false
+    setThemeAttr(false);
     syncThemeUI();
     if (document.getElementById('themeToggle'))
-      document.getElementById('themeToggle').checked = !_sysDark.matches;
+      document.getElementById('themeToggle').checked = false;
   }
 
   function syncThemeUI() {
@@ -2263,25 +2261,16 @@
       note.textContent = 'Manual override';
       if (btn) btn.style.display = 'inline';
     } else {
-      note.textContent = 'Following system';
+      note.textContent = 'Dark by default';
       if (btn) btn.style.display = 'none';
     }
   }
 
-  // Init: use saved pref or fall back to system
+  // Init: use saved pref, defaulting to dark when none is set
   (function initTheme() {
     const saved = localStorage.getItem('packingErrorTheme');
-    setThemeAttr(saved ? saved === 'light' : !_sysDark.matches);
+    setThemeAttr(saved === 'light');
   })();
-
-  // React to system changes when no manual override is set
-  _sysDark.addEventListener('change', e => {
-    if (!localStorage.getItem('packingErrorTheme')) {
-      setThemeAttr(!e.matches);
-      const toggle = document.getElementById('themeToggle');
-      if (toggle) toggle.checked = !e.matches;
-    }
-  });
 
   // ── Supabase config ────────────────────────────────────────────────────
   const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co/rest/v1';
