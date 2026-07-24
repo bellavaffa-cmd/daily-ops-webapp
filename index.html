@@ -111,6 +111,27 @@
     /* ── Layout ── */
     main { max-width: 1200px; margin: 32px auto; padding: 0 16px 64px; }
 
+    /* ── Fill remaining viewport height (data tabs: B2B, Shortage, Error) ── */
+    /* The last table card grows to fill the space below the KPIs/breakdown so
+       the page doesn't leave empty room at the bottom. 152px = header 56 +
+       main margin-top 32 + main padding-bottom 64 (also clears the mobile nav). */
+    .view.fill.active {
+      display: flex;
+      flex-direction: column;
+      min-height: calc(100vh - 152px);
+    }
+    .view.fill > .fill-card {
+      flex: 1 1 auto;
+      min-height: 320px;
+      display: flex;
+      flex-direction: column;
+    }
+    .fill-scroll {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+    }
+
     /* ── Card ── */
     .card {
       background: var(--surface);
@@ -418,22 +439,13 @@
     .empty-state .icon { font-size: 2.5rem; margin-bottom: 10px; }
     .empty-state p { font-size: .9rem; }
 
-    /* Stats row */
+    /* Stats row (Error dashboard) — same grid footprint as B2C/B2B KPI cards */
     .stats-row {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
       gap: 12px;
       margin-bottom: 20px;
     }
-    .stat-box {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 14px 16px;
-      text-align: center;
-    }
-    .stat-box .num { font-size: 1.6rem; font-weight: 800; color: var(--primary); }
-    .stat-box .lbl { font-size: .72rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .4px; margin-top: 2px; }
 
     /* Lightbox */
     #lightbox {
@@ -1050,8 +1062,6 @@
 
       /* Stats row smaller */
       .stats-row { gap: 8px; }
-      .stat-box { padding: 10px 12px; }
-      .stat-box .num { font-size: 1.3rem; }
 
       /* B2C country cards full width */
       .b2c-country-grid { grid-template-columns: 1fr 1fr !important; }
@@ -1701,11 +1711,11 @@
   </div>
 
   <!-- ── DASHBOARD VIEW ── -->
-  <div class="view" id="view-dash">
+  <div class="view fill" id="view-dash">
 
     <div class="stats-row" id="statsRow"></div>
 
-    <div class="card">
+    <div class="card fill-card">
       <div class="dash-header">
         <h2>Error Log</h2>
         <div class="dash-controls">
@@ -1775,7 +1785,7 @@
         <button class="btn-clear" onclick="clearSelection()">✕ Clear</button>
       </div>
 
-      <div class="table-responsive" id="tableWrap">
+      <div class="table-responsive fill-scroll" id="tableWrap">
         <div class="empty-state" id="emptyState">
           <div class="icon">📋</div>
           <p>No errors reported yet.<br>Submit your first report to see it here.</p>
@@ -1799,7 +1809,7 @@
       </div>
 
       <!-- ── Picking Issues section (shown when dashTab === 'picking') ── -->
-      <div id="pickingSection" style="display:none">
+      <div id="pickingSection" class="fill-scroll" style="display:none">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
           <div>
             <div style="font-size:1rem;font-weight:700">Picking Issues</div>
@@ -1836,7 +1846,7 @@
       </div>
 
       <!-- ── Resolved section (shown when dashTab === 'resolved') ── -->
-      <div id="resolvedSection" style="display:none">
+      <div id="resolvedSection" class="fill-scroll" style="display:none">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
           <div>
             <div style="font-size:1rem;font-weight:700">Resolved Errors</div>
@@ -1937,7 +1947,7 @@
   </div>
 
   <!-- ── B2B DASHBOARD VIEW ── -->
-  <div class="view" id="view-b2b">
+  <div class="view fill" id="view-b2b">
 
     <!-- Header -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
@@ -1993,11 +2003,11 @@
     </div>
 
     <!-- Individual Orders -->
-    <div class="card" style="padding:0;overflow:hidden;margin-top:16px">
+    <div class="card fill-card" style="padding:0;overflow:hidden;margin-top:16px">
       <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">
         Orders <span id="b2bOrdersCount" style="font-weight:400;color:var(--muted)"></span>
       </div>
-      <div style="overflow:auto;max-height:480px">
+      <div class="fill-scroll" style="overflow:auto">
         <table style="width:100%;border-collapse:collapse;font-size:.82rem">
           <thead>
             <tr style="background:var(--surface2)">
@@ -2014,7 +2024,7 @@
   </div>
 
   <!-- ── SHORTAGE DASHBOARD VIEW ── -->
-  <div class="view" id="view-shortage">
+  <div class="view fill" id="view-shortage">
 
     <!-- Header -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
@@ -2068,11 +2078,11 @@
     </div>
 
     <!-- Individual Orders -->
-    <div class="card" style="padding:0;overflow:hidden;margin-top:16px">
+    <div class="card fill-card" style="padding:0;overflow:hidden;margin-top:16px">
       <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">
         Orders <span id="shortageOrdersCount" style="font-weight:400;color:var(--muted)"></span>
       </div>
-      <div style="overflow:auto;max-height:480px">
+      <div class="fill-scroll" style="overflow:auto">
         <table style="width:100%;border-collapse:collapse;font-size:.82rem">
           <thead>
             <tr style="background:var(--surface2)">
@@ -2793,7 +2803,7 @@
     ];
 
     const kpiEl = document.getElementById('b2bKpis');
-    if (kpiEl) kpiEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px">
+    if (kpiEl) kpiEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
       ${statuses.map(s => `
         <div class="card" style="padding:16px 18px">
           <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px">${s.label}</div>
@@ -3034,7 +3044,7 @@
     ];
 
     const kpiEl = document.getElementById('shortageKpis');
-    if (kpiEl) kpiEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px">
+    if (kpiEl) kpiEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
       ${statuses.map(s => `
         <div class="card" style="padding:16px 18px">
           <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px">${s.label}</div>
@@ -4591,11 +4601,19 @@ function fail(error) {
     const total    = errors.length;
     const today    = errors.filter(e => isToday(e.timestamp)).length;
     const topType  = topErrorType();
-    row.innerHTML = `
-      <div class="stat-box"><div class="num">${total}</div><div class="lbl">Total Errors</div></div>
-      <div class="stat-box"><div class="num">${today}</div><div class="lbl">Today</div></div>
-      <div class="stat-box" style="overflow:hidden"><div class="num" style="font-size:1rem;margin-top:4px">${topType}</div><div class="lbl">Top Error Type</div></div>
-    `;
+    // Same card layout as B2C/B2B KPI cards: colored label on top, value below, sublabel.
+    const stats = [
+      { label: 'Total Errors',   value: total,   sub: 'all time',       color: '#f87171', text: false },
+      { label: 'Today',          value: today,   sub: 'reported today', color: '#fcd34d', text: false },
+      { label: 'Top Error Type', value: topType, sub: 'most frequent',  color: '#a78bfa', text: true  },
+    ];
+    row.innerHTML = stats.map(s => `
+      <div class="card" style="padding:16px 18px">
+        <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px">${s.label}</div>
+        <div style="font-size:${s.text ? '1.1rem' : '2rem'};font-weight:700;color:var(--text);line-height:1.1;${s.text ? 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap' : ''}">${s.value}</div>
+        <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${s.sub}</div>
+      </div>
+    `).join('');
   }
 
   function isToday(d) {
