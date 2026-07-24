@@ -2,3 +2,5 @@
 *.pyc
 __pycache__/
 .DS_Store
+wms-extension-store-upload/
+wms-extension-store-upload.zip
