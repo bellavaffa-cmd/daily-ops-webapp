@@ -3024,24 +3024,30 @@
     const fmt   = n => n.toLocaleString();
     const pct   = (n, d) => d ? (n / d * 100).toFixed(1) + '%' : '—';
 
+    // age = [min,max] order-age range matching what each box counts (1-3 = age
+    // ≤3, 4-7 = age 4-7, 7+ = age >7 i.e. 8+); null = no age filter (all ages).
     const statuses = [
-      { label: '1-3 Days',     count: tot.age_1_3,    color: '#86efac' },
-      { label: '4-7 Days',     count: tot.age_4_7,    color: '#fcd34d' },
-      { label: '7+ Days',      count: tot.age_7_plus, color: '#f87171' },
-      { label: 'Total Orders', count: total,          color: 'var(--text)' },
+      { label: '1-3 Days',     count: tot.age_1_3,    color: '#86efac', age: [1, 3]    },
+      { label: '4-7 Days',     count: tot.age_4_7,    color: '#fcd34d', age: [4, 7]    },
+      { label: '7+ Days',      count: tot.age_7_plus, color: '#f87171', age: [8, 9999] },
+      { label: 'Total Orders', count: total,          color: 'var(--text)', age: null  },
     ];
 
-    // Shortage boxes are age buckets, but Logiwa's list filters by status, not
-    // age — so every box opens the same Shortage (statusId 2) order list.
-    const shortageUrl = wmsStatusUrl(null, [2], 'Shortage');
+    // Every box opens the Shortage (statusId 2) order list; the age buckets add
+    // Logiwa's order-age range filter (?soag=min,max&soagqt=rng) so each box
+    // opens exactly the orders it counts.
+    const shortageBase = wmsStatusUrl(null, [2], 'Shortage');
     const kpiEl = document.getElementById('shortageKpis');
     if (kpiEl) kpiEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
-      ${statuses.map(s => `
-        <a class="card kpi-link" href="${shortageUrl}" target="_blank" title="Open in WMS" style="padding:16px 18px;text-decoration:none;color:inherit;display:block">
+      ${statuses.map(s => {
+        const url = shortageBase + (s.age ? '&soag=' + encodeURIComponent(encodeURIComponent(s.age[0] + ',' + s.age[1])) + '&soagqt=rng' : '');
+        return `
+        <a class="card kpi-link" href="${url}" target="_blank" title="Open in WMS" style="padding:16px 18px;text-decoration:none;color:inherit;display:block">
           <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px">${s.label}</div>
           <div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${fmt(s.count)}</div>
           <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${s.label === 'Total Orders' ? 'across all ages' : pct(s.count, total) + ' of total'}</div>
-        </a>`).join('')}
+        </a>`;
+      }).join('')}
     </div>`;
 
     const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color||'var(--text)'};font-size:.82rem">${fmt(n)}</td>`;
