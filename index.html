@@ -1929,7 +1929,7 @@
       <div>
         <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Ops — B2B Fulfillment</div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:2px">
-          <span id="b2bDataMode">Snapshot</span> · <span id="b2bSyncTime">—</span>
+          <span id="b2bDataMode">Snapshot</span> · <span id="b2bSyncTime">—</span> · <span style="color:var(--primary);cursor:pointer" onclick="showWarehousePicker()">Change warehouse ↗</span>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -1943,18 +1943,6 @@
           <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.36-3.36L23 10M1 14l5.13 4.36A9 9 0 0020.49 15"/></svg>
           Refresh
         </button>
-        <select id="b2bWarehouseFilter" onchange="localStorage.setItem('b2cWarehouseFilter', this.value); document.getElementById('b2cWarehouseFilter').value = this.value; renderB2B(); renderB2BOrders()"
-          style="font-size:.8rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
-          <option value="">All Warehouses</option>
-          <option value="LOCAD Bekasi FC">LOCAD Bekasi FC</option>
-          <option value="LOCAD Cabuyao (LISP) FC">LOCAD Cabuyao (LISP) FC</option>
-          <option value="LOCAD Hicom FC">LOCAD Hicom FC</option>
-          <option value="LOCAD Joo Koon FC (SG-JOO)">LOCAD Joo Koon FC (SG-JOO)</option>
-          <option value="LOCAD Lat Krabang FC">LOCAD Lat Krabang FC</option>
-          <option value="LOCAD Mesquite (TX-015) FC">LOCAD Mesquite (TX-015) FC</option>
-          <option value="LOCAD Santa Fe Springs FC (US-SAN)">LOCAD Santa Fe Springs FC</option>
-          <option value="LOCAD Umm Ramool FC">LOCAD Umm Ramool FC</option>
-        </select>
         <a href="https://wms.golocad.com/en/wms/shipment-order/list?sot=%255B%2522814c0655-e231-45a3-9f15-1154b844f69e%2522%255D&sotqt=in&sotlbl=B2B&sos=%255B6%252C8%252C9%252C12%252C13%255D&sosqt=in&soslbl=Open,%20Ready%20to%20Pick,%20Picking%20Started,%20Ready%20to%20Pack,%20Packing%20Started" target="_blank"
            style="font-size:.75rem;color:var(--primary);text-decoration:none;display:flex;align-items:center;gap:4px">
           <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
@@ -2526,6 +2514,7 @@
           packing: r.packing || 0,
         }));
         renderB2C();
+        renderB2B(); // b2b_data has no country field of its own; re-group once b2cData's arrives
         if (localStorage.getItem('b2cWarehousePicked') === null) showWarehousePicker();
         // Show last sync time from most recently updated row
         const latest = rows.reduce((a, b) => (a.updated_at > b.updated_at ? a : b), rows[0]);
@@ -2656,8 +2645,6 @@
 
   function renderB2B() {
     const filter = localStorage.getItem('b2cWarehouseFilter') || '';
-    const sel = document.getElementById('b2bWarehouseFilter');
-    if (sel && sel.value !== filter) sel.value = filter;
 
     const filtered = filter ? b2bData.filter(r => r.wh === filter) : b2bData;
 
@@ -2694,10 +2681,11 @@
     </div>`;
 
     const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color||'var(--text)'};font-size:.82rem">${fmt(n)}</td>`;
-    let html = filtered.map(r => {
+    const whRow = (r, indent) => {
       const t = (r.open||0) + (r.rfp||0) + (r.picking||0) + (r.pack_ready||0) + (r.packing||0);
+      const pad = indent ? 'padding:9px 18px 9px 28px' : 'padding:10px 18px';
       return `<tr style="border-top:1px solid var(--border)">
-        <td style="padding:10px 18px;color:var(--text);white-space:nowrap;font-size:.82rem">${r.wh}</td>
+        <td style="${pad};color:var(--text);white-space:nowrap;font-size:.82rem">${r.wh}</td>
         ${tdN(r.open       || 0, '#fb923c')}
         ${tdN(r.rfp        || 0, '#fcd34d')}
         ${tdN(r.picking    || 0, '#93c5fd')}
@@ -2705,17 +2693,52 @@
         ${tdN(r.packing    || 0, '#a78bfa')}
         ${tdN(t,                 'var(--text)')}
       </tr>`;
-    }).join('');
-    if (filtered.length > 1) {
-      html += `<tr style="border-top:2px solid var(--border);background:var(--surface2)">
-        <td style="padding:10px 18px;color:var(--text);font-weight:700;font-size:.82rem">Total</td>
-        ${tdN(tot.open,       '#fb923c')}
-        ${tdN(tot.rfp,        '#fcd34d')}
-        ${tdN(tot.picking,    '#93c5fd')}
-        ${tdN(tot.pack_ready, '#86efac')}
-        ${tdN(tot.packing,    '#a78bfa')}
-        ${tdN(total,          'var(--text)')}
-      </tr>`;
+    };
+
+    // Reuse B2C's warehouse→country mapping (b2b_data itself has no country
+    // field) so both tabs group the same physical warehouses consistently.
+    const countryOf = {};
+    for (const r of b2cData) { if (r.wh && r.country) countryOf[r.wh] = r.country; }
+    const countries = [...new Set(filtered.map(r => countryOf[r.wh]).filter(Boolean))];
+
+    let html = '';
+    if (!filter && countries.length) {
+      for (const country of countries) {
+        const whs = filtered.filter(r => countryOf[r.wh] === country);
+        const ct = whs.reduce((a, r) => ({
+          open:       a.open       + (r.open       || 0),
+          rfp:        a.rfp        + (r.rfp        || 0),
+          picking:    a.picking    + (r.picking    || 0),
+          pack_ready: a.pack_ready + (r.pack_ready || 0),
+          packing:    a.packing    + (r.packing    || 0),
+        }), { open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0 });
+        const ctTotal = ct.open + ct.rfp + ct.picking + ct.pack_ready + ct.packing;
+        html += `<tr style="border-top:2px solid var(--border);background:var(--surface2)">
+          <td style="padding:9px 18px;color:var(--text);font-weight:700;font-size:.8rem">${country}</td>
+          ${tdN(ct.open,       '#fb923c')}
+          ${tdN(ct.rfp,        '#fcd34d')}
+          ${tdN(ct.picking,    '#93c5fd')}
+          ${tdN(ct.pack_ready, '#86efac')}
+          ${tdN(ct.packing,    '#a78bfa')}
+          ${tdN(ctTotal,       'var(--text)')}
+        </tr>`;
+        html += whs.map(r => whRow(r, true)).join('');
+      }
+      const uncategorized = filtered.filter(r => !countryOf[r.wh]);
+      html += uncategorized.map(r => whRow(r, false)).join('');
+    } else {
+      html += filtered.map(r => whRow(r, false)).join('');
+      if (filtered.length > 1) {
+        html += `<tr style="border-top:2px solid var(--border);background:var(--surface2)">
+          <td style="padding:10px 18px;color:var(--text);font-weight:700;font-size:.82rem">Total</td>
+          ${tdN(tot.open,       '#fb923c')}
+          ${tdN(tot.rfp,        '#fcd34d')}
+          ${tdN(tot.picking,    '#93c5fd')}
+          ${tdN(tot.pack_ready, '#86efac')}
+          ${tdN(tot.packing,    '#a78bfa')}
+          ${tdN(total,          'var(--text)')}
+        </tr>`;
+      }
     }
     const tbl = document.getElementById('b2bWHTable');
     if (tbl) tbl.innerHTML = html;
@@ -2843,14 +2866,8 @@
     notify('Open the app via the WMS Chrome extension to sync B2B data.', false);
   }
 
-  // Restore warehouse filter and init B2B
-  (function initB2B() {
-    const saved = localStorage.getItem('b2cWarehouseFilter') || '';
-    const sel = document.getElementById('b2bWarehouseFilter');
-    if (sel) sel.value = saved;
-    renderB2B();
-    renderB2BOrders();
-  })();
+  renderB2B();
+  renderB2BOrders();
   fetchB2BData();
   fetchB2BOrders();
   setInterval(() => syncLogiwaB2BAndRefresh(null, true), 5 * 60 * 1000);
@@ -2894,6 +2911,8 @@
     if (sel) sel.value = value;
     document.getElementById('warehousePickerModal').classList.remove('open');
     renderB2C();
+    renderB2B();
+    renderB2BOrders();
   }
 
   // ── Picking Issues ────────────────────────────────────────────────────
