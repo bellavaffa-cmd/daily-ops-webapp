@@ -1330,7 +1330,7 @@
               <option value="LOCAD Bekasi FC">LOCAD Bekasi FC</option>
               <option value="LOCAD Cabuyao (LISP) FC">LOCAD Cabuyao (LISP) FC</option>
               <option value="LOCAD Hicom FC">LOCAD Hicom FC</option>
-              <option value="LOCAD Joo Koon FC">LOCAD Joo Koon FC</option>
+              <option value="LOCAD Joo Koon FC (SG-JOO)">LOCAD Joo Koon FC (SG-JOO)</option>
               <option value="LOCAD Lat Krabang FC">LOCAD Lat Krabang FC</option>
               <option value="LOCAD Mesquite (TX-015) FC">LOCAD Mesquite (TX-015) FC</option>
               <option value="LOCAD Santa Fe Springs FC (US-SAN)">LOCAD Santa Fe Springs FC</option>
@@ -1907,9 +1907,10 @@
             <tr style="background:var(--surface2)">
               <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Warehouse</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:#fb923c;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Open</th>
-              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#fcd34d;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Ready for Picking</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#fcd34d;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Ready to Pick</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:#93c5fd;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Picking Started</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:#86efac;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Ready to Pack</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#c4b5fd;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Packing Started</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--text);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Total</th>
             </tr>
           </thead>
@@ -1932,6 +1933,11 @@
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <button id="b2bSyncBtn" class="btn btn-primary btn-sm" onclick="syncLogiwaB2BAndRefresh(this)"
+          style="display:flex;align-items:center;gap:5px;font-size:.75rem;padding:5px 12px">
+          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+          Sync Logiwa
+        </button>
         <button id="b2bRefreshBtn" class="btn btn-ghost btn-sm" onclick="refreshB2B(this)"
           style="display:flex;align-items:center;gap:5px;font-size:.75rem;padding:5px 10px">
           <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.36-3.36L23 10M1 14l5.13 4.36A9 9 0 0020.49 15"/></svg>
@@ -1943,7 +1949,7 @@
           <option value="LOCAD Bekasi FC">LOCAD Bekasi FC</option>
           <option value="LOCAD Cabuyao (LISP) FC">LOCAD Cabuyao (LISP) FC</option>
           <option value="LOCAD Hicom FC">LOCAD Hicom FC</option>
-          <option value="LOCAD Joo Koon FC">LOCAD Joo Koon FC</option>
+          <option value="LOCAD Joo Koon FC (SG-JOO)">LOCAD Joo Koon FC (SG-JOO)</option>
           <option value="LOCAD Lat Krabang FC">LOCAD Lat Krabang FC</option>
           <option value="LOCAD Mesquite (TX-015) FC">LOCAD Mesquite (TX-015) FC</option>
           <option value="LOCAD Santa Fe Springs FC (US-SAN)">LOCAD Santa Fe Springs FC</option>
@@ -2385,7 +2391,7 @@
     { wh: 'LOCAD Bekasi FC',                    new: 460, rfp: 1627, picking: 44, picked: 5222 },
     { wh: 'LOCAD Cabuyao (LISP) FC',            new: 907, rfp: 2036, picking: 63, picked: 2865 },
     { wh: 'LOCAD Hicom FC',                     new: 0,   rfp: 0,    picking: 0,  picked: 4    },
-    { wh: 'LOCAD Joo Koon FC',                  new: 199, rfp: 236,  picking: 4,  picked: 249  },
+    { wh: 'LOCAD Joo Koon FC (SG-JOO)',                  new: 199, rfp: 236,  picking: 4,  picked: 249  },
     { wh: 'LOCAD Lat Krabang FC',               new: 4,   rfp: 34,   picking: 0,  picked: 105  },
     { wh: 'LOCAD Mesquite (TX-015) FC',         new: 28,  rfp: 73,   picking: 0,  picked: 0    },
     { wh: 'LOCAD Santa Fe Springs FC (US-SAN)', new: 0,   rfp: 0,    picking: 0,  picked: 0    },
@@ -2404,22 +2410,24 @@
 
     // Grand totals from warehouse rows
     const tot = filtered.reduce((a, r) => ({
-      new:     a.new     + r.new,
-      rfp:     a.rfp     + r.rfp,
-      picking: a.picking + r.picking,
-      picked:  a.picked  + r.picked,
-    }), { new: 0, rfp: 0, picking: 0, picked: 0 });
+      new:     a.new     + (r.new     || 0),
+      rfp:     a.rfp     + (r.rfp     || 0),
+      picking: a.picking + (r.picking || 0),
+      picked:  a.picked  + (r.picked  || 0),
+      packing: a.packing + (r.packing || 0),
+    }), { new: 0, rfp: 0, picking: 0, picked: 0, packing: 0 });
 
-    const total = tot.new + tot.rfp + tot.picking + tot.picked;
+    const total = tot.new + tot.rfp + tot.picking + tot.picked + tot.packing;
     const fmt   = n => n.toLocaleString();
     const pct   = (n, d) => d ? (n / d * 100).toFixed(1) + '%' : '—';
 
     // KPI cards
     const statuses = [
-      { key: 'new',     label: 'Open',               count: tot.new,     color: '#fb923c', bg: '#431407' },
-      { key: 'rfp',     label: 'Ready for Picking',  count: tot.rfp,     color: '#fcd34d', bg: '#451a03' },
-      { key: 'picking', label: 'Picking Started',    count: tot.picking, color: '#93c5fd', bg: '#172554' },
-      { key: 'picked',  label: 'Ready to Pack',      count: tot.picked,  color: '#86efac', bg: '#14532d' },
+      { key: 'new',     label: 'Open',            count: tot.new,     color: '#fb923c', bg: '#431407' },
+      { key: 'rfp',     label: 'Ready to Pick',   count: tot.rfp,     color: '#fcd34d', bg: '#451a03' },
+      { key: 'picking', label: 'Picking Started', count: tot.picking, color: '#93c5fd', bg: '#172554' },
+      { key: 'picked',  label: 'Ready to Pack',   count: tot.picked,  color: '#86efac', bg: '#14532d' },
+      { key: 'packing', label: 'Packing Started', count: tot.packing, color: '#c4b5fd', bg: '#2e1065' },
       { key: 'total',   label: 'Total Orders',       count: total,       color: 'var(--text)', bg: 'var(--surface2)' },
     ];
 
@@ -2436,15 +2444,16 @@
     // Table helpers
     const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color||'var(--text)'};font-size:.82rem">${fmt(n)}</td>`;
     const whRow = (r, indent) => {
-      const t = r.new + r.rfp + r.picking + r.picked;
+      const t = (r.new||0) + (r.rfp||0) + (r.picking||0) + (r.picked||0) + (r.packing||0);
       const pad = indent ? 'padding:9px 18px 9px 28px' : 'padding:10px 18px';
       return `<tr style="border-top:1px solid var(--border)">
         <td style="${pad};color:var(--text);white-space:nowrap;font-size:.82rem">${r.wh}</td>
-        ${tdN(r.new,     '#fb923c')}
-        ${tdN(r.rfp,     '#fcd34d')}
-        ${tdN(r.picking, '#93c5fd')}
-        ${tdN(r.picked,  '#86efac')}
-        ${tdN(t,         'var(--text)')}
+        ${tdN(r.new     || 0, '#fb923c')}
+        ${tdN(r.rfp     || 0, '#fcd34d')}
+        ${tdN(r.picking || 0, '#93c5fd')}
+        ${tdN(r.picked  || 0, '#86efac')}
+        ${tdN(r.packing || 0, '#c4b5fd')}
+        ${tdN(t,              'var(--text)')}
       </tr>`;
     };
 
@@ -2457,14 +2466,15 @@
         const cRow = cRows.find(c => c.country === country);
         const whs  = whRows.filter(r => r.country === country);
         if (cRow) {
-          const ct = cRow.new + cRow.rfp + cRow.picking + cRow.picked;
+          const ct = (cRow.new||0) + (cRow.rfp||0) + (cRow.picking||0) + (cRow.picked||0) + (cRow.packing||0);
           html += `<tr style="border-top:2px solid var(--border);background:var(--surface2)">
             <td style="padding:9px 18px;color:var(--text);font-weight:700;font-size:.8rem">${country}</td>
-            ${tdN(cRow.new,     '#fb923c')}
-            ${tdN(cRow.rfp,     '#fcd34d')}
-            ${tdN(cRow.picking, '#93c5fd')}
-            ${tdN(cRow.picked,  '#86efac')}
-            ${tdN(ct,           'var(--text)')}
+            ${tdN(cRow.new     || 0, '#fb923c')}
+            ${tdN(cRow.rfp     || 0, '#fcd34d')}
+            ${tdN(cRow.picking || 0, '#93c5fd')}
+            ${tdN(cRow.picked  || 0, '#86efac')}
+            ${tdN(cRow.packing || 0, '#c4b5fd')}
+            ${tdN(ct,               'var(--text)')}
           </tr>`;
         }
         html += whs.map(r => whRow(r, true)).join('');
@@ -2479,6 +2489,7 @@
           ${tdN(tot.rfp,     '#fcd34d')}
           ${tdN(tot.picking, '#93c5fd')}
           ${tdN(tot.picked,  '#86efac')}
+          ${tdN(tot.packing, '#c4b5fd')}
           ${tdN(total,       'var(--text)')}
         </tr>`;
       }
@@ -2511,7 +2522,8 @@
           new:     r.new     || 0,
           rfp:     r.rfp     || 0,
           picking: r.picking || 0,
-          picked:  r.picked  || 0
+          picked:  r.picked  || 0,
+          packing: r.packing || 0,
         }));
         renderB2C();
         if (localStorage.getItem('b2cWarehousePicked') === null) showWarehousePicker();
@@ -2557,7 +2569,7 @@
       const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co';
       const SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
       const LG_API = 'https://mywmsquery.logiwa.com';
-      const SM     = { 6:'new', 8:'rfp', 9:'picking', 12:'picked' };
+      const SM     = { 6:'new', 8:'rfp', 9:'picking', 12:'picked', 13:'packing' };
       try {
         let all = [], page = 0, total = 1;
         while (all.length < total) {
@@ -2635,7 +2647,7 @@
     { wh: 'LOCAD Bekasi FC',                    open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0 },
     { wh: 'LOCAD Cabuyao (LISP) FC',            open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0 },
     { wh: 'LOCAD Hicom FC',                     open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0 },
-    { wh: 'LOCAD Joo Koon FC',                  open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0 },
+    { wh: 'LOCAD Joo Koon FC (SG-JOO)',                  open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0 },
     { wh: 'LOCAD Lat Krabang FC',               open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0 },
     { wh: 'LOCAD Mesquite (TX-015) FC',         open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0 },
     { wh: 'LOCAD Santa Fe Springs FC (US-SAN)', open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0 },
@@ -2794,6 +2806,43 @@
     }
   }
 
+  async function syncLogiwaB2BAndRefresh(btn, silent = false) {
+    const origHTML = btn ? btn.innerHTML : '';
+    const setBusy  = () => { if (btn) { btn.disabled = true;  btn.innerHTML = '<svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" style="animation:spin 1s linear infinite"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.36-3.36L23 10M1 14l5.13 4.36A9 9 0 0020.49 15"/></svg> Syncing…'; } };
+    const setIdle  = () => { if (btn) { btn.disabled = false; btn.innerHTML = origHTML; } };
+    const notify   = (msg, ok) => { if (!silent || ok) showToast(msg, ok); };
+
+    // Path 2: extension side panel bridge
+    if (window.parent !== window) {
+      setBusy();
+      const timeout = setTimeout(() => {
+        window.removeEventListener('message', onResult);
+        setIdle();
+        showToast('B2B sync timed out — make sure wms.golocad.com is open.', false);
+      }, 30000);
+
+      function onResult(e) {
+        if (!e.data || e.data.type !== 'wms-sync-b2b-result') return;
+        clearTimeout(timeout);
+        window.removeEventListener('message', onResult);
+        setIdle();
+        if (e.data.ok) {
+          notify('B2B synced ' + e.data.count + ' warehouse(s) from Logiwa ✓', true);
+          fetchB2BData();
+          fetchB2BOrders();
+        } else {
+          notify('B2B sync failed: ' + (e.data.error || 'unknown error'), false);
+        }
+      }
+
+      window.addEventListener('message', onResult);
+      window.parent.postMessage({ type: 'wms-sync-b2b-logiwa' }, '*');
+      return;
+    }
+
+    notify('Open the app via the WMS Chrome extension to sync B2B data.', false);
+  }
+
   // Restore warehouse filter and init B2B
   (function initB2B() {
     const saved = localStorage.getItem('b2cWarehouseFilter') || '';
@@ -2804,8 +2853,7 @@
   })();
   fetchB2BData();
   fetchB2BOrders();
-  setInterval(fetchB2BData, 5 * 60 * 1000);
-  setInterval(fetchB2BOrders, 5 * 60 * 1000);
+  setInterval(() => syncLogiwaB2BAndRefresh(null, true), 5 * 60 * 1000);
 
   // ── Warehouse Picker ──────────────────────────────────────────────────
   function showWarehousePicker() {

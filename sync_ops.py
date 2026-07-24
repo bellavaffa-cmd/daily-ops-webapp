@@ -38,7 +38,8 @@ B2C_STATUS_MAP = {
     6:  "new",      # Open
     8:  "rfp",      # Ready to Pick
     9:  "picking",  # Picking Started
-    12: "picked",   # Ready to Pack (items picked, awaiting packing)
+    12: "picked",   # Ready to Pack
+    13: "packing",  # Packing Started
 }
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
