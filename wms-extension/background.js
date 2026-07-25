@@ -82,7 +82,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
         // 3. Fetch all unshipped orders from Logiwa
         const LG_API = 'https://mywmsquery.logiwa.com';
-        const SM     = config.statusMap;
         let all = [], page = 0, total = 1;
         while (all.length < total) {
           const r = await fetch(`${LG_API}/api/shipmentorder/list/unshipped/i/${page}/s/1000`, {
@@ -97,26 +96,34 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           page++;
         }
 
-        // 4. Pivot: warehouseCode × status → counts (filter by orderType)
-        const cols = [...new Set(Object.values(SM))];
-        const whs  = {};
-        // Seed a zeroed row for every warehouse this session can see at all
-        // (any order type/status) — otherwise a warehouse whose count for
-        // this orderType drops to zero just keeps its last nonzero value
-        // stuck in Supabase forever, since it'd never get touched again.
-        for (const o of all) {
-          const wh = o.warehouseCode;
-          if (!wh || whs[wh]) continue;
-          whs[wh] = { wh };
-          cols.forEach(c => whs[wh][c] = 0);
-        }
-        for (const o of all) {
-          if (o.shipmentOrderTypeName !== config.orderType) continue;
-          const wh = o.warehouseCode, col = SM[o.shipmentOrderStatusId];
-          if (!wh || !col) continue;
-          whs[wh][col]++;
-        }
-        const rows = Object.values(whs).map(r => ({ ...r, updated_at: new Date().toISOString() }));
+        // 4. Pivot warehouseCode × status → counts. One Logiwa fetch returns
+        // ALL order types, so compute BOTH the B2C and B2B aggregates on every
+        // sync — otherwise whichever aggregate this sync isn't "for" goes stale
+        // (e.g. b2b_data.ready_ship stayed 0 after a B2C-context sync even
+        // though the individual b2b_orders were refreshed).
+        // Zero-seed every warehouse this session can see so a count dropping to
+        // zero actually gets written rather than keeping its last value.
+        const pivot = (orderType, sm) => {
+          const cols = [...new Set(Object.values(sm))];
+          const whs  = {};
+          for (const o of all) {
+            const wh = o.warehouseCode;
+            if (!wh || whs[wh]) continue;
+            whs[wh] = { wh };
+            cols.forEach(c => whs[wh][c] = 0);
+          }
+          for (const o of all) {
+            if (o.shipmentOrderTypeName !== orderType) continue;
+            const wh = o.warehouseCode, col = sm[o.shipmentOrderStatusId];
+            if (!wh || !col) continue;
+            whs[wh][col]++;
+          }
+          return Object.values(whs).map(r => ({ ...r, updated_at: new Date().toISOString() }));
+        };
+        const B2C_SM_AGG = { 6:'new',  8:'rfp', 9:'picking', 12:'picked',     13:'packing' };
+        const B2B_SM_AGG = { 6:'open', 8:'rfp', 9:'picking', 12:'pack_ready', 13:'packing', 16:'ready_ship' };
+        const b2cRows = pivot('B2C', B2C_SM_AGG);
+        const b2bRows = pivot('B2B', B2B_SM_AGG);
 
         // 4b. B2B: one row per order (not pivoted) — order_id/wh/status only.
         // order_id is Logiwa's "code" (human-readable, e.g. "585181359330264214",
@@ -171,54 +178,26 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           }))
           .filter(o => o.order_id && o.wh);
 
-        // 5. Upsert to Supabase
+        // 5. Upsert to Supabase — all five tables every sync so nothing lags.
         const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co';
         const SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
-        const res = await fetch(`${SB_URL}/rest/v1/${config.sbTable}?on_conflict=wh`, {
-          method: 'POST',
-          headers: {
-            apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY,
-            'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates'
-          },
-          body: JSON.stringify(rows)
-        });
-        if (!res.ok) throw new Error('Supabase error ' + res.status + ': ' + await res.text());
-
-        if (b2bOrders.length) {
-          const b2bRes = await fetch(`${SB_URL}/rest/v1/b2b_orders?on_conflict=order_id`, {
+        const sbUpsert = async (table, rowsToSend, conflict) => {
+          if (!rowsToSend.length) return;
+          const r = await fetch(`${SB_URL}/rest/v1/${table}?on_conflict=${conflict}`, {
             method: 'POST',
-            headers: {
-              apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY,
-              'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates'
-            },
-            body: JSON.stringify(b2bOrders)
+            headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' },
+            body: JSON.stringify(rowsToSend)
           });
-          if (!b2bRes.ok) throw new Error('Supabase b2b_orders error ' + b2bRes.status + ': ' + await b2bRes.text());
-        }
+          if (!r.ok) throw new Error(`Supabase ${table} error ${r.status}: ${await r.text()}`);
+        };
+        await sbUpsert('b2c_data',        b2cRows,        'wh');
+        await sbUpsert('b2b_data',        b2bRows,        'wh');
+        await sbUpsert('b2b_orders',      b2bOrders,      'order_id');
+        await sbUpsert('shortage_data',   shortageRows,   'wh');
+        await sbUpsert('shortage_orders', shortageOrders, 'order_id');
 
-        const shortageRes = await fetch(`${SB_URL}/rest/v1/shortage_data?on_conflict=wh`, {
-          method: 'POST',
-          headers: {
-            apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY,
-            'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates'
-          },
-          body: JSON.stringify(shortageRows)
-        });
-        if (!shortageRes.ok) throw new Error('Supabase shortage_data error ' + shortageRes.status + ': ' + await shortageRes.text());
-
-        if (shortageOrders.length) {
-          const shortageOrdersRes = await fetch(`${SB_URL}/rest/v1/shortage_orders?on_conflict=order_id`, {
-            method: 'POST',
-            headers: {
-              apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY,
-              'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates'
-            },
-            body: JSON.stringify(shortageOrders)
-          });
-          if (!shortageOrdersRes.ok) throw new Error('Supabase shortage_orders error ' + shortageOrdersRes.status + ': ' + await shortageOrdersRes.text());
-        }
-
-        await broadcast({ ok: true, count: rows.length, b2bCount: b2bOrders.length, shortageCount: shortageOrders.length });
+        const aggCount = (isB2B ? b2bRows : b2cRows).length;
+        await broadcast({ ok: true, count: aggCount, b2bCount: b2bOrders.length, shortageCount: shortageOrders.length });
       } catch (e) {
         console.error('[WMS bg] sync error:', e.message);
         await broadcast({ ok: false, error: e.message });
