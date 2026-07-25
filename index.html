@@ -2562,6 +2562,30 @@
   // wh → status counts as of ~30 min ago, for the B2C KPI "30m change" chips.
   let b2cChange = {};
 
+  // ── Exclude-from-total toggles (B2C / B2B KPI status boxes) ─────────────
+  // Each status box has a top-right button to drop that status from the "Total
+  // Orders" count (and the table's Total column). Persisted per tab.
+  function getExcluded(tab) {
+    try { return JSON.parse(localStorage.getItem(tab + 'Excluded') || '[]'); }
+    catch (e) { return []; }
+  }
+  function toggleExcluded(tab, key) {
+    const set = new Set(getExcluded(tab));
+    if (set.has(key)) set.delete(key); else set.add(key);
+    localStorage.setItem(tab + 'Excluded', JSON.stringify([...set]));
+    if (tab === 'b2b') renderB2B(); else renderB2C();
+  }
+  // Small round toggle pinned to the top-right of a status card.
+  function excludeBtn(tab, key, isExcluded) {
+    const label = isExcluded ? 'Include in total' : 'Exclude from total';
+    const glyph = isExcluded ? '+' : '−';
+    return `<button type="button" title="${label}" aria-label="${label}"
+      onclick="event.preventDefault();event.stopPropagation();toggleExcluded('${tab}','${key}')"
+      style="position:absolute;top:8px;right:8px;width:20px;height:20px;line-height:17px;text-align:center;
+      border-radius:50%;border:1px solid var(--border);background:var(--surface2);color:var(--muted);
+      font-size:.9rem;font-weight:700;cursor:pointer;padding:0;z-index:2">${glyph}</button>`;
+  }
+
   function renderB2C() {
     const filter = localStorage.getItem('b2cWarehouseFilter') || '';
 
@@ -2581,7 +2605,12 @@
       packing: a.packing + (r.packing || 0),
     }), { new: 0, rfp: 0, picking: 0, picked: 0, packing: 0 });
 
-    const total = tot.new + tot.rfp + tot.picking + tot.picked + tot.packing;
+    // Statuses excluded from the total (user toggle). incSum sums only included.
+    const B2C_KEYS = ['new', 'rfp', 'picking', 'picked', 'packing'];
+    const b2cExcl  = new Set(getExcluded('b2c'));
+    const incSum   = o => B2C_KEYS.reduce((a, k) => b2cExcl.has(k) ? a : a + (o[k] || 0), 0);
+
+    const total = incSum(tot);
     const fmt   = n => n.toLocaleString();
     const pct   = (n, d) => d ? (n / d * 100).toFixed(1) + '%' : '—';
 
@@ -2599,7 +2628,7 @@
         packing: a.packing + (p.packing || 0),
       };
     }, { new: 0, rfp: 0, picking: 0, picked: 0, packing: 0 });
-    const pastTotal = past.new + past.rfp + past.picking + past.picked + past.packing;
+    const pastTotal = incSum(past);
     const delta = {
       new: tot.new - past.new, rfp: tot.rfp - past.rfp, picking: tot.picking - past.picking,
       picked: tot.picked - past.picked, packing: tot.packing - past.packing, total: total - pastTotal,
@@ -2622,13 +2651,19 @@
     const kpiEl = document.getElementById('b2cKpis');
     kpiEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
       ${statuses.map(s => {
-        const url = wmsStatusUrl('B2C', s.key === 'total' ? WMS_ALL_STATUS : [WMS_STATUS_ID[s.label]], s.key === 'total' ? 'All' : s.label);
+        const isTotal  = s.key === 'total';
+        const excluded = !isTotal && b2cExcl.has(s.key);
+        const url = wmsStatusUrl('B2C', isTotal ? WMS_ALL_STATUS : [WMS_STATUS_ID[s.label]], isTotal ? 'All' : s.label);
+        const subtitle = isTotal
+          ? (b2cExcl.size ? `excludes ${b2cExcl.size} status${b2cExcl.size > 1 ? 'es' : ''}` : 'across all statuses')
+          : (excluded ? 'Excluded from total' : pct(s.count, total) + ' of total');
         return `
-        <a class="card kpi-link" href="${url}" target="_blank" title="Open in WMS" style="padding:16px 18px;text-decoration:none;color:inherit;display:block">
-          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px">${s.label}</div>
+        <a class="card kpi-link" href="${url}" target="_blank" title="Open in WMS" style="position:relative;padding:16px 18px;text-decoration:none;color:inherit;display:block${excluded ? ';opacity:.5' : ''}">
+          ${isTotal ? '' : excludeBtn('b2c', s.key, excluded)}
+          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px${excluded ? ';text-decoration:line-through' : ''}">${s.label}</div>
           <div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${fmt(s.count)}</div>
-          <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${s.key === 'total' ? 'across all statuses' : pct(s.count, total) + ' of total'}</div>
-          ${haveBaseline ? `<div style="font-size:.7rem;margin-top:4px">${deltaChip(s.delta)} <span style="color:var(--muted)">30m</span></div>` : ''}
+          <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${subtitle}</div>
+          ${(!excluded && haveBaseline) ? `<div style="font-size:.7rem;margin-top:4px">${deltaChip(s.delta)} <span style="color:var(--muted)">30m</span></div>` : ''}
         </a>`;
       }).join('')}
     </div>`;
@@ -2636,7 +2671,7 @@
     // Table helpers
     const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color||'var(--text)'};font-size:.82rem">${fmt(n)}</td>`;
     const whRow = (r, indent) => {
-      const t = (r.new||0) + (r.rfp||0) + (r.picking||0) + (r.picked||0) + (r.packing||0);
+      const t = incSum(r);
       const pad = indent ? 'padding:9px 18px 9px 28px' : 'padding:10px 18px';
       return `<tr style="border-top:1px solid var(--border)">
         <td style="${pad};color:var(--text);white-space:nowrap;font-size:.82rem">${r.wh}</td>
@@ -2658,7 +2693,7 @@
         const cRow = cRows.find(c => c.country === country);
         const whs  = whRows.filter(r => r.country === country);
         if (cRow) {
-          const ct = (cRow.new||0) + (cRow.rfp||0) + (cRow.picking||0) + (cRow.picked||0) + (cRow.packing||0);
+          const ct = incSum(cRow);
           html += `<tr style="border-top:2px solid var(--border);background:var(--surface2)">
             <td style="padding:9px 18px;color:var(--text);font-weight:700;font-size:.8rem">${country}</td>
             ${tdN(cRow.new     || 0, '#fb923c')}
@@ -2922,38 +2957,48 @@
       ready_ship: a.ready_ship + (r.ready_ship || 0),
     }), { open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0, ready_ship: 0 });
 
-    const total = tot.open + tot.rfp + tot.picking + tot.pack_ready + tot.packing + tot.ready_ship;
+    // Statuses excluded from the total (user toggle). incSum sums only included.
+    const B2B_KEYS = ['open', 'rfp', 'picking', 'pack_ready', 'packing', 'ready_ship'];
+    const b2bExcl  = new Set(getExcluded('b2b'));
+    const incSum   = o => B2B_KEYS.reduce((a, k) => b2bExcl.has(k) ? a : a + (o[k] || 0), 0);
+
+    const total = incSum(tot);
     const fmt   = n => n.toLocaleString();
     const pct   = (n, d) => d ? (n / d * 100).toFixed(1) + '%' : '—';
 
     // KPI cards
     const statuses = [
-      { label: 'Open',             count: tot.open,       color: '#fb923c' },
-      { label: 'Ready to Pick',    count: tot.rfp,        color: '#fcd34d' },
-      { label: 'Picking Started',  count: tot.picking,    color: '#93c5fd' },
-      { label: 'Ready to Pack',    count: tot.pack_ready, color: '#86efac' },
-      { label: 'Packing Started',  count: tot.packing,    color: '#a78bfa' },
-      { label: 'Ready to Ship',    count: tot.ready_ship, color: '#5eead4' },
-      { label: 'Total Orders',     count: total,          color: 'var(--text)' },
+      { key: 'open',       label: 'Open',             count: tot.open,       color: '#fb923c' },
+      { key: 'rfp',        label: 'Ready to Pick',    count: tot.rfp,        color: '#fcd34d' },
+      { key: 'picking',    label: 'Picking Started',  count: tot.picking,    color: '#93c5fd' },
+      { key: 'pack_ready', label: 'Ready to Pack',    count: tot.pack_ready, color: '#86efac' },
+      { key: 'packing',    label: 'Packing Started',  count: tot.packing,    color: '#a78bfa' },
+      { key: 'ready_ship', label: 'Ready to Ship',    count: tot.ready_ship, color: '#5eead4' },
+      { key: 'total',      label: 'Total Orders',     count: total,          color: 'var(--text)' },
     ];
 
     const kpiEl = document.getElementById('b2bKpis');
     if (kpiEl) kpiEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
       ${statuses.map(s => {
-        const isTotal = s.label === 'Total Orders';
+        const isTotal  = s.key === 'total';
+        const excluded = !isTotal && b2bExcl.has(s.key);
         const url = wmsStatusUrl('B2B', isTotal ? WMS_ALL_STATUS : [WMS_STATUS_ID[s.label]], isTotal ? 'All' : s.label);
+        const subtitle = isTotal
+          ? (b2bExcl.size ? `excludes ${b2bExcl.size} status${b2bExcl.size > 1 ? 'es' : ''}` : 'across all statuses')
+          : (excluded ? 'Excluded from total' : pct(s.count, total) + ' of total');
         return `
-        <a class="card kpi-link" href="${url}" target="_blank" title="Open in WMS" style="padding:16px 18px;text-decoration:none;color:inherit;display:block">
-          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px">${s.label}</div>
+        <a class="card kpi-link" href="${url}" target="_blank" title="Open in WMS" style="position:relative;padding:16px 18px;text-decoration:none;color:inherit;display:block${excluded ? ';opacity:.5' : ''}">
+          ${isTotal ? '' : excludeBtn('b2b', s.key, excluded)}
+          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px${excluded ? ';text-decoration:line-through' : ''}">${s.label}</div>
           <div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${fmt(s.count)}</div>
-          <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${isTotal ? 'across all statuses' : pct(s.count, total) + ' of total'}</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${subtitle}</div>
         </a>`;
       }).join('')}
     </div>`;
 
     const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color||'var(--text)'};font-size:.82rem">${fmt(n)}</td>`;
     const whRow = (r, indent) => {
-      const t = (r.open||0) + (r.rfp||0) + (r.picking||0) + (r.pack_ready||0) + (r.packing||0) + (r.ready_ship||0);
+      const t = incSum(r);
       const pad = indent ? 'padding:9px 18px 9px 28px' : 'padding:10px 18px';
       return `<tr style="border-top:1px solid var(--border)">
         <td style="${pad};color:var(--text);white-space:nowrap;font-size:.82rem">${r.wh}</td>
@@ -2985,7 +3030,7 @@
           packing:    a.packing    + (r.packing    || 0),
           ready_ship: a.ready_ship + (r.ready_ship || 0),
         }), { open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0, ready_ship: 0 });
-        const ctTotal = ct.open + ct.rfp + ct.picking + ct.pack_ready + ct.packing + ct.ready_ship;
+        const ctTotal = incSum(ct);
         html += `<tr style="border-top:2px solid var(--border);background:var(--surface2)">
           <td style="padding:9px 18px;color:var(--text);font-weight:700;font-size:.8rem">${country}</td>
           ${tdN(ct.open,       '#fb923c')}
