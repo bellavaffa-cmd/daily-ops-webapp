@@ -2103,7 +2103,7 @@
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-        <select id="productivityViewWarehouse" onchange="onViewWarehouseChange(this.value)"
+        <select id="productivityViewWarehouse" onchange="onProdWarehouseChange(this.value)"
           style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;flex:0 1 180px;min-width:120px;max-width:200px"></select>
       </div>
     </div>
@@ -2696,7 +2696,7 @@
   function populateViewWarehouseSelects() {
     const html = warehouseOptionsHTML();
     const filter = localStorage.getItem('b2cWarehouseFilter') || '';
-    ['b2cViewWarehouse', 'b2bViewWarehouse', 'shortageViewWarehouse', 'productivityViewWarehouse'].forEach(id => {
+    ['b2cViewWarehouse', 'b2bViewWarehouse', 'shortageViewWarehouse'].forEach(id => {
       const el = document.getElementById(id);
       if (!el) return;
       el.innerHTML = html;
@@ -3362,17 +3362,38 @@
   const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const dayLabel = ds => { const p = String(ds).split('-'); return p[2] ? `${p[2]} ${MONTHS_ABBR[+p[1]-1]}` : ds; };
 
+  // Productivity has its OWN warehouse filter (stored separately from the B2C/
+  // B2B/Shortage selection). The performance report only covers the warehouses
+  // Logiwa actually reports on — a subset of, and named differently from, the
+  // B2C warehouse list (which includes country totals) — so reusing that filter
+  // would zero out the tab. Default is "All warehouses" ('').
+  function onProdWarehouseChange(value) {
+    localStorage.setItem('prodWarehouseFilter', value);
+    renderProductivity();
+  }
+
+  function populateProdWarehouseSelect() {
+    const el = document.getElementById('productivityViewWarehouse');
+    if (!el) return;
+    const sel = localStorage.getItem('prodWarehouseFilter') || '';
+    const whs = [...new Set(userPerf.map(r => r.warehouse_code).filter(Boolean))].sort();
+    el.innerHTML = `<option value="">All warehouses</option>` +
+      whs.map(w => `<option value="${escHtml(w)}">${escHtml(w)}</option>`).join('');
+    // Keep the current selection if it still exists in the data, else fall back to All.
+    el.value = whs.includes(sel) ? sel : '';
+    if (el.value !== sel) localStorage.setItem('prodWarehouseFilter', el.value);
+  }
+
   async function fetchProductivity() {
-    const wh = localStorage.getItem('b2cWarehouseFilter') || '';
     const modeEl = document.getElementById('productivityMode');
     if (modeEl) { modeEl.textContent = 'Loading…'; modeEl.style.color = 'var(--muted)'; }
     try {
       const cutoff = localDateStr(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
-      let url = SB_URL + '/user_performance?select=*&activity_date=gte.' + cutoff + '&order=activity_date.desc';
-      if (wh) url += '&warehouse_code=eq.' + encodeURIComponent(wh);
+      const url = SB_URL + '/user_performance?select=*&activity_date=gte.' + cutoff + '&order=activity_date.desc';
       const res = await fetch(url, { headers: SB_HDR });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       userPerf = await res.json();
+      populateProdWarehouseSelect();
       renderProductivity();
       if (modeEl) { modeEl.textContent = 'Supabase ●'; modeEl.style.color = 'var(--success)'; }
     } catch (err) {
@@ -3384,14 +3405,16 @@
   function renderProductivity() {
     const fmt = n => Number(n || 0).toLocaleString();
     const sum = (rows, k) => rows.reduce((a, r) => a + Number(r[k] || 0), 0);
+    const selWh = localStorage.getItem('prodWarehouseFilter') || '';
+    const rows = selWh ? userPerf.filter(r => r.warehouse_code === selWh) : userPerf;
     const today = localDateStr();
-    const todayRows = userPerf.filter(r => r.activity_date === today);
+    const todayRows = rows.filter(r => r.activity_date === today);
 
     const kpis = [
       { label: 'Picked Today', count: sum(todayRows, 'picked_orders'), color: '#86efac' },
       { label: 'Packed Today', count: sum(todayRows, 'packed_orders'), color: '#5eead4' },
-      { label: 'Picked (30d)', count: sum(userPerf, 'picked_orders'), color: '#86efac' },
-      { label: 'Packed (30d)', count: sum(userPerf, 'packed_orders'), color: '#5eead4' },
+      { label: 'Picked (30d)', count: sum(rows, 'picked_orders'), color: '#86efac' },
+      { label: 'Packed (30d)', count: sum(rows, 'packed_orders'), color: '#5eead4' },
     ];
     const kpiEl = document.getElementById('productivityKpis');
     if (kpiEl) kpiEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
@@ -3437,7 +3460,7 @@
 
     // Daily totals: sum picked/packed per day.
     const byDay = {};
-    for (const r of userPerf) {
+    for (const r of rows) {
       const k = r.activity_date;
       (byDay[k] = byDay[k] || { date: k, picked: 0, packed: 0 });
       byDay[k].picked += Number(r.picked_orders || 0);
