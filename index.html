@@ -2109,7 +2109,27 @@
     </div>
 
     <!-- KPI Cards -->
-    <div id="productivityKpis" style="margin-bottom:20px"></div>
+    <div id="productivityKpis" style="margin-bottom:16px"></div>
+
+    <!-- Hourly depletion rate -->
+    <div class="card" id="prodHourlyBox" style="padding:16px 18px;margin-bottom:20px;border:1px solid var(--brand,#94ffa1)">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--brand,#94ffa1)">Hourly depletion rate</div>
+          <div id="prodHourlyWindow" style="font-size:.7rem;color:var(--muted);margin-top:3px">Collecting data…</div>
+        </div>
+        <div style="display:flex;gap:28px">
+          <div style="text-align:right">
+            <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#86efac;margin-bottom:4px">Picked / hr</div>
+            <div id="prodHourlyPicked" style="font-size:1.9rem;font-weight:700;color:var(--text);line-height:1">—</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#5eead4;margin-bottom:4px">Packed / hr</div>
+            <div id="prodHourlyPacked" style="font-size:1.9rem;font-weight:700;color:var(--text);line-height:1">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- By person (today) -->
     <div class="card" style="padding:0;overflow:hidden">
@@ -3358,6 +3378,7 @@
   // day picked/packed order counts), synced into user_performance by the
   // extension. Day-level, so we show today's per-person split + a daily trend.
   let userPerf = [];
+  let prodSnaps = [];
   const MONTHS_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const dayLabel = ds => { const p = String(ds).split('-'); return p[2] ? `${p[2]} ${MONTHS_ABBR[+p[1]-1]}` : ds; };
@@ -3390,9 +3411,17 @@
     try {
       const cutoff = localDateStr(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
       const url = SB_URL + '/user_performance?select=*&activity_date=gte.' + cutoff + '&order=activity_date.desc';
-      const res = await fetch(url, { headers: SB_HDR });
+      // Snapshots from the last 6h let us compute the hourly depletion rate
+      // (this sync's cumulative total minus the total ~1h ago).
+      const snapCutoff = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+      const snapUrl = SB_URL + '/productivity_snapshot?select=*&captured_at=gte.' + encodeURIComponent(snapCutoff) + '&order=captured_at.desc';
+      const [res, snapRes] = await Promise.all([
+        fetch(url, { headers: SB_HDR }),
+        fetch(snapUrl, { headers: SB_HDR }),
+      ]);
       if (!res.ok) throw new Error('HTTP ' + res.status);
       userPerf = await res.json();
+      prodSnaps = snapRes.ok ? await snapRes.json() : [];
       populateProdWarehouseSelect();
       renderProductivity();
       if (modeEl) { modeEl.textContent = 'Supabase ●'; modeEl.style.color = 'var(--success)'; }
@@ -3458,6 +3487,13 @@
     const uEl = document.getElementById('prodUserTable');
     if (uEl) uEl.innerHTML = bodyHtml(users.map(u => ({ name: escHtml(u.name), picked: u.picked, packed: u.packed })), 'name', 3);
 
+    // Hourly depletion rate: how many orders were picked/packed in the last hour.
+    // Snapshots record the day's cumulative totals at each sync (sync time =
+    // captured_at). We take the latest snapshot and the one closest to an hour
+    // before it, then diff the cumulative totals. Both must be the same day (the
+    // cumulative resets at midnight). Values are clamped to >= 0.
+    renderHourlyRate(selWh);
+
     // Daily totals: sum picked/packed per day.
     const byDay = {};
     for (const r of rows) {
@@ -3470,6 +3506,57 @@
       .map(d => ({ label: dayLabel(d.date), picked: d.picked, packed: d.packed }));
     const dEl = document.getElementById('prodDailyTable');
     if (dEl) dEl.innerHTML = bodyHtml(days, 'label', 3);
+  }
+
+  // Compute the hourly depletion rate from the snapshot history for the selected
+  // warehouse (or all). Each sync writes one snapshot row per warehouse holding
+  // that day's cumulative picked/packed totals, timestamped with the sync time.
+  function renderHourlyRate(selWh) {
+    const pEl = document.getElementById('prodHourlyPicked');
+    const kEl = document.getElementById('prodHourlyPacked');
+    const wEl = document.getElementById('prodHourlyWindow');
+    if (!pEl || !kEl || !wEl) return;
+    const fmt = n => Number(n || 0).toLocaleString();
+    const timeStr = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+    // Collapse snapshots into one bucket per sync time, summed over the selected
+    // warehouse(s). Rows from the same sync share captured_at exactly.
+    const buckets = {};
+    for (const s of prodSnaps) {
+      if (selWh && s.warehouse_code !== selWh) continue;
+      const t = new Date(s.captured_at).getTime();
+      const b = (buckets[t] = buckets[t] || { t, picked: 0, packed: 0, date: s.activity_date });
+      b.picked += Number(s.picked_orders || 0);
+      b.packed += Number(s.packed_orders || 0);
+    }
+    const arr = Object.values(buckets).sort((a, b) => b.t - a.t);
+    const latest = arr[0];
+
+    // Find the snapshot closest to (latest - 1h), same day, within 30–100 min back.
+    let prev = null, best = Infinity;
+    if (latest) {
+      const target = latest.t - 60 * 60 * 1000;
+      for (let i = 1; i < arr.length; i++) {
+        const b = arr[i];
+        if (b.date !== latest.date) continue;
+        const gap = latest.t - b.t;
+        if (gap < 30 * 60 * 1000 || gap > 100 * 60 * 1000) continue;
+        const d = Math.abs(b.t - target);
+        if (d < best) { best = d; prev = b; }
+      }
+    }
+
+    if (latest && prev) {
+      pEl.textContent = fmt(Math.max(0, latest.picked - prev.picked));
+      kEl.textContent = fmt(Math.max(0, latest.packed - prev.packed));
+      wEl.textContent = `${timeStr(prev.t)} → ${timeStr(latest.t)} · updates each sync`;
+    } else {
+      pEl.textContent = '—';
+      kEl.textContent = '—';
+      wEl.textContent = latest
+        ? `Collecting… need ~1h of history (last sync ${timeStr(latest.t)})`
+        : 'Collecting data… (waiting for the first hourly sync)';
+    }
   }
 
   fetchProductivity();
