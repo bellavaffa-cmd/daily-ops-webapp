@@ -178,20 +178,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           }))
           .filter(o => o.order_id && o.wh);
 
-        // 4d. Productivity: track each pipeline order's current status (Ready to
-        // Pick..Ready to Ship) so a DB trigger can timestamp the pick (reaches
-        // status 12) and pack (reaches 16) transitions. Any order type.
-        const progressRows = all
-          .filter(o => [8, 9, 12, 13, 16].includes(o.shipmentOrderStatusId))
-          .map(o => ({
-            order_id: String(o.code ?? o.identifier ?? ''),
-            wh: o.warehouseCode,
-            order_type: o.shipmentOrderTypeName || null,
-            status_id: o.shipmentOrderStatusId,
-            updated_at: new Date().toISOString()
-          }))
-          .filter(o => o.order_id);
-
         // 5. Upsert to Supabase — all tables every sync so nothing lags.
         const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co';
         const SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
@@ -209,14 +195,52 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         await sbUpsert('b2b_orders',      b2bOrders,      'order_id');
         await sbUpsert('shortage_data',   shortageRows,   'wh');
         await sbUpsert('shortage_orders', shortageOrders, 'order_id');
-        await sbUpsert('order_progress',  progressRows,   'order_id');
 
-        // Retention: drop productivity rows not seen in 35 days (keeps ~1 month).
-        const opCutoff = new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString();
-        await fetch(`${SB_URL}/rest/v1/order_progress?updated_at=lt.${opCutoff}`, {
-          method: 'DELETE',
-          headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY }
-        }).catch(() => {});
+        // 6. Productivity: Logiwa's authoritative user-performance report — per
+        // user, per day, picked/packed order+item counts for the last 30 days.
+        // Same host + token as the order fetch; failures here don't fail the sync.
+        try {
+          const start = new Date(Date.now() - 29 * 24 * 60 * 60 * 1000); start.setUTCHours(0, 0, 0, 0);
+          const end   = new Date(); end.setUTCHours(23, 59, 59, 999);
+          const perfBody = JSON.stringify({
+            queries: [{ field: 'ActivityDate', uniqueFieldName: 'ActivityDate.exd', keyword: 'exd',
+                        label: 'Activity Date', value: `${start.toISOString()},${end.toISOString()}`,
+                        comparator: 'range', type: 'date', uiType: 'datetime' }],
+            sorts: []
+          });
+          let perfAll = [], pIdx = 0, pTotal = 1;
+          while (perfAll.length < pTotal) {
+            const pr = await fetch(`${LG_API}/api/warehousetask/userperformance/last/30/i/${pIdx}/s/1000`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: perfBody
+            });
+            if (!pr.ok) throw new Error('Logiwa userperformance ' + pr.status);
+            const pd = await pr.json();
+            const batch = pd.data || [];
+            perfAll = perfAll.concat(batch);
+            pTotal = pd.totalCount || 0;
+            pIdx++;
+            if (!batch.length) break;
+          }
+          const perfRows = perfAll.map(u => ({
+            warehouse_code:   u.warehouseCode,
+            executed_by:      u.executedBy,
+            executed_by_name: u.executedByName || null,
+            activity_date:    u.activityDate,
+            picked_orders:    u.pickedOrderQuantity || 0,
+            packed_orders:    u.packedOrderQuantity || 0,
+            picked_items:     u.pickedItemQuantity  || 0,
+            packed_items:     u.packedItemQuantity  || 0,
+            updated_at:       new Date().toISOString()
+          })).filter(u => u.warehouse_code && u.executed_by != null && u.activity_date);
+          await sbUpsert('user_performance', perfRows, 'warehouse_code,executed_by,activity_date');
+          // Retention: keep ~1 month.
+          const upCutoff = new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+          await fetch(`${SB_URL}/rest/v1/user_performance?activity_date=lt.${upCutoff}`, {
+            method: 'DELETE', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY }
+          }).catch(() => {});
+        } catch (e) {
+          console.error('[WMS bg] userperformance error:', e.message);
+        }
 
         const aggCount = (isB2B ? b2bRows : b2cRows).length;
         await broadcast({ ok: true, count: aggCount, b2bCount: b2bOrders.length, shortageCount: shortageOrders.length });

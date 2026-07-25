@@ -2099,7 +2099,7 @@
       <div>
         <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Ops — Productivity</div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:2px">
-          Orders picked (→ Ready to Pack) and packed (→ Ready to Ship) · <span id="productivityMode">—</span>
+          Orders picked &amp; packed, from Logiwa's user-performance report · <span id="productivityMode">—</span>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
@@ -2111,19 +2111,19 @@
     <!-- KPI Cards -->
     <div id="productivityKpis" style="margin-bottom:20px"></div>
 
-    <!-- Hourly -->
+    <!-- By person (today) -->
     <div class="card" style="padding:0;overflow:hidden">
-      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Hourly — last 24 hours</div>
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">By person — today <span id="prodUserCount" style="font-weight:400;color:var(--muted)"></span></div>
       <div style="overflow:auto;max-height:340px">
         <table style="width:100%;border-collapse:collapse;font-size:.82rem">
           <thead>
             <tr style="background:var(--surface2)">
-              <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Hour</th>
+              <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Person</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:#86efac;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)">Picked</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:#5eead4;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)">Packed</th>
             </tr>
           </thead>
-          <tbody id="prodHourlyTable"></tbody>
+          <tbody id="prodUserTable"></tbody>
         </table>
       </div>
     </div>
@@ -3354,26 +3354,25 @@
   fetchShortageOrders();
 
   // ── Productivity ──────────────────────────────────────────────────────
-  // Picked = order reached Ready to Pack (status 12); Packed = reached Ready
-  // to Ship (16). Counts come from the order_progress table (filled by the
-  // extension + a DB transition trigger), aggregated by the hourly/daily RPCs.
-  let prodHourly = [];
-  let prodDaily  = [];
+  // Sourced from Logiwa's authoritative user-performance report (per user, per
+  // day picked/packed order counts), synced into user_performance by the
+  // extension. Day-level, so we show today's per-person split + a daily trend.
+  let userPerf = [];
+  const MONTHS_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const dayLabel = ds => { const p = String(ds).split('-'); return p[2] ? `${p[2]} ${MONTHS_ABBR[+p[1]-1]}` : ds; };
 
   async function fetchProductivity() {
-    const wh = localStorage.getItem('b2cWarehouseFilter') || null;
+    const wh = localStorage.getItem('b2cWarehouseFilter') || '';
     const modeEl = document.getElementById('productivityMode');
     if (modeEl) { modeEl.textContent = 'Loading…'; modeEl.style.color = 'var(--muted)'; }
     try {
-      const call = (fn, body) => fetch(SB_URL + '/rpc/' + fn, {
-        method: 'POST', headers: { ...SB_HDR }, body: JSON.stringify(body)
-      });
-      const [hRes, dRes] = await Promise.all([
-        call('productivity_hourly', { p_hours: 24, p_wh: wh }),
-        call('productivity_daily',  { p_days: 30, p_wh: wh }),
-      ]);
-      prodHourly = hRes.ok ? await hRes.json() : [];
-      prodDaily  = dRes.ok ? await dRes.json() : [];
+      const cutoff = localDateStr(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
+      let url = SB_URL + '/user_performance?select=*&activity_date=gte.' + cutoff + '&order=activity_date.desc';
+      if (wh) url += '&warehouse_code=eq.' + encodeURIComponent(wh);
+      const res = await fetch(url, { headers: SB_HDR });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      userPerf = await res.json();
       renderProductivity();
       if (modeEl) { modeEl.textContent = 'Supabase ●'; modeEl.style.color = 'var(--success)'; }
     } catch (err) {
@@ -3384,14 +3383,15 @@
 
   function renderProductivity() {
     const fmt = n => Number(n || 0).toLocaleString();
-    const today = prodDaily.length ? prodDaily[prodDaily.length - 1] : { picked: 0, packed: 0 };
-    const last24 = prodHourly.reduce((a, r) => ({ picked: a.picked + Number(r.picked||0), packed: a.packed + Number(r.packed||0) }), { picked: 0, packed: 0 });
+    const sum = (rows, k) => rows.reduce((a, r) => a + Number(r[k] || 0), 0);
+    const today = localDateStr();
+    const todayRows = userPerf.filter(r => r.activity_date === today);
 
     const kpis = [
-      { label: 'Picked Today',   count: today.picked,  color: '#86efac' },
-      { label: 'Packed Today',   count: today.packed,  color: '#5eead4' },
-      { label: 'Picked (24h)',   count: last24.picked, color: '#86efac' },
-      { label: 'Packed (24h)',   count: last24.packed, color: '#5eead4' },
+      { label: 'Picked Today', count: sum(todayRows, 'picked_orders'), color: '#86efac' },
+      { label: 'Packed Today', count: sum(todayRows, 'packed_orders'), color: '#5eead4' },
+      { label: 'Picked (30d)', count: sum(userPerf, 'picked_orders'), color: '#86efac' },
+      { label: 'Packed (30d)', count: sum(userPerf, 'packed_orders'), color: '#5eead4' },
     ];
     const kpiEl = document.getElementById('productivityKpis');
     if (kpiEl) kpiEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
@@ -3402,7 +3402,6 @@
         </div>`).join('')}
     </div>`;
 
-    // Bars scaled to the max value across both columns of the same table.
     const barCell = (n, max, color) => {
       const w = max > 0 ? Math.round((Number(n||0) / max) * 100) : 0;
       return `<td style="padding:7px 14px;text-align:right;color:var(--text);font-size:.82rem;white-space:nowrap">
@@ -3411,22 +3410,43 @@
           <span style="position:relative">${fmt(n)}</span>
         </span></td>`;
     };
-    const rowsHtml = (arr, reverse) => {
-      const data = reverse ? arr.slice().reverse() : arr.slice();
-      const max = data.reduce((m, r) => Math.max(m, Number(r.picked||0), Number(r.packed||0)), 0);
-      return data.map(r => `<tr style="border-top:1px solid var(--border)">
-        <td style="padding:7px 18px;color:var(--text);font-size:.82rem;white-space:nowrap">${r.label}</td>
+    const bodyHtml = (rows, labelKey, colspan) => {
+      if (!rows.length) return `<tr><td colspan="${colspan}" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No data yet.</td></tr>`;
+      const max = rows.reduce((m, r) => Math.max(m, Number(r.picked||0), Number(r.packed||0)), 0);
+      return rows.map(r => `<tr style="border-top:1px solid var(--border)">
+        <td style="padding:7px 18px;color:var(--text);font-size:.82rem;white-space:nowrap">${r[labelKey]}</td>
         ${barCell(r.picked, max, '#86efac')}
         ${barCell(r.packed, max, '#5eead4')}
       </tr>`).join('');
     };
 
-    const hEl = document.getElementById('prodHourlyTable');
-    if (hEl) hEl.innerHTML = prodHourly.length ? rowsHtml(prodHourly, true)
-      : `<tr><td colspan="3" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No data yet.</td></tr>`;
+    // Per-person (today): sum picked/packed per person across warehouses.
+    const byUser = {};
+    for (const r of todayRows) {
+      const k = r.executed_by_name || ('#' + r.executed_by);
+      (byUser[k] = byUser[k] || { name: k, picked: 0, packed: 0 });
+      byUser[k].picked += Number(r.picked_orders || 0);
+      byUser[k].packed += Number(r.packed_orders || 0);
+    }
+    const users = Object.values(byUser).filter(u => u.picked || u.packed)
+      .sort((a, b) => (b.picked + b.packed) - (a.picked + a.packed));
+    const uCount = document.getElementById('prodUserCount');
+    if (uCount) uCount.textContent = users.length ? `(${users.length})` : '';
+    const uEl = document.getElementById('prodUserTable');
+    if (uEl) uEl.innerHTML = bodyHtml(users.map(u => ({ name: escHtml(u.name), picked: u.picked, packed: u.packed })), 'name', 3);
+
+    // Daily totals: sum picked/packed per day.
+    const byDay = {};
+    for (const r of userPerf) {
+      const k = r.activity_date;
+      (byDay[k] = byDay[k] || { date: k, picked: 0, packed: 0 });
+      byDay[k].picked += Number(r.picked_orders || 0);
+      byDay[k].packed += Number(r.packed_orders || 0);
+    }
+    const days = Object.values(byDay).sort((a, b) => String(b.date).localeCompare(String(a.date)))
+      .map(d => ({ label: dayLabel(d.date), picked: d.picked, packed: d.packed }));
     const dEl = document.getElementById('prodDailyTable');
-    if (dEl) dEl.innerHTML = prodDaily.length ? rowsHtml(prodDaily, true)
-      : `<tr><td colspan="3" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No data yet.</td></tr>`;
+    if (dEl) dEl.innerHTML = bodyHtml(days, 'label', 3);
   }
 
   fetchProductivity();
