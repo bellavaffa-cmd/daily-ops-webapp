@@ -178,7 +178,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           }))
           .filter(o => o.order_id && o.wh);
 
-        // 5. Upsert to Supabase — all five tables every sync so nothing lags.
+        // 4d. Productivity: track each pipeline order's current status (Ready to
+        // Pick..Ready to Ship) so a DB trigger can timestamp the pick (reaches
+        // status 12) and pack (reaches 16) transitions. Any order type.
+        const progressRows = all
+          .filter(o => [8, 9, 12, 13, 16].includes(o.shipmentOrderStatusId))
+          .map(o => ({
+            order_id: String(o.code ?? o.identifier ?? ''),
+            wh: o.warehouseCode,
+            order_type: o.shipmentOrderTypeName || null,
+            status_id: o.shipmentOrderStatusId,
+            updated_at: new Date().toISOString()
+          }))
+          .filter(o => o.order_id);
+
+        // 5. Upsert to Supabase — all tables every sync so nothing lags.
         const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co';
         const SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
         const sbUpsert = async (table, rowsToSend, conflict) => {
@@ -195,6 +209,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         await sbUpsert('b2b_orders',      b2bOrders,      'order_id');
         await sbUpsert('shortage_data',   shortageRows,   'wh');
         await sbUpsert('shortage_orders', shortageOrders, 'order_id');
+        await sbUpsert('order_progress',  progressRows,   'order_id');
+
+        // Retention: drop productivity rows not seen in 35 days (keeps ~1 month).
+        const opCutoff = new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString();
+        await fetch(`${SB_URL}/rest/v1/order_progress?updated_at=lt.${opCutoff}`, {
+          method: 'DELETE',
+          headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY }
+        }).catch(() => {});
 
         const aggCount = (isB2B ? b2bRows : b2cRows).length;
         await broadcast({ ok: true, count: aggCount, b2bCount: b2bOrders.length, shortageCount: shortageOrders.length });
