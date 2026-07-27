@@ -144,6 +144,8 @@
     /* Clickable KPI status boxes (open the matching order list in WMS) */
     .kpi-link { cursor: pointer; transition: border-color .15s, transform .1s; }
     .kpi-link:hover { border-color: var(--primary); transform: translateY(-1px); }
+    .mp-link { cursor: pointer; }
+    .mp-link:hover { text-decoration: underline !important; }
 
     /* ── Multi-select warehouse filter (B2C/B2B/Shortage headers) ── */
     .wh-multi { position: relative; }
@@ -2624,12 +2626,6 @@
     if (id) url += '&tag=' + enc2([id]) + '&tagqt=in&taglbl=' + encodeURIComponent(tagLbl);
     return url;
   }
-  // Open the WMS list filtered by a B2C status (or all) AND a tag.
-  function openWmsTag(statusLbl, tagLbl) {
-    const isTotal = statusLbl === 'Total Orders' || statusLbl === 'All';
-    const statusIds = isTotal ? WMS_ALL_STATUS : [WMS_STATUS_ID[statusLbl]];
-    window.open(wmsTagUrl('B2C', statusIds, isTotal ? 'All' : statusLbl, tagLbl), '_blank');
-  }
 
   // ── B2C Dashboard ─────────────────────────────────────────────────────
   // Data is a snapshot. To refresh, ask Claude: "refresh B2C data".
@@ -2836,21 +2832,28 @@
       ${statuses.map(s => {
         const isTotal  = s.key === 'total';
         const excluded = !isTotal && b2cExcl.has(s.key);
-        const url = wmsStatusUrl('B2C', isTotal ? WMS_ALL_STATUS : [WMS_STATUS_ID[s.label]], isTotal ? 'All' : s.label);
+        const statusIds = isTotal ? WMS_ALL_STATUS : [WMS_STATUS_ID[s.label]];
+        const statusLbl = isTotal ? 'All' : s.label;
+        const url = wmsStatusUrl('B2C', statusIds, statusLbl);
         const subtitle = isTotal
           ? (b2cExcl.size ? `excludes ${b2cExcl.size} status${b2cExcl.size > 1 ? 'es' : ''}` : 'across all statuses')
           : (excluded ? 'Excluded from total' : pct(s.count, total) + ' of total');
+        // Card is a div (not one big <a>) so the MP/Non-MP tag links below aren't
+        // nested inside the status link — nested <a> is invalid and the status
+        // link would otherwise swallow their clicks.
         return `
-        <a class="card kpi-link" href="${url}" target="_blank" title="Open in WMS" style="position:relative;padding:16px 18px;text-decoration:none;color:inherit;display:block${excluded ? ';opacity:.5' : ''}">
+        <div class="card kpi-link" style="position:relative;padding:16px 18px;display:block${excluded ? ';opacity:.5' : ''}">
           ${isTotal ? '' : excludeBtn('b2c', s.key, excluded)}
-          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px${excluded ? ';text-decoration:line-through' : ''}">${s.label}</div>
-          <div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${fmt(s.count)}</div>
-          <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${subtitle}</div>
+          <a href="${url}" target="_blank" title="Open in WMS" style="text-decoration:none;color:inherit;display:block">
+            <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px${excluded ? ';text-decoration:line-through' : ''}">${s.label}</div>
+            <div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${fmt(s.count)}</div>
+            <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${subtitle}</div>
+          </a>
           <div style="font-size:.82rem;margin-top:6px;display:flex;flex-direction:column;gap:2px;color:var(--muted)">
-            <span onclick="event.preventDefault();event.stopPropagation();openWmsTag('${s.label}','Priority MP')" title="Open Priority MP in WMS" style="cursor:pointer;width:fit-content">MP <b style="color:#c084fc">${fmt(s.prioritymp || 0)}</b></span>
-            <span onclick="event.preventDefault();event.stopPropagation();openWmsTag('${s.label}','Non-MP')" title="Open Non-MP in WMS" style="cursor:pointer;width:fit-content">Non-MP <b style="color:var(--text)">${fmt(s.nonmp || 0)}</b></span>
+            <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Priority MP')}" target="_blank" title="Open Priority MP in WMS" style="text-decoration:none;color:inherit;width:fit-content">MP <b style="color:#c084fc">${fmt(s.prioritymp || 0)}</b></a>
+            <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Non-MP')}" target="_blank" title="Open Non-MP in WMS" style="text-decoration:none;color:inherit;width:fit-content">Non-MP <b style="color:var(--text)">${fmt(s.nonmp || 0)}</b></a>
           </div>
-        </a>`;
+        </div>`;
       }).join('')}
     </div>`;
 
