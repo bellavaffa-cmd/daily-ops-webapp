@@ -249,10 +249,17 @@ async function performSync(isB2B) {
         if (o.shipmentOrderTypeName !== 'B2C') continue;
         const wh = o.warehouseCode;
         if (!wh) continue;
-        if (!flow[wh]) flow[wh] = { warehouse_code: wh, open_count: 0, inflow_1h: 0 };
+        if (!flow[wh]) flow[wh] = { warehouse_code: wh, open_count: 0, inflow_1h: 0, into_ship_1h: 0 };
         if (o.shipmentOrderStatusId === 6) flow[wh].open_count++;
         const created = Date.parse(o.createdDateTime || o.shipmentOrderDate || '');
         if (created && created >= hourAgo) flow[wh].inflow_1h++;
+        // Completed packing = reached Ready to Ship (status 16) in the last hour.
+        // No packing timestamp exists, so use updatedDateTime of orders now in 16
+        // (near-terminal; the next step, shipping, removes them from this list).
+        if (o.shipmentOrderStatusId === 16) {
+          const upd = Date.parse(o.updatedDateTime || '');
+          if (upd && upd >= hourAgo) flow[wh].into_ship_1h++;
+        }
       }
       const nowIso = new Date().toISOString();
       const flowRows = Object.values(flow).map(f => ({ ...f, captured_at: nowIso }));
