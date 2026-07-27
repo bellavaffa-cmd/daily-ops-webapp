@@ -145,6 +145,29 @@
     .kpi-link { cursor: pointer; transition: border-color .15s, transform .1s; }
     .kpi-link:hover { border-color: var(--primary); transform: translateY(-1px); }
 
+    /* ── Multi-select warehouse filter (B2C/B2B/Shortage headers) ── */
+    .wh-multi { position: relative; }
+    .wh-multi-btn {
+      width: 100%; font-size: .78rem; padding: 6px 10px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+      cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 6px;
+    }
+    .wh-multi-btn:hover { border-color: var(--primary); }
+    .wh-panel {
+      position: absolute; right: 0; top: calc(100% + 4px); z-index: 50;
+      width: min(280px, 86vw); max-height: 360px; overflow: auto;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; box-shadow: var(--shadow); padding: 6px;
+    }
+    .wh-opt {
+      display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+      border-radius: 6px; cursor: pointer; font-size: .82rem; color: var(--text);
+    }
+    .wh-opt:hover { background: var(--surface2); }
+    .wh-opt input { width: auto; margin: 0; flex: none; accent-color: var(--primary); pointer-events: none; }
+    .wh-opt.wh-country { font-weight: 700; margin-top: 2px; }
+    .wh-opt.wh-wh { padding-left: 20px; color: var(--muted); }
+
     /* ── Form ── */
     .form-grid {
       display: grid;
@@ -1918,8 +1941,13 @@
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-        <select id="b2cViewWarehouse" onchange="onViewWarehouseChange(this.value)"
-          style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;flex:0 1 180px;min-width:120px;max-width:200px"></select>
+        <div class="wh-multi" style="flex:0 1 220px;min-width:150px;max-width:260px">
+          <button type="button" class="wh-multi-btn" onclick="toggleWhPanel('b2c',event)">
+            <span id="whBtnLabel-b2c" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">All Warehouses</span>
+            <span style="color:var(--muted);flex:none">▾</span>
+          </button>
+          <div id="whPanel-b2c" class="wh-panel" style="display:none"></div>
+        </div>
         <button id="b2cSyncBtn" class="btn btn-primary btn-sm" onclick="syncLogiwaAndRefresh(this)"
           style="display:flex;align-items:center;gap:5px;font-size:.75rem;padding:5px 12px">
           <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
@@ -1966,8 +1994,13 @@
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-        <select id="b2bViewWarehouse" onchange="onViewWarehouseChange(this.value)"
-          style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;flex:0 1 180px;min-width:120px;max-width:200px"></select>
+        <div class="wh-multi" style="flex:0 1 220px;min-width:150px;max-width:260px">
+          <button type="button" class="wh-multi-btn" onclick="toggleWhPanel('b2b',event)">
+            <span id="whBtnLabel-b2b" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">All Warehouses</span>
+            <span style="color:var(--muted);flex:none">▾</span>
+          </button>
+          <div id="whPanel-b2b" class="wh-panel" style="display:none"></div>
+        </div>
         <button id="b2bSyncBtn" class="btn btn-primary btn-sm" onclick="syncLogiwaB2BAndRefresh(this)"
           style="display:flex;align-items:center;gap:5px;font-size:.75rem;padding:5px 12px">
           <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
@@ -2037,8 +2070,13 @@
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-        <select id="shortageViewWarehouse" onchange="onViewWarehouseChange(this.value)"
-          style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;flex:0 1 180px;min-width:120px;max-width:200px"></select>
+        <div class="wh-multi" style="flex:0 1 220px;min-width:150px;max-width:260px">
+          <button type="button" class="wh-multi-btn" onclick="toggleWhPanel('shortage',event)">
+            <span id="whBtnLabel-shortage" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">All Warehouses</span>
+            <span style="color:var(--muted);flex:none">▾</span>
+          </button>
+          <div id="whPanel-shortage" class="wh-panel" style="display:none"></div>
+        </div>
         <button id="shortageSyncBtn" class="btn btn-primary btn-sm" onclick="syncLogiwaAndRefresh(this)"
           style="display:flex;align-items:center;gap:5px;font-size:.75rem;padding:5px 12px">
           <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
@@ -2587,15 +2625,130 @@
       font-size:.9rem;font-weight:700;cursor:pointer;padding:0;z-index:2">${glyph}</button>`;
   }
 
+  // ── Warehouse view filter (multi-select, shared by B2C/B2B/Shortage) ────
+  // Stored as a JSON array of warehouse codes in `whFilterSet`; empty = all.
+  // Migrates the old single-value `b2cWarehouseFilter` on first read.
+  function getSelectedWhs() {
+    try { const a = JSON.parse(localStorage.getItem('whFilterSet')); if (Array.isArray(a)) return a; } catch (e) {}
+    const legacy = localStorage.getItem('b2cWarehouseFilter');
+    return legacy ? [legacy] : [];
+  }
+  function inWhFilter(wh) {
+    const sel = getSelectedWhs();
+    return sel.length === 0 || sel.includes(wh);
+  }
+  function setSelectedWhs(arr) {
+    const uniq = [...new Set(arr)];
+    localStorage.setItem('whFilterSet', JSON.stringify(uniq));
+    localStorage.setItem('b2cWarehousePicked', '1');
+    renderWarehouseFilters();
+    renderB2C(); renderB2B(); renderB2BOrders(); renderShortage(); renderShortageOrders();
+  }
+  // All warehouse codes grouped by country, from the b2c_data warehouse rows.
+  function whGroups() {
+    const whRows = b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh);
+    const byCountry = {}; const other = [];
+    whRows.forEach(r => { if (r.country) { (byCountry[r.country] = byCountry[r.country] || []).push(r.wh); } else other.push(r.wh); });
+    return { byCountry, other };
+  }
+  function whToggleOne(wh) {
+    const sel = new Set(getSelectedWhs());
+    if (sel.has(wh)) sel.delete(wh); else sel.add(wh);
+    setSelectedWhs([...sel]);
+  }
+  function whToggleCountry(country) {
+    const { byCountry } = whGroups();
+    const whs = byCountry[country] || [];
+    const sel = new Set(getSelectedWhs());
+    const allSel = whs.length && whs.every(w => sel.has(w));
+    whs.forEach(w => allSel ? sel.delete(w) : sel.add(w));
+    setSelectedWhs([...sel]);
+  }
+  function whSelectAll() { setSelectedWhs([]); }
+
+  function whPanelHTML() {
+    const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const { byCountry, other } = whGroups();
+    const sel = new Set(getSelectedWhs());
+    const box = (checked, indet) => `<input type="checkbox" ${checked ? 'checked' : ''}${indet ? ' data-indet="1"' : ''}>`;
+    let h = `<div class="wh-opt" data-act="all">${box(sel.size === 0)}<span style="font-weight:700">All Warehouses</span></div>
+      <div style="height:1px;background:var(--border);margin:4px 2px"></div>`;
+    const section = (country, whs) => {
+      const n = whs.filter(w => sel.has(w)).length;
+      const all = n === whs.length && whs.length > 0, some = n > 0 && !all;
+      let s = `<div class="wh-opt wh-country" data-country="${esc(country)}">${box(all, some)}<span>${esc(country)}</span></div>`;
+      s += whs.map(w => `<div class="wh-opt wh-wh" data-wh="${esc(w)}">${box(sel.has(w))}<span>${esc(w)}</span></div>`).join('');
+      return s;
+    };
+    Object.keys(byCountry).sort().forEach(c => { h += section(c, byCountry[c]); });
+    if (other.length) h += section('Other', other);
+    return h;
+  }
+
+  function warehouseBtnLabel() {
+    const sel = getSelectedWhs();
+    if (sel.length === 0) return 'All Warehouses';
+    if (sel.length === 1) return sel[0];
+    // If the selection is exactly every warehouse of a single country, name it.
+    const { byCountry } = whGroups();
+    const set = new Set(sel);
+    for (const [c, whs] of Object.entries(byCountry)) {
+      if (whs.length === sel.length && whs.every(w => set.has(w))) return c + ' (all)';
+    }
+    return sel.length + ' warehouses';
+  }
+
+  // Rebuild the three header dropdowns (labels + panel contents). Keeps whatever
+  // panels are currently open open, so multi-selecting doesn't dismiss them.
+  function renderWarehouseFilters() {
+    const label = warehouseBtnLabel();
+    const panel = whPanelHTML();
+    ['b2c', 'b2b', 'shortage'].forEach(tab => {
+      const lbl = document.getElementById('whBtnLabel-' + tab);
+      if (lbl) lbl.textContent = label;
+      const p = document.getElementById('whPanel-' + tab);
+      if (p) {
+        p.innerHTML = panel;
+        p.querySelectorAll('input[data-indet]').forEach(i => { i.indeterminate = true; });
+      }
+    });
+  }
+  // Back-compat alias — existing call sites rebuild the filter UI through this.
+  function populateViewWarehouseSelects() { renderWarehouseFilters(); }
+
+  function toggleWhPanel(tab, ev) {
+    if (ev) ev.stopPropagation();
+    const p = document.getElementById('whPanel-' + tab);
+    if (!p) return;
+    const open = p.style.display === 'block';
+    closeAllWhPanels();
+    if (!open) { renderWarehouseFilters(); p.style.display = 'block'; }
+  }
+  function closeAllWhPanels() {
+    document.querySelectorAll('.wh-panel').forEach(p => p.style.display = 'none');
+  }
+  // Delegated clicks: options toggle selection; clicks outside close the panels.
+  document.addEventListener('click', e => {
+    const opt = e.target.closest('.wh-panel .wh-opt');
+    if (opt) {
+      e.stopPropagation();
+      if (opt.dataset.act === 'all') whSelectAll();
+      else if (opt.dataset.country) whToggleCountry(opt.dataset.country);
+      else if (opt.dataset.wh) whToggleOne(opt.dataset.wh);
+      return;
+    }
+    if (!e.target.closest('.wh-multi')) closeAllWhPanels();
+  });
+
   function renderB2C() {
-    const filter = localStorage.getItem('b2cWarehouseFilter') || '';
+    const sel = getSelectedWhs();
 
     // Separate warehouse rows from country-total rows (new schema has type field)
     const whRows  = b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh);
     const cRows   = b2cData.filter(r => r.type === 'country');
     const hasCountry = cRows.length > 0;
 
-    const filtered = filter ? whRows.filter(r => r.wh === filter) : whRows;
+    const filtered = whRows.filter(r => inWhFilter(r.wh));
 
     // Grand totals from warehouse rows
     const tot = filtered.reduce((a, r) => ({
@@ -2687,26 +2840,32 @@
 
     let html = '';
 
-    if (hasCountry && !filter) {
-      // Grouped view: country header row → warehouse rows per country
-      const countries = [...new Set(whRows.map(r => r.country).filter(Boolean))];
+    if (hasCountry && sel.length !== 1) {
+      // Grouped view: country header row → warehouse rows per country. Subtotals
+      // are summed from the filtered warehouses (not the b2c_data country-total
+      // row) so a partial-country selection totals correctly.
+      const countries = [...new Set(filtered.map(r => r.country).filter(Boolean))].sort();
       for (const country of countries) {
-        const cRow = cRows.find(c => c.country === country);
-        const whs  = whRows.filter(r => r.country === country);
-        if (cRow) {
-          const ct = incSum(cRow);
-          html += `<tr style="border-top:2px solid var(--border);background:var(--surface2)">
-            <td style="padding:9px 18px;color:var(--text);font-weight:700;font-size:.8rem">${country}</td>
-            ${tdN(cRow.new     || 0, '#fb923c')}
-            ${tdN(cRow.rfp     || 0, '#fcd34d')}
-            ${tdN(cRow.picking || 0, '#93c5fd')}
-            ${tdN(cRow.picked  || 0, '#86efac')}
-            ${tdN(cRow.packing || 0, '#c4b5fd')}
-            ${tdN(ct,               'var(--text)')}
-          </tr>`;
-        }
+        const whs = filtered.filter(r => r.country === country);
+        const ct = whs.reduce((a, r) => ({
+          new:     a.new     + (r.new     || 0),
+          rfp:     a.rfp     + (r.rfp     || 0),
+          picking: a.picking + (r.picking || 0),
+          picked:  a.picked  + (r.picked  || 0),
+          packing: a.packing + (r.packing || 0),
+        }), { new: 0, rfp: 0, picking: 0, picked: 0, packing: 0 });
+        html += `<tr style="border-top:2px solid var(--border);background:var(--surface2)">
+          <td style="padding:9px 18px;color:var(--text);font-weight:700;font-size:.8rem">${country}</td>
+          ${tdN(ct.new,     '#fb923c')}
+          ${tdN(ct.rfp,     '#fcd34d')}
+          ${tdN(ct.picking, '#93c5fd')}
+          ${tdN(ct.picked,  '#86efac')}
+          ${tdN(ct.packing, '#c4b5fd')}
+          ${tdN(incSum(ct), 'var(--text)')}
+        </tr>`;
         html += whs.map(r => whRow(r, true)).join('');
       }
+      html += filtered.filter(r => !r.country).map(r => whRow(r, false)).join('');
     } else {
       // Flat view (no country data or filter applied)
       html += filtered.map(r => whRow(r, false)).join('');
@@ -2725,52 +2884,8 @@
 
     document.getElementById('b2cWHTable').innerHTML = html;
   }
-  // ── Shared warehouse-selector dropdowns (B2C + B2B tab headers) ──────────
-  function warehouseOptionsHTML() {
-    const whRows = b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh);
-    const byCountry = {};
-    const uncategorized = [];
-    whRows.forEach(r => {
-      if (r.country) { (byCountry[r.country] = byCountry[r.country] || []).push(r.wh); }
-      else uncategorized.push(r.wh);
-    });
-    const esc = s => s.replace(/"/g, '&quot;').replace(/</g, '&lt;');
-    let html = '<option value="">All Warehouses</option>';
-    Object.keys(byCountry).sort().forEach(country => {
-      html += `<optgroup label="${esc(country)}">` +
-        byCountry[country].map(wh => `<option value="${esc(wh)}">${wh}</option>`).join('') +
-        `</optgroup>`;
-    });
-    if (uncategorized.length) {
-      html += `<optgroup label="Other">` +
-        uncategorized.map(wh => `<option value="${esc(wh)}">${wh}</option>`).join('') +
-        `</optgroup>`;
-    }
-    return html;
-  }
-
-  function populateViewWarehouseSelects() {
-    const html = warehouseOptionsHTML();
-    const filter = localStorage.getItem('b2cWarehouseFilter') || '';
-    ['b2cViewWarehouse', 'b2bViewWarehouse', 'shortageViewWarehouse'].forEach(id => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.innerHTML = html;
-      el.value = filter;
-    });
-  }
-
-  function onViewWarehouseChange(value) {
-    localStorage.setItem('b2cWarehousePicked', '1');
-    localStorage.setItem('b2cWarehouseFilter', value);
-    populateViewWarehouseSelects();
-    renderB2C();
-    renderB2B();
-    renderB2BOrders();
-    renderShortage();
-    renderShortageOrders();
-    if (typeof fetchProductivity === 'function') fetchProductivity();
-  }
+  // (Warehouse-filter UI + logic now lives in the multi-select helpers above:
+  //  renderWarehouseFilters / populateViewWarehouseSelects / setSelectedWhs.)
 
   populateViewWarehouseSelects();
   renderB2C();
@@ -2945,9 +3060,9 @@
   ];
 
   function renderB2B() {
-    const filter = localStorage.getItem('b2cWarehouseFilter') || '';
+    const sel = getSelectedWhs();
 
-    const filtered = filter ? b2bData.filter(r => r.wh === filter) : b2bData;
+    const filtered = b2bData.filter(r => inWhFilter(r.wh));
 
     const tot = filtered.reduce((a, r) => ({
       open:       a.open       + (r.open       || 0),
@@ -3020,7 +3135,7 @@
     const countries = [...new Set(filtered.map(r => countryOf[r.wh]).filter(Boolean))];
 
     let html = '';
-    if (!filter && countries.length) {
+    if (sel.length !== 1 && countries.length) {
       for (const country of countries) {
         const whs = filtered.filter(r => countryOf[r.wh] === country);
         const ct = whs.reduce((a, r) => ({
@@ -3134,8 +3249,7 @@
   }
 
   function renderB2BOrders() {
-    const filter = localStorage.getItem('b2cWarehouseFilter') || '';
-    const filtered = filter ? b2bOrders.filter(o => o.wh === filter) : b2bOrders;
+    const filtered = b2bOrders.filter(o => inWhFilter(o.wh));
 
     const countEl = document.getElementById('b2bOrdersCount');
     if (countEl) countEl.textContent = filtered.length ? `(${filtered.length.toLocaleString()})` : '';
@@ -3250,8 +3364,8 @@
   let shortageOrders = []; // individual: { order_id, wh, order_type, age }
 
   function renderShortage() {
-    const filter = localStorage.getItem('b2cWarehouseFilter') || '';
-    const filtered = filter ? shortageData.filter(r => r.wh === filter) : shortageData;
+    const sel = getSelectedWhs();
+    const filtered = shortageData.filter(r => inWhFilter(r.wh));
 
     const tot = filtered.reduce((a, r) => ({
       age_1_3:    a.age_1_3    + (r.age_1_3    || 0),
@@ -3308,7 +3422,7 @@
     const countries = [...new Set(filtered.map(r => countryOf[r.wh]).filter(Boolean))];
 
     let html = '';
-    if (!filter && countries.length) {
+    if (sel.length !== 1 && countries.length) {
       for (const country of countries) {
         const whs = filtered.filter(r => countryOf[r.wh] === country);
         const ct = whs.reduce((a, r) => ({
@@ -3345,8 +3459,7 @@
   }
 
   function renderShortageOrders() {
-    const filter = localStorage.getItem('b2cWarehouseFilter') || '';
-    const filtered = filter ? shortageOrders.filter(o => o.wh === filter) : shortageOrders;
+    const filtered = shortageOrders.filter(o => inWhFilter(o.wh));
 
     const countEl = document.getElementById('shortageOrdersCount');
     if (countEl) countEl.textContent = filtered.length ? `(${filtered.length.toLocaleString()})` : '';
@@ -3641,22 +3754,15 @@
   }
 
   function selectWarehouse(value) {
-    localStorage.setItem('b2cWarehousePicked', '1');
-    localStorage.setItem('b2cWarehouseFilter', value);
     // First-run picker also sets the default warehouse used to pre-fill error
     // reports. Only this picker does — the header dropdown just changes the view
     // filter and deliberately leaves the default alone.
     localStorage.setItem('defaultWarehouse', value);
     const dw = document.getElementById('settingsDefaultWarehouse');
     if (dw) dw.value = value;
-    populateViewWarehouseSelects();
     document.getElementById('warehousePickerModal').classList.remove('open');
-    renderB2C();
-    renderB2B();
-    renderB2BOrders();
-    renderShortage();
-    renderShortageOrders();
-    if (typeof fetchProductivity === 'function') fetchProductivity();
+    // Seed the view filter with just this warehouse (re-renders everything).
+    setSelectedWhs(value ? [value] : []);
   }
 
   // ── Picking Issues ────────────────────────────────────────────────────
@@ -5268,8 +5374,8 @@ function fail(error) {
       opt.value = wh; opt.textContent = wh;
       sel.appendChild(opt);
     });
-    // Restore previous selection, or default to the b2c warehouse setting
-    const defaultWh = current || localStorage.getItem('b2cWarehouseFilter') || '';
+    // Restore previous selection, or default to the first view-filtered warehouse
+    const defaultWh = current || (getSelectedWhs()[0] || '');
     sel.value = defaultWh;
   }
 
