@@ -2821,8 +2821,9 @@
     // Per-status MP-tag counts (feature 6), summed over the filtered warehouses.
     const tagSum = c => filtered.reduce((a, r) => a + (r[c] || 0), 0);
     const mpOf = k => ({ nonmp: tagSum(k + '_nonmp'), prioritymp: tagSum(k + '_prioritymp') });
-    const totNonmp = B2C_KEYS.reduce((a, k) => a + tagSum(k + '_nonmp'), 0);
-    const totPrio  = B2C_KEYS.reduce((a, k) => a + tagSum(k + '_prioritymp'), 0);
+    // Total-box tag counts exclude the statuses toggled out of the total.
+    const totNonmp = B2C_KEYS.reduce((a, k) => b2cExcl.has(k) ? a : a + tagSum(k + '_nonmp'), 0);
+    const totPrio  = B2C_KEYS.reduce((a, k) => b2cExcl.has(k) ? a : a + tagSum(k + '_prioritymp'), 0);
 
     // KPI cards
     const statuses = [
