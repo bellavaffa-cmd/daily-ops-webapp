@@ -1963,13 +1963,17 @@
     <div class="card" id="b2cFlowBox" style="padding:16px 18px;margin-bottom:20px;border:1px solid var(--brand,#94ffa1)">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div>
-          <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--brand,#94ffa1)">Hourly flow — new B2C orders vs packing</div>
+          <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--brand,#94ffa1)">Hourly flow — new B2C orders vs picking &amp; packing</div>
           <div id="b2cFlowWindow" style="font-size:.7rem;color:var(--muted);margin-top:3px">Collecting data…</div>
         </div>
-        <div style="display:flex;gap:24px">
+        <div style="display:flex;gap:24px;flex-wrap:wrap">
           <div style="text-align:right">
             <div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#fb923c;margin-bottom:4px">New into Open / hr</div>
             <div id="b2cFlowInflow" style="font-size:1.9rem;font-weight:700;color:var(--text);line-height:1">—</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#86efac;margin-bottom:4px">Completed Picking / hr</div>
+            <div id="b2cFlowPicked" style="font-size:1.9rem;font-weight:700;color:var(--text);line-height:1">—</div>
           </div>
           <div style="text-align:right">
             <div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#5eead4;margin-bottom:4px">Completed Packing / hr</div>
@@ -3000,7 +3004,7 @@
       // Ready-to-Ship orders then auto-ship).
       const [flowRes, packRes] = await Promise.all([
         fetch(SB_URL + '/b2c_flow_snapshot?select=warehouse_code,inflow_1h,captured_at&captured_at=gte.' + enc + '&order=captured_at.desc', { headers: SB_HDR }),
-        fetch(SB_URL + '/productivity_snapshot?select=warehouse_code,activity_date,packed_orders,captured_at&captured_at=gte.' + enc + '&order=captured_at.desc', { headers: SB_HDR }),
+        fetch(SB_URL + '/productivity_snapshot?select=warehouse_code,activity_date,picked_orders,packed_orders,captured_at&captured_at=gte.' + enc + '&order=captured_at.desc', { headers: SB_HDR }),
       ]);
       b2cFlow = flowRes.ok ? await flowRes.json() : [];
       b2cPackSnaps = packRes.ok ? await packRes.json() : [];
@@ -3037,30 +3041,45 @@
     const inflowArr = bucketize(b2cFlow, 'inflow_1h');
     inEl.textContent = inflowArr[0] ? fmt(inflowArr[0].val) : '—';
 
-    // Right: orders that completed packing in the last hour = rise in cumulative
-    // packed_orders vs the snapshot closest to an hour earlier (same day only).
-    const packArr = bucketize(b2cPackSnaps, 'packed_orders', 'activity_date');
-    const packLatest = packArr[0];
-    let packPrev = null, best = Infinity;
-    if (packLatest) {
-      const target = packLatest.t - 60 * 60 * 1000;
-      for (let i = 1; i < packArr.length; i++) {
-        const bkt = packArr[i];
-        if (packLatest.date && bkt.date && bkt.date !== packLatest.date) continue;
-        const gap = packLatest.t - bkt.t;
+    // Picking & packing completions in the last hour = rise in cumulative
+    // picked_orders / packed_orders vs the snapshot closest to an hour earlier
+    // (same activity day only). Both share the productivity snapshots.
+    const pkEl = document.getElementById('b2cFlowPicked');
+    const prod = {}, pseen = new Set();
+    for (const r of b2cPackSnaps) {
+      if (!inWhFilter(r.warehouse_code)) continue;
+      const t = new Date(r.captured_at).getTime();
+      const key = r.warehouse_code + '@' + t;
+      if (pseen.has(key)) continue;
+      pseen.add(key);
+      const o = (prod[t] = prod[t] || { t, picked: 0, packed: 0, date: r.activity_date });
+      o.picked += Number(r.picked_orders || 0);
+      o.packed += Number(r.packed_orders || 0);
+    }
+    const prodArr = Object.values(prod).sort((a, b) => b.t - a.t);
+    const latest = prodArr[0];
+    let prev = null, best = Infinity;
+    if (latest) {
+      const target = latest.t - 60 * 60 * 1000;
+      for (let i = 1; i < prodArr.length; i++) {
+        const bkt = prodArr[i];
+        if (latest.date && bkt.date && bkt.date !== latest.date) continue;
+        const gap = latest.t - bkt.t;
         if (gap < 30 * 60 * 1000 || gap > 100 * 60 * 1000) continue;
         const d = Math.abs(bkt.t - target);
-        if (d < best) { best = d; packPrev = bkt; }
+        if (d < best) { best = d; prev = bkt; }
       }
     }
-    if (packLatest && packPrev) {
-      clEl.textContent = fmt(Math.max(0, packLatest.val - packPrev.val));
-      wEl.textContent = `${tStr(packPrev.t)} → ${tStr(packLatest.t)} · packing counts all order types`;
+    if (latest && prev) {
+      if (pkEl) pkEl.textContent = fmt(Math.max(0, latest.picked - prev.picked));
+      clEl.textContent = fmt(Math.max(0, latest.packed - prev.packed));
+      wEl.textContent = `${tStr(prev.t)} → ${tStr(latest.t)} · picking & packing count all order types`;
     } else {
+      if (pkEl) pkEl.textContent = '—';
       clEl.textContent = '—';
-      wEl.textContent = packLatest
-        ? `Collecting… need ~1h of packing history (last sync ${tStr(packLatest.t)})`
-        : (inflowArr[0] ? 'New orders shown; packing rate needs the productivity sync' : 'Collecting data… (waiting for the first hourly sync)');
+      wEl.textContent = latest
+        ? `Collecting… need ~1h of picking/packing history (last sync ${tStr(latest.t)})`
+        : (inflowArr[0] ? 'New orders shown; picking/packing needs the productivity sync' : 'Collecting data… (waiting for the first hourly sync)');
     }
   }
 
