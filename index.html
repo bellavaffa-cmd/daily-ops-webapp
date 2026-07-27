@@ -4116,6 +4116,52 @@
     if (el) el.checked = isDesktop;
   })();
 
+  // ── Collapsible tables ─────────────────────────────────────────────────
+  // Each dashboard table card's title bar toggles the table below it; when
+  // collapsed only the title (+ chevron) shows. State persists per table. The
+  // card wrapper and title stay in the DOM across re-renders (only the tbody is
+  // rewritten), so enhancing once on load is enough.
+  function initCollapsibleTables() {
+    const ids = ['b2cWHTable', 'b2bWHTable', 'b2bOrdersTable', 'shortageWHTable',
+                 'shortageOrdersTable', 'prodUserTable', 'prodDailyTable'];
+    ids.forEach(id => {
+      const tb = document.getElementById(id);
+      if (!tb) return;
+      const card = tb.closest('.card');
+      if (!card || card.dataset.collapsibleInit) return;
+      const header = card.firstElementChild;
+      if (!header) return;
+      card.dataset.collapsibleInit = '1';
+      const key = 'collapse:' + id;
+
+      header.style.cursor = 'pointer';
+      header.style.userSelect = 'none';
+      header.style.position = 'relative';
+      header.style.paddingRight = '38px';
+      const chev = document.createElement('span');
+      chev.textContent = '▾';
+      chev.style.cssText = 'position:absolute;right:16px;top:50%;transition:transform .15s;color:var(--muted);font-size:.8rem';
+
+      header.appendChild(chev);
+      const bodies = [];
+      let n = header.nextElementSibling;
+      while (n) { bodies.push(n); n = n.nextElementSibling; }
+
+      const apply = c => {
+        bodies.forEach(b => b.style.display = c ? 'none' : '');
+        chev.style.transform = c ? 'translateY(-50%) rotate(-90deg)' : 'translateY(-50%)';
+      };
+      let collapsed = localStorage.getItem(key) === '1';
+      apply(collapsed);
+      header.addEventListener('click', () => {
+        collapsed = !collapsed;
+        localStorage.setItem(key, collapsed ? '1' : '0');
+        apply(collapsed);
+      });
+    });
+  }
+  initCollapsibleTables();
+
   // ── Settings modal ────────────────────────────────────────────────────
   function openSettings() {
     const isLight = document.documentElement.getAttribute('data-theme') === 'light';
