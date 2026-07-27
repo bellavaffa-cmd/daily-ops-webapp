@@ -2622,8 +2622,6 @@
     { wh: 'LOCAD Umm Ramool FC',                new: 2,   rfp: 1,    picking: 0,  picked: 0    },
   ];
 
-  // wh → status counts as of ~30 min ago, for the B2C KPI "30m change" chips.
-  let b2cChange = {};
   let b2cFlow = [];       // b2c_flow_snapshot rows — B2C new-orders inflow (inflow_1h)
   let b2cPackSnaps = [];  // productivity_snapshot rows — cumulative packed_orders for the hourly packing rate
 
@@ -2794,30 +2792,6 @@
     const fmt   = n => n.toLocaleString();
     const pct   = (n, d) => d ? (n / d * 100).toFixed(1) + '%' : '—';
 
-    // 30-minute change: aggregate the ~30-min-ago snapshot (b2cChange) for the
-    // same filtered warehouses, then delta = now − then. Shown only once at
-    // least one of those warehouses has a baseline that old.
-    const haveBaseline = filtered.some(r => b2cChange[r.wh]);
-    const past = filtered.reduce((a, r) => {
-      const p = b2cChange[r.wh] || r; // no baseline for this wh → treat as unchanged
-      return {
-        new:     a.new     + (p.new     || 0),
-        rfp:     a.rfp     + (p.rfp     || 0),
-        picking: a.picking + (p.picking || 0),
-        picked:  a.picked  + (p.picked  || 0),
-        packing: a.packing + (p.packing || 0),
-      };
-    }, { new: 0, rfp: 0, picking: 0, picked: 0, packing: 0 });
-    const pastTotal = incSum(past);
-    const delta = {
-      new: tot.new - past.new, rfp: tot.rfp - past.rfp, picking: tot.picking - past.picking,
-      picked: tot.picked - past.picked, packing: tot.packing - past.packing, total: total - pastTotal,
-    };
-    const deltaChip = d => d > 0
-      ? `<span style="color:#fcd34d">▲${fmt(d)}</span>`
-      : d < 0 ? `<span style="color:#86efac">▼${fmt(-d)}</span>`
-      : `<span style="color:var(--muted)">–</span>`;
-
     // Per-status MP-tag counts (feature 6), summed over the filtered warehouses.
     const tagSum = c => filtered.reduce((a, r) => a + (r[c] || 0), 0);
     const mpOf = k => ({ nonmp: tagSum(k + '_nonmp'), prioritymp: tagSum(k + '_prioritymp') });
@@ -2827,12 +2801,12 @@
 
     // KPI cards
     const statuses = [
-      { key: 'new',     label: 'Open',            count: tot.new,     color: '#fb923c', delta: delta.new,     ...mpOf('new') },
-      { key: 'rfp',     label: 'Ready to Pick',   count: tot.rfp,     color: '#fcd34d', delta: delta.rfp,     ...mpOf('rfp') },
-      { key: 'picking', label: 'Picking Started', count: tot.picking, color: '#93c5fd', delta: delta.picking, ...mpOf('picking') },
-      { key: 'picked',  label: 'Ready to Pack',   count: tot.picked,  color: '#86efac', delta: delta.picked,  ...mpOf('picked') },
-      { key: 'packing', label: 'Packing Started', count: tot.packing, color: '#c4b5fd', delta: delta.packing, ...mpOf('packing') },
-      { key: 'total',   label: 'Total Orders',    count: total,       color: 'var(--text)', delta: delta.total, nonmp: totNonmp, prioritymp: totPrio },
+      { key: 'new',     label: 'Open',            count: tot.new,     color: '#fb923c', ...mpOf('new') },
+      { key: 'rfp',     label: 'Ready to Pick',   count: tot.rfp,     color: '#fcd34d', ...mpOf('rfp') },
+      { key: 'picking', label: 'Picking Started', count: tot.picking, color: '#93c5fd', ...mpOf('picking') },
+      { key: 'picked',  label: 'Ready to Pack',   count: tot.picked,  color: '#86efac', ...mpOf('picked') },
+      { key: 'packing', label: 'Packing Started', count: tot.packing, color: '#c4b5fd', ...mpOf('packing') },
+      { key: 'total',   label: 'Total Orders',    count: total,       color: 'var(--text)', nonmp: totNonmp, prioritymp: totPrio },
     ];
 
     const kpiEl = document.getElementById('b2cKpis');
@@ -2854,7 +2828,6 @@
             <span>Non-MP <b style="color:var(--text)">${fmt(s.nonmp || 0)}</b></span>
             <span>Prio MP <b style="color:#c084fc">${fmt(s.prioritymp || 0)}</b></span>
           </div>
-          ${(!excluded && haveBaseline) ? `<div style="font-size:.7rem;margin-top:4px">${deltaChip(s.delta)} <span style="color:var(--muted)">30m</span></div>` : ''}
         </a>`;
       }).join('')}
     </div>`;
@@ -2974,23 +2947,6 @@
     } catch (err) {
       console.error('B2C fetch error:', err);
       if (modeEl) { modeEl.textContent = 'Offline — using snapshot'; modeEl.style.color = 'var(--danger)'; }
-    }
-  }
-
-  // Load the ~30-min-ago snapshot per warehouse (from b2c_history, filled by a
-  // DB trigger on every b2c_data write) for the KPI "30m change" chips.
-  async function fetchB2CChange() {
-    try {
-      const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-      const res = await fetch(SB_URL + '/b2c_history?captured_at=lte.' + encodeURIComponent(cutoff) + '&order=captured_at.desc&limit=800', { headers: SB_HDR });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const rows = await res.json();
-      const map = {};
-      for (const r of rows) { if (!(r.wh in map)) map[r.wh] = r; } // first per wh = most recent ≤ cutoff
-      b2cChange = map;
-      renderB2C();
-    } catch (err) {
-      console.error('B2C change fetch error:', err);
     }
   }
 
@@ -3177,10 +3133,8 @@
   // Wait for b2cData (used to match the WMS scan's warehouse hint) before applying a pending scan.
   if (_extMode) document.body.classList.add('ext-mode');
   fetchB2CData().then(applyWmsScanFromUrl);
-  fetchB2CChange();
   fetchB2CFlow();
   setInterval(() => syncLogiwaAndRefresh(null, true), 5 * 60 * 1000);
-  setInterval(fetchB2CChange, 5 * 60 * 1000);
   setInterval(fetchB2CFlow, 5 * 60 * 1000);
 
   // ── B2B Dashboard ─────────────────────────────────────────────────────
