@@ -2828,9 +2828,9 @@
           <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px${excluded ? ';text-decoration:line-through' : ''}">${s.label}</div>
           <div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${fmt(s.count)}</div>
           <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${subtitle}</div>
-          <div style="font-size:.66rem;margin-top:6px;display:flex;gap:10px;flex-wrap:wrap;color:var(--muted)">
+          <div style="font-size:.66rem;margin-top:6px;display:flex;flex-direction:column;gap:2px;color:var(--muted)">
+            <span>MP <b style="color:#c084fc">${fmt(s.prioritymp || 0)}</b></span>
             <span>Non-MP <b style="color:var(--text)">${fmt(s.nonmp || 0)}</b></span>
-            <span>Prio MP <b style="color:#c084fc">${fmt(s.prioritymp || 0)}</b></span>
           </div>
         </a>`;
       }).join('')}
