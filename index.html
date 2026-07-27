@@ -2842,13 +2842,11 @@
         // nested inside the status link — nested <a> is invalid and the status
         // link would otherwise swallow their clicks.
         return `
-        <div class="card kpi-link" style="position:relative;padding:16px 18px;display:block${excluded ? ';opacity:.5' : ''}">
+        <div class="card" style="position:relative;padding:16px 18px${excluded ? ';opacity:.5' : ''}">
           ${isTotal ? '' : excludeBtn('b2c', s.key, excluded)}
-          <a href="${url}" target="_blank" title="Open in WMS" style="text-decoration:none;color:inherit;display:block">
-            <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px${excluded ? ';text-decoration:line-through' : ''}">${s.label}</div>
-            <div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${fmt(s.count)}</div>
-            <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${subtitle}</div>
-          </a>
+          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px${excluded ? ';text-decoration:line-through' : ''}">${s.label}</div>
+          <a class="mp-link" href="${url}" target="_blank" title="Open in WMS" style="display:inline-block;text-decoration:none;color:var(--text);font-size:2rem;font-weight:700;line-height:1">${fmt(s.count)}</a>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${subtitle}</div>
           <div style="font-size:.82rem;margin-top:6px;display:flex;flex-direction:column;gap:2px;color:var(--muted)">
             <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Priority MP')}" target="_blank" title="Open Priority MP in WMS" style="text-decoration:none;color:inherit;width:fit-content">MP <b style="color:#c084fc">${fmt(s.prioritymp || 0)}</b></a>
             <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Non-MP')}" target="_blank" title="Open Non-MP in WMS" style="text-decoration:none;color:inherit;width:fit-content">Non-MP <b style="color:var(--text)">${fmt(s.nonmp || 0)}</b></a>
