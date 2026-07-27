@@ -2612,6 +2612,24 @@
     }
     return url;
   }
+  // Order tag GUIDs (from Logiwa) for the MP / Non-MP deep-links.
+  const WMS_TAG_ID = {
+    'Priority MP': '928bd9c0-c608-4bb4-808b-0b175d5ea9da',
+    'Non-MP':      '1fac14b3-ef6a-484f-ab6a-683b9748c34e',
+  };
+  function wmsTagUrl(typeLbl, statusIds, statusLbl, tagLbl) {
+    const enc2 = v => encodeURIComponent(encodeURIComponent(JSON.stringify(v)));
+    let url = wmsStatusUrl(typeLbl, statusIds, statusLbl);
+    const id = WMS_TAG_ID[tagLbl];
+    if (id) url += '&tag=' + enc2([id]) + '&tagqt=in&taglbl=' + encodeURIComponent(tagLbl);
+    return url;
+  }
+  // Open the WMS list filtered by a B2C status (or all) AND a tag.
+  function openWmsTag(statusLbl, tagLbl) {
+    const isTotal = statusLbl === 'Total Orders' || statusLbl === 'All';
+    const statusIds = isTotal ? WMS_ALL_STATUS : [WMS_STATUS_ID[statusLbl]];
+    window.open(wmsTagUrl('B2C', statusIds, isTotal ? 'All' : statusLbl, tagLbl), '_blank');
+  }
 
   // ── B2C Dashboard ─────────────────────────────────────────────────────
   // Data is a snapshot. To refresh, ask Claude: "refresh B2C data".
@@ -2829,8 +2847,8 @@
           <div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${fmt(s.count)}</div>
           <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${subtitle}</div>
           <div style="font-size:.82rem;margin-top:6px;display:flex;flex-direction:column;gap:2px;color:var(--muted)">
-            <span>MP <b style="color:#c084fc">${fmt(s.prioritymp || 0)}</b></span>
-            <span>Non-MP <b style="color:var(--text)">${fmt(s.nonmp || 0)}</b></span>
+            <span onclick="event.preventDefault();event.stopPropagation();openWmsTag('${s.label}','Priority MP')" title="Open Priority MP in WMS" style="cursor:pointer;width:fit-content">MP <b style="color:#c084fc">${fmt(s.prioritymp || 0)}</b></span>
+            <span onclick="event.preventDefault();event.stopPropagation();openWmsTag('${s.label}','Non-MP')" title="Open Non-MP in WMS" style="cursor:pointer;width:fit-content">Non-MP <b style="color:var(--text)">${fmt(s.nonmp || 0)}</b></span>
           </div>
         </a>`;
       }).join('')}
