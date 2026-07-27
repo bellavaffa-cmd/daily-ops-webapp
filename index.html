@@ -1972,7 +1972,7 @@
             <div id="b2cFlowInflow" style="font-size:1.9rem;font-weight:700;color:var(--text);line-height:1">—</div>
           </div>
           <div style="text-align:right">
-            <div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#86efac;margin-bottom:4px">Cleared from Open / hr</div>
+            <div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#5eead4;margin-bottom:4px">Into Ready to Ship / hr</div>
             <div id="b2cFlowCleared" style="font-size:1.9rem;font-weight:700;color:var(--text);line-height:1">—</div>
           </div>
         </div>
@@ -2620,7 +2620,8 @@
 
   // wh → status counts as of ~30 min ago, for the B2C KPI "30m change" chips.
   let b2cChange = {};
-  let b2cFlow = [];   // b2c_flow_snapshot rows (last few hours) for the Open-queue flow box
+  let b2cFlow = [];   // b2c_flow_snapshot rows (last few hours) — new-orders inflow
+  let b2cPackSnaps = []; // productivity_snapshot rows — cumulative packed_orders for hourly packing rate
 
   // ── Exclude-from-total toggles (B2C / B2B KPI status boxes) ─────────────
   // Each status box has a top-right button to drop that status from the "Total
@@ -2993,9 +2994,15 @@
   async function fetchB2CFlow() {
     try {
       const cutoff = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
-      const res = await fetch(SB_URL + '/b2c_flow_snapshot?select=*&captured_at=gte.' + encodeURIComponent(cutoff) + '&order=captured_at.desc', { headers: SB_HDR });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      b2cFlow = await res.json();
+      const enc = encodeURIComponent(cutoff);
+      // Inflow from b2c_flow_snapshot; packing completions from productivity_snapshot
+      // (packed_orders = orders that moved Ready-to-Pack → Ready-to-Ship).
+      const [flowRes, packRes] = await Promise.all([
+        fetch(SB_URL + '/b2c_flow_snapshot?select=*&captured_at=gte.' + enc + '&order=captured_at.desc', { headers: SB_HDR }),
+        fetch(SB_URL + '/productivity_snapshot?select=warehouse_code,activity_date,packed_orders,captured_at&captured_at=gte.' + enc + '&order=captured_at.desc', { headers: SB_HDR }),
+      ]);
+      b2cFlow = flowRes.ok ? await flowRes.json() : [];
+      b2cPackSnaps = packRes.ok ? await packRes.json() : [];
       renderB2CFlow();
     } catch (err) {
       console.error('B2C flow fetch error:', err);
@@ -3009,37 +3016,55 @@
     const fmt = n => Number(n || 0).toLocaleString();
     const tStr = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
-    // Sum per sync time over the selected warehouses.
-    const buckets = {};
-    for (const r of b2cFlow) {
-      if (!inWhFilter(r.warehouse_code)) continue;
-      const t = new Date(r.captured_at).getTime();
-      const b = (buckets[t] = buckets[t] || { t, open: 0, inflow: 0 });
-      b.open += Number(r.open_count || 0);
-      b.inflow += Number(r.inflow_1h || 0);
-    }
-    const arr = Object.values(buckets).sort((a, b) => b.t - a.t);
-    const latest = arr[0];
-    if (!latest) { inEl.textContent = '—'; clEl.textContent = '—'; wEl.textContent = 'Collecting data… (waiting for the first hourly sync)'; return; }
+    // Collapse snapshot rows into one bucket per sync time, summed over the
+    // selected warehouses. `field` picks which metric to total; `dateField`
+    // (optional) tags the bucket's day so we never diff across a midnight reset.
+    const bucketize = (rows, field, dateField) => {
+      const b = {}; const seen = new Set();
+      for (const r of rows) {
+        if (!inWhFilter(r.warehouse_code)) continue;
+        const t = new Date(r.captured_at).getTime();
+        const key = r.warehouse_code + '@' + t;
+        if (seen.has(key)) continue;   // one row per warehouse per sync (dedupe dup writes)
+        seen.add(key);
+        const o = (b[t] = b[t] || { t, val: 0, date: dateField ? r[dateField] : null });
+        o.val += Number(r[field] || 0);
+      }
+      return Object.values(b).sort((a, b) => b.t - a.t);
+    };
+    // Nearest bucket ~1h before `latest` (30–100 min back); same day when dated.
+    const prevHour = (arr, latest) => {
+      let prev = null, best = Infinity;
+      const target = latest.t - 60 * 60 * 1000;
+      for (let i = 1; i < arr.length; i++) {
+        const bkt = arr[i];
+        if (latest.date && bkt.date && bkt.date !== latest.date) continue;
+        const gap = latest.t - bkt.t;
+        if (gap < 30 * 60 * 1000 || gap > 100 * 60 * 1000) continue;
+        const d = Math.abs(bkt.t - target);
+        if (d < best) { best = d; prev = bkt; }
+      }
+      return prev;
+    };
 
-    // Inflow is already a trailing-hour count at the latest sync.
-    inEl.textContent = fmt(latest.inflow);
+    // Left: new orders created in the last hour (already a trailing-hour count).
+    const inflowArr = bucketize(b2cFlow, 'inflow_1h');
+    const inflowLatest = inflowArr[0];
+    inEl.textContent = inflowLatest ? fmt(inflowLatest.val) : '—';
 
-    // Cleared from Open = inflow − change in Open over ~the last hour.
-    let prev = null, best = Infinity;
-    const target = latest.t - 60 * 60 * 1000;
-    for (let i = 1; i < arr.length; i++) {
-      const gap = latest.t - arr[i].t;
-      if (gap < 30 * 60 * 1000 || gap > 100 * 60 * 1000) continue;
-      const d = Math.abs(arr[i].t - target);
-      if (d < best) { best = d; prev = arr[i]; }
-    }
-    if (prev) {
-      clEl.textContent = fmt(Math.max(0, latest.inflow - (latest.open - prev.open)));
-      wEl.textContent = `${tStr(prev.t)} → ${tStr(latest.t)} · Open now ${fmt(latest.open)}`;
+    // Right: orders that completed packing (Ready-to-Pack → Ready-to-Ship) in
+    // the last hour = rise in cumulative packed_orders vs the ~1h-ago snapshot.
+    const packArr = bucketize(b2cPackSnaps, 'packed_orders', 'activity_date');
+    const packLatest = packArr[0];
+    const packPrev = packLatest ? prevHour(packArr, packLatest) : null;
+    if (packLatest && packPrev) {
+      clEl.textContent = fmt(Math.max(0, packLatest.val - packPrev.val));
+      wEl.textContent = `${tStr(packPrev.t)} → ${tStr(packLatest.t)}`;
     } else {
       clEl.textContent = '—';
-      wEl.textContent = `Collecting… need ~1h of history (last sync ${tStr(latest.t)})`;
+      wEl.textContent = packLatest
+        ? `Collecting… need ~1h of packing history (last sync ${tStr(packLatest.t)})`
+        : (inflowLatest ? `New-orders shown; packing rate needs the productivity sync` : 'Collecting data… (waiting for the first hourly sync)');
     }
   }
 
