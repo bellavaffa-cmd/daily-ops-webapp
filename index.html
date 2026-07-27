@@ -1979,6 +1979,10 @@
             <div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#5eead4;margin-bottom:4px">Packing / hr</div>
             <div id="b2cFlowCleared" style="font-size:1.9rem;font-weight:700;color:var(--text);line-height:1">—</div>
           </div>
+          <div style="text-align:center;padding-left:20px;border-left:1px solid var(--border)">
+            <div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px">Net Depletion / hr</div>
+            <div id="b2cFlowNet" style="font-size:1.9rem;font-weight:700;color:var(--text);line-height:1">—</div>
+          </div>
         </div>
       </div>
     </div>
@@ -3027,13 +3031,25 @@
         if (d < best) { best = d; prev = bkt; }
       }
     }
+    // Net depletion = packing − new orders (positive = Open queue shrinking).
+    const netEl = document.getElementById('b2cFlowNet');
+    const newVal = inflowArr[0] ? inflowArr[0].val : null;
     if (latest && prev) {
+      const packVal = Math.max(0, latest.packed - prev.packed);
       if (pkEl) pkEl.textContent = fmt(Math.max(0, latest.picked - prev.picked));
-      clEl.textContent = fmt(Math.max(0, latest.packed - prev.packed));
+      clEl.textContent = fmt(packVal);
+      if (netEl) {
+        if (newVal != null) {
+          const net = packVal - newVal;
+          netEl.textContent = (net > 0 ? '+' : '') + fmt(net);
+          netEl.style.color = net > 0 ? '#86efac' : (net < 0 ? '#f87171' : 'var(--text)');
+        } else { netEl.textContent = '—'; netEl.style.color = 'var(--text)'; }
+      }
       wEl.textContent = `${tStr(prev.t)} → ${tStr(latest.t)} · picking & packing count all order types`;
     } else {
       if (pkEl) pkEl.textContent = '—';
       clEl.textContent = '—';
+      if (netEl) { netEl.textContent = '—'; netEl.style.color = 'var(--text)'; }
       wEl.textContent = latest
         ? `Collecting… need ~1h of picking/packing history (last sync ${tStr(latest.t)})`
         : (inflowArr[0] ? 'New orders shown; picking/packing needs the productivity sync' : 'Collecting data… (waiting for the first hourly sync)');
