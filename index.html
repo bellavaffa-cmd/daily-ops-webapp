@@ -47,14 +47,25 @@
     header {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      padding: 0 24px;
+      padding: 0 16px;
       display: flex;
       align-items: center;
+      justify-content: center;
       height: 56px;
       position: sticky;
       top: 0;
       z-index: 10;
+    }
+    /* Inner row is capped + centered to the same width as <main>, so the nav,
+       logo and settings align with the centered content on any screen size. */
+    .header-inner {
+      display: flex;
+      align-items: center;
       gap: 20px;
+      width: 100%;
+      max-width: 1200px;
+      margin: 0 auto;
+      height: 100%;
     }
     header .logo {
       font-weight: 700;
@@ -111,26 +122,14 @@
     /* ── Layout ── */
     main { max-width: 1200px; margin: 32px auto; padding: 0 16px 64px; }
 
-    /* ── Fill remaining viewport height (data tabs: B2B, Shortage, Error) ── */
-    /* The last table card grows to fill the space below the KPIs/breakdown so
-       the page doesn't leave empty room at the bottom. 152px = header 56 +
-       main margin-top 32 + main padding-bottom 64 (also clears the mobile nav). */
-    .view.fill.active {
-      display: flex;
-      flex-direction: column;
-      min-height: calc(100vh - 152px);
-    }
-    .view.fill > .fill-card {
-      flex: 1 1 auto;
-      min-height: 320px;
-      display: flex;
-      flex-direction: column;
-    }
-    .fill-scroll {
-      flex: 1 1 auto;
-      min-height: 0;
-      overflow: auto;
-    }
+    /* ── Tables follow their content; the PAGE scrolls, not the table ──────── */
+    /* Previously the last table card stretched to fill the viewport and scrolled
+       internally. Now every table renders at full height and the whole page
+       scrolls instead. Wide tables still scroll horizontally within their own
+       wrapper so the page never scrolls sideways. */
+    .view.fill.active { display: block; }
+    .view.fill > .fill-card { display: block; }
+    .fill-scroll { overflow-x: auto; }
 
     /* ── Card ── */
     .card {
@@ -1207,6 +1206,7 @@
 <body>
 
 <header>
+  <div class="header-inner">
   <div class="logo">
     <img src="/daily-ops-webapp/icons/locad-logo.png" alt="LOCAD" height="22" style="display:block" />
     <span style="color:var(--muted);font-weight:500">Daily B2C</span>
@@ -1247,6 +1247,7 @@
       <circle cx="12" cy="12" r="3"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
     </svg>
   </button>
+  </div>
 </header>
 
 <!-- Bottom nav (mobile) -->
@@ -2134,7 +2135,7 @@
     <!-- By person (today) -->
     <div class="card" style="padding:0;overflow:hidden">
       <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">By person — today <span id="prodUserCount" style="font-weight:400;color:var(--muted)"></span></div>
-      <div style="overflow:auto;max-height:340px">
+      <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:.82rem">
           <thead>
             <tr style="background:var(--surface2)">
@@ -4070,12 +4071,21 @@
   }
 
   // ── Layout mode ────────────────────────────────────────────────────────
+  // Width-based only: a touch-capable desktop/laptop (pointer: coarse) should
+  // still get the wide, centered layout — otherwise it was cramped to 600px.
   function detectIsMobile() {
-    return window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 768;
+    return window.innerWidth <= 768;
+  }
+  // Keep the header row capped to the same width as <main> so the whole app
+  // stays centered as one unit on every screen size.
+  function setMaxWidth(isDesktop) {
+    const w = isDesktop ? '1200px' : '600px';
+    const m  = document.querySelector('main');          if (m)  m.style.maxWidth  = w;
+    const hi = document.querySelector('.header-inner');  if (hi) hi.style.maxWidth = w;
   }
 
   function applyLayout(isDesktop) {
-    document.querySelector('main').style.maxWidth = isDesktop ? '1200px' : '600px';
+    setMaxWidth(isDesktop);
     localStorage.setItem('packingErrorLayout', isDesktop ? 'desktop' : 'mobile');
     const el = document.getElementById('layoutToggle');
     if (el) el.checked = isDesktop;
@@ -4089,7 +4099,7 @@
   function resetLayout() {
     localStorage.removeItem('packingErrorLayout');
     const isDesktop = !detectIsMobile();
-    document.querySelector('main').style.maxWidth = isDesktop ? '1200px' : '600px';
+    setMaxWidth(isDesktop);
     const el = document.getElementById('layoutToggle');
     if (el) el.checked = isDesktop;
     const resetBtn = document.getElementById('layoutResetBtn');
@@ -4101,7 +4111,7 @@
   (function initLayout() {
     const saved = localStorage.getItem('packingErrorLayout');
     const isDesktop = saved ? saved === 'desktop' : !detectIsMobile();
-    document.querySelector('main').style.maxWidth = isDesktop ? '1200px' : '600px';
+    setMaxWidth(isDesktop);
     const el = document.getElementById('layoutToggle');
     if (el) el.checked = isDesktop;
   })();
