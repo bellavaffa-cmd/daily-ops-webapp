@@ -129,27 +129,44 @@ async function performSync(isB2B) {
     // sync even though the individual b2b_orders were refreshed). Zero-seed
     // every warehouse this session can see so a count dropping to zero actually
     // gets written rather than keeping its last value.
-    const pivot = (orderType, sm) => {
+    // Order "tags" carry the marketplace labels. Normalise (lowercase, strip
+    // non-alphanumerics) so "Non-MP"/"Non MP" and "Priority MP" all match.
+    const normTag = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const orderHasTag = (o, t) => (o.tags || []).some(tag => normTag(tag.name) === t);
+
+    // countTags=true (B2C) also tallies per-status Non-MP / Priority MP counts
+    // into <status>_nonmp / <status>_prioritymp columns.
+    const pivot = (orderType, sm, countTags) => {
       const cols = [...new Set(Object.values(sm))];
       const whs  = {};
+      const seed = wh => {
+        whs[wh] = { wh };
+        cols.forEach(c => {
+          whs[wh][c] = 0;
+          if (countTags) { whs[wh][c + '_nonmp'] = 0; whs[wh][c + '_prioritymp'] = 0; }
+        });
+      };
       for (const o of all) {
         const wh = o.warehouseCode;
         if (!wh || whs[wh]) continue;
-        whs[wh] = { wh };
-        cols.forEach(c => whs[wh][c] = 0);
+        seed(wh);
       }
       for (const o of all) {
         if (o.shipmentOrderTypeName !== orderType) continue;
         const wh = o.warehouseCode, col = sm[o.shipmentOrderStatusId];
         if (!wh || !col) continue;
         whs[wh][col]++;
+        if (countTags) {
+          if (orderHasTag(o, 'nonmp'))      whs[wh][col + '_nonmp']++;
+          if (orderHasTag(o, 'prioritymp')) whs[wh][col + '_prioritymp']++;
+        }
       }
       return Object.values(whs).map(r => ({ ...r, updated_at: new Date().toISOString() }));
     };
     const B2C_SM_AGG = { 6:'new',  8:'rfp', 9:'picking', 12:'picked',     13:'packing' };
     const B2B_SM_AGG = { 6:'open', 8:'rfp', 9:'picking', 12:'pack_ready', 13:'packing', 16:'ready_ship' };
-    const b2cRows = pivot('B2C', B2C_SM_AGG);
-    const b2bRows = pivot('B2B', B2B_SM_AGG);
+    const b2cRows = pivot('B2C', B2C_SM_AGG, true);
+    const b2bRows = pivot('B2B', B2B_SM_AGG, false);
 
     // 4b. B2B: one row per order (not pivoted) — order_id/wh/status only.
     // order_id is Logiwa's "code" (human-readable, e.g. "585181359330264214",
@@ -221,6 +238,38 @@ async function performSync(isB2B) {
     await sbUpsert('b2b_orders',      b2bOrders,      'order_id');
     await sbUpsert('shortage_data',   shortageRows,   'wh');
     await sbUpsert('shortage_orders', shortageOrders, 'order_id');
+
+    // 5b. B2C flow snapshot (feature 2): per warehouse, the current Open count
+    // and how many B2C orders were created in the last 60 min (inflow). Appended
+    // each sync so the app can show hourly inflow vs Open-queue depletion.
+    try {
+      const hourAgo = Date.now() - 60 * 60 * 1000;
+      const flow = {};
+      for (const o of all) {
+        if (o.shipmentOrderTypeName !== 'B2C') continue;
+        const wh = o.warehouseCode;
+        if (!wh) continue;
+        if (!flow[wh]) flow[wh] = { warehouse_code: wh, open_count: 0, inflow_1h: 0 };
+        if (o.shipmentOrderStatusId === 6) flow[wh].open_count++;
+        const created = Date.parse(o.createdDateTime || o.shipmentOrderDate || '');
+        if (created && created >= hourAgo) flow[wh].inflow_1h++;
+      }
+      const nowIso = new Date().toISOString();
+      const flowRows = Object.values(flow).map(f => ({ ...f, captured_at: nowIso }));
+      if (flowRows.length) {
+        await fetch(`${SB_URL}/rest/v1/b2c_flow_snapshot`, {
+          method: 'POST',
+          headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+          body: JSON.stringify(flowRows)
+        });
+      }
+      const flowCutoff = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+      await fetch(`${SB_URL}/rest/v1/b2c_flow_snapshot?captured_at=lt.${encodeURIComponent(flowCutoff)}`, {
+        method: 'DELETE', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY }
+      }).catch(() => {});
+    } catch (e) {
+      console.error('[WMS bg] b2c flow snapshot error:', e.message);
+    }
 
     // 6. Productivity: Logiwa's authoritative user-performance report — per
     // user, per day, picked/packed order+item counts for the last 30 days.

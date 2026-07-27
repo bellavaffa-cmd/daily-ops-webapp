@@ -1957,7 +1957,27 @@
     </div>
 
     <!-- KPI Cards -->
-    <div id="b2cKpis" style="margin-bottom:20px"></div>
+    <div id="b2cKpis" style="margin-bottom:16px"></div>
+
+    <!-- Open-queue hourly flow: new orders in vs cleared out -->
+    <div class="card" id="b2cFlowBox" style="padding:16px 18px;margin-bottom:20px;border:1px solid var(--brand,#94ffa1)">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div>
+          <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--brand,#94ffa1)">Open queue — hourly flow</div>
+          <div id="b2cFlowWindow" style="font-size:.7rem;color:var(--muted);margin-top:3px">Collecting data…</div>
+        </div>
+        <div style="display:flex;gap:24px">
+          <div style="text-align:right">
+            <div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#fb923c;margin-bottom:4px">New into Open / hr</div>
+            <div id="b2cFlowInflow" style="font-size:1.9rem;font-weight:700;color:var(--text);line-height:1">—</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#86efac;margin-bottom:4px">Cleared from Open / hr</div>
+            <div id="b2cFlowCleared" style="font-size:1.9rem;font-weight:700;color:var(--text);line-height:1">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Warehouse Breakdown -->
     <div class="card" style="padding:0;overflow:hidden">
@@ -2600,6 +2620,7 @@
 
   // wh → status counts as of ~30 min ago, for the B2C KPI "30m change" chips.
   let b2cChange = {};
+  let b2cFlow = [];   // b2c_flow_snapshot rows (last few hours) for the Open-queue flow box
 
   // ── Exclude-from-total toggles (B2C / B2B KPI status boxes) ─────────────
   // Each status box has a top-right button to drop that status from the "Total
@@ -2792,14 +2813,20 @@
       : d < 0 ? `<span style="color:#86efac">▼${fmt(-d)}</span>`
       : `<span style="color:var(--muted)">–</span>`;
 
+    // Per-status MP-tag counts (feature 6), summed over the filtered warehouses.
+    const tagSum = c => filtered.reduce((a, r) => a + (r[c] || 0), 0);
+    const mpOf = k => ({ nonmp: tagSum(k + '_nonmp'), prioritymp: tagSum(k + '_prioritymp') });
+    const totNonmp = B2C_KEYS.reduce((a, k) => a + tagSum(k + '_nonmp'), 0);
+    const totPrio  = B2C_KEYS.reduce((a, k) => a + tagSum(k + '_prioritymp'), 0);
+
     // KPI cards
     const statuses = [
-      { key: 'new',     label: 'Open',            count: tot.new,     color: '#fb923c', delta: delta.new },
-      { key: 'rfp',     label: 'Ready to Pick',   count: tot.rfp,     color: '#fcd34d', delta: delta.rfp },
-      { key: 'picking', label: 'Picking Started', count: tot.picking, color: '#93c5fd', delta: delta.picking },
-      { key: 'picked',  label: 'Ready to Pack',   count: tot.picked,  color: '#86efac', delta: delta.picked },
-      { key: 'packing', label: 'Packing Started', count: tot.packing, color: '#c4b5fd', delta: delta.packing },
-      { key: 'total',   label: 'Total Orders',    count: total,       color: 'var(--text)', delta: delta.total },
+      { key: 'new',     label: 'Open',            count: tot.new,     color: '#fb923c', delta: delta.new,     ...mpOf('new') },
+      { key: 'rfp',     label: 'Ready to Pick',   count: tot.rfp,     color: '#fcd34d', delta: delta.rfp,     ...mpOf('rfp') },
+      { key: 'picking', label: 'Picking Started', count: tot.picking, color: '#93c5fd', delta: delta.picking, ...mpOf('picking') },
+      { key: 'picked',  label: 'Ready to Pack',   count: tot.picked,  color: '#86efac', delta: delta.picked,  ...mpOf('picked') },
+      { key: 'packing', label: 'Packing Started', count: tot.packing, color: '#c4b5fd', delta: delta.packing, ...mpOf('packing') },
+      { key: 'total',   label: 'Total Orders',    count: total,       color: 'var(--text)', delta: delta.total, nonmp: totNonmp, prioritymp: totPrio },
     ];
 
     const kpiEl = document.getElementById('b2cKpis');
@@ -2817,6 +2844,10 @@
           <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px${excluded ? ';text-decoration:line-through' : ''}">${s.label}</div>
           <div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${fmt(s.count)}</div>
           <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${subtitle}</div>
+          <div style="font-size:.66rem;margin-top:6px;display:flex;gap:10px;flex-wrap:wrap;color:var(--muted)">
+            <span>Non-MP <b style="color:var(--text)">${fmt(s.nonmp || 0)}</b></span>
+            <span>Prio MP <b style="color:#c084fc">${fmt(s.prioritymp || 0)}</b></span>
+          </div>
           ${(!excluded && haveBaseline) ? `<div style="font-size:.7rem;margin-top:4px">${deltaChip(s.delta)} <span style="color:var(--muted)">30m</span></div>` : ''}
         </a>`;
       }).join('')}
@@ -2883,6 +2914,7 @@
     }
 
     document.getElementById('b2cWHTable').innerHTML = html;
+    renderB2CFlow();
   }
   // (Warehouse-filter UI + logic now lives in the multi-select helpers above:
   //  renderWarehouseFilters / populateViewWarehouseSelects / setSelectedWhs.)
@@ -2908,6 +2940,12 @@
           picking: r.picking || 0,
           picked:  r.picked  || 0,
           packing: r.packing || 0,
+          // Per-status MP-tag counts (feature 6).
+          new_nonmp:        r.new_nonmp        || 0, new_prioritymp:        r.new_prioritymp        || 0,
+          rfp_nonmp:        r.rfp_nonmp        || 0, rfp_prioritymp:        r.rfp_prioritymp        || 0,
+          picking_nonmp:    r.picking_nonmp    || 0, picking_prioritymp:    r.picking_prioritymp    || 0,
+          picked_nonmp:     r.picked_nonmp     || 0, picked_prioritymp:     r.picked_prioritymp     || 0,
+          packing_nonmp:    r.packing_nonmp    || 0, packing_prioritymp:    r.packing_prioritymp    || 0,
         }));
         populateViewWarehouseSelects(); // rebuild optgroups now that b2cData has real country info
         renderB2C();
@@ -2947,6 +2985,61 @@
       renderB2C();
     } catch (err) {
       console.error('B2C change fetch error:', err);
+    }
+  }
+
+  // Feature 2: hourly Open-queue flow — new orders created in the last hour
+  // (inflow) vs orders cleared out of Open. Both derived from b2c_flow_snapshot.
+  async function fetchB2CFlow() {
+    try {
+      const cutoff = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+      const res = await fetch(SB_URL + '/b2c_flow_snapshot?select=*&captured_at=gte.' + encodeURIComponent(cutoff) + '&order=captured_at.desc', { headers: SB_HDR });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      b2cFlow = await res.json();
+      renderB2CFlow();
+    } catch (err) {
+      console.error('B2C flow fetch error:', err);
+    }
+  }
+  function renderB2CFlow() {
+    const inEl = document.getElementById('b2cFlowInflow');
+    const clEl = document.getElementById('b2cFlowCleared');
+    const wEl  = document.getElementById('b2cFlowWindow');
+    if (!inEl || !clEl || !wEl) return;
+    const fmt = n => Number(n || 0).toLocaleString();
+    const tStr = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+    // Sum per sync time over the selected warehouses.
+    const buckets = {};
+    for (const r of b2cFlow) {
+      if (!inWhFilter(r.warehouse_code)) continue;
+      const t = new Date(r.captured_at).getTime();
+      const b = (buckets[t] = buckets[t] || { t, open: 0, inflow: 0 });
+      b.open += Number(r.open_count || 0);
+      b.inflow += Number(r.inflow_1h || 0);
+    }
+    const arr = Object.values(buckets).sort((a, b) => b.t - a.t);
+    const latest = arr[0];
+    if (!latest) { inEl.textContent = '—'; clEl.textContent = '—'; wEl.textContent = 'Collecting data… (waiting for the first hourly sync)'; return; }
+
+    // Inflow is already a trailing-hour count at the latest sync.
+    inEl.textContent = fmt(latest.inflow);
+
+    // Cleared from Open = inflow − change in Open over ~the last hour.
+    let prev = null, best = Infinity;
+    const target = latest.t - 60 * 60 * 1000;
+    for (let i = 1; i < arr.length; i++) {
+      const gap = latest.t - arr[i].t;
+      if (gap < 30 * 60 * 1000 || gap > 100 * 60 * 1000) continue;
+      const d = Math.abs(arr[i].t - target);
+      if (d < best) { best = d; prev = arr[i]; }
+    }
+    if (prev) {
+      clEl.textContent = fmt(Math.max(0, latest.inflow - (latest.open - prev.open)));
+      wEl.textContent = `${tStr(prev.t)} → ${tStr(latest.t)} · Open now ${fmt(latest.open)}`;
+    } else {
+      clEl.textContent = '—';
+      wEl.textContent = `Collecting… need ~1h of history (last sync ${tStr(latest.t)})`;
     }
   }
 
@@ -3044,8 +3137,10 @@
   if (_extMode) document.body.classList.add('ext-mode');
   fetchB2CData().then(applyWmsScanFromUrl);
   fetchB2CChange();
+  fetchB2CFlow();
   setInterval(() => syncLogiwaAndRefresh(null, true), 5 * 60 * 1000);
   setInterval(fetchB2CChange, 5 * 60 * 1000);
+  setInterval(fetchB2CFlow, 5 * 60 * 1000);
 
   // ── B2B Dashboard ─────────────────────────────────────────────────────
   let b2bData = [
