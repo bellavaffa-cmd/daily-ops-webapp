@@ -3192,6 +3192,7 @@
         await fetchB2CData();
         fetchShortageData();
         fetchShortageOrders();
+        fetchJobData();
       } catch (e) {
         notify('Sync failed: ' + e.message, false);
       } finally { setIdle(); }
@@ -3217,6 +3218,7 @@
           fetchB2CData();
           fetchShortageData();
           fetchShortageOrders();
+          fetchJobData();
         } else {
           notify('Sync failed: ' + (e.data.error || 'unknown error'), false);
         }
@@ -3528,6 +3530,7 @@
           fetchB2BOrders();
           fetchShortageData();
           fetchShortageOrders();
+          fetchJobData();
         } else {
           notify('B2B sync failed: ' + (e.data.error || 'unknown error'), false);
         }
@@ -4866,6 +4869,7 @@
 
   // ── View switching ─────────────────────────────────────────────────────
   const VIEW_ORDER = ['b2c', 'b2b', 'shortage', 'productivity', 'jobs', 'dash', 'help'];
+  let _lastJobsSync = 0;
   function showView(v) {
     if (!document.getElementById('view-' + v)) return;
     document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
@@ -4880,7 +4884,15 @@
     const fab = document.getElementById('fabReport');
     if (fab) fab.classList.toggle('visible', v === 'b2c');
     if (v === 'dash') { try { renderStats(); } catch(e){} try { initWarehouseFilter(); renderTable(); } catch(e){} }
-    if (v === 'jobs') { try { renderJobs(); } catch(e){} }
+    if (v === 'jobs') {
+      try { renderJobs(); } catch(e){}
+      // Jobs churn fast, so refresh on open — but throttle to at most once / 20s
+      // so quick tab-switching doesn't fire a sync every time.
+      if (Date.now() - _lastJobsSync > 20000) {
+        _lastJobsSync = Date.now();
+        try { syncLogiwaAndRefresh(document.getElementById('jobsSyncBtn'), true); } catch(e){}
+      }
+    }
     // Scroll to top on mobile
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
