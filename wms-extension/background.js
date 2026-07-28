@@ -353,6 +353,46 @@ async function performSync(isB2B) {
       console.error('[WMS bg] userperformance error:', e.message);
     }
 
+    // 7. Jobs: warehouse job list, Pending (status 1) only, aggregated per
+    // warehouse by priority (3=High, 2=Medium, 1=Low; anything else = none).
+    try {
+      let jobsAll = [], jIdx = 0, jTotal = 1;
+      while (jobsAll.length < jTotal) {
+        const jr = await fetch(`${LG_API}/api/warehousejob/list/i/${jIdx}/s/1000`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: '{}'
+        });
+        if (!jr.ok) throw new Error('Logiwa warehousejob ' + jr.status);
+        const jd = await jr.json();
+        const batch = jd.data || [];
+        jobsAll = jobsAll.concat(batch);
+        jTotal = jd.totalCount || 0;
+        jIdx++;
+        if (!batch.length) break;
+      }
+      // Zero-seed every warehouse seen (any status) so a Pending count dropping
+      // to zero actually gets written rather than keeping its last value.
+      const jobWhs = {};
+      for (const o of jobsAll) {
+        const wh = o.warehouseCode;
+        if (wh && !jobWhs[wh]) jobWhs[wh] = { wh, total: 0, high: 0, medium: 0, low: 0, no_priority: 0 };
+      }
+      for (const o of jobsAll) {
+        if (o.warehouseJobStatusId !== 1) continue; // Pending only
+        const wh = o.warehouseCode;
+        if (!wh) continue;
+        const j = jobWhs[wh];
+        j.total++;
+        if (o.priority === 3) j.high++;
+        else if (o.priority === 2) j.medium++;
+        else if (o.priority === 1) j.low++;
+        else j.no_priority++;
+      }
+      const jobRows = Object.values(jobWhs).map(r => ({ ...r, updated_at: new Date().toISOString() }));
+      await sbUpsert('job_data', jobRows, 'wh');
+    } catch (e) {
+      console.error('[WMS bg] warehousejob error:', e.message);
+    }
+
     const aggCount = (isB2B ? b2bRows : b2cRows).length;
     await broadcast({ ok: true, count: aggCount, b2bCount: b2bOrders.length, shortageCount: shortageOrders.length });
   } catch (e) {

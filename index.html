@@ -1253,6 +1253,10 @@
       <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
       Productivity
     </button>
+    <button class="tab-btn" id="tab-btn-jobs" onclick="showView('jobs')">
+      <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><rect x="3" y="7" width="18" height="13" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+      Jobs
+    </button>
     <button class="tab-btn" id="tab-btn-dash" onclick="showView('dash')">
       <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
       Error Dashboard
@@ -1293,6 +1297,10 @@
     <button class="bnav-btn" id="bnav-btn-productivity" onclick="showView('productivity')">
       <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
       Productivity
+    </button>
+    <button class="bnav-btn" id="bnav-btn-jobs" onclick="showView('jobs')">
+      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="18" height="13" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+      Jobs
     </button>
     <button class="bnav-btn" id="bnav-btn-dash" onclick="showView('dash')">
       <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
@@ -1445,6 +1453,13 @@
                 <div style="font-size:.85rem;color:var(--text);font-weight:500">Productivity</div>
                 <label class="toggle-switch">
                   <input type="checkbox" id="tabToggleProductivity" onchange="applyTabVisibility()" checked />
+                  <span class="toggle-track"></span>
+                </label>
+              </div>
+              <div class="theme-toggle-row">
+                <div style="font-size:.85rem;color:var(--text);font-weight:500">Jobs</div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="tabToggleJobs" onchange="applyTabVisibility()" checked />
                   <span class="toggle-track"></span>
                 </label>
               </div>
@@ -2236,6 +2251,56 @@
 
   </div>
 
+  <!-- ── JOBS VIEW ── -->
+  <div class="view" id="view-jobs">
+
+    <!-- Header -->
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Ops — Jobs</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Pending warehouse jobs by priority · <span id="jobsDataMode">—</span></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;justify-content:flex-end">
+        <div class="wh-multi" style="flex:0 1 220px;min-width:150px;max-width:260px">
+          <button type="button" class="wh-multi-btn" onclick="toggleWhPanel('jobs',event)">
+            <span id="whBtnLabel-jobs" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">All Warehouses</span>
+            <span style="color:var(--muted);flex:none">▾</span>
+          </button>
+          <div id="whPanel-jobs" class="wh-panel" style="display:none"></div>
+        </div>
+        <button id="jobsSyncBtn" class="btn btn-primary btn-sm" onclick="syncLogiwaAndRefresh(this)"
+          style="display:flex;align-items:center;gap:5px;font-size:.75rem;padding:5px 12px">
+          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+          Sync Logiwa
+        </button>
+      </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div id="jobsKpis" style="margin-bottom:20px"></div>
+
+    <!-- Warehouse Breakdown -->
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Warehouse Breakdown</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+          <thead>
+            <tr style="background:var(--surface2)">
+              <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Warehouse</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--text);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Total</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#f87171;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">High</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#fcd34d;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Medium</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#86efac;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Low</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">No Priority</th>
+            </tr>
+          </thead>
+          <tbody id="jobsWHTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
   <!-- ── HELP VIEW ── -->
   <div class="view" id="view-help">
     <div class="card">
@@ -2550,6 +2615,7 @@
     { key: 'packingErrorTabB2b',      btnId: 'tab-btn-b2b',      bnavId: 'bnav-btn-b2b',      view: 'b2b',      toggleId: 'tabToggleB2b'      },
     { key: 'packingErrorTabShortage', btnId: 'tab-btn-shortage', bnavId: 'bnav-btn-shortage', view: 'shortage', toggleId: 'tabToggleShortage' },
     { key: 'packingErrorTabProductivity', btnId: 'tab-btn-productivity', bnavId: 'bnav-btn-productivity', view: 'productivity', toggleId: 'tabToggleProductivity' },
+    { key: 'packingErrorTabJobs',     btnId: 'tab-btn-jobs',     bnavId: 'bnav-btn-jobs',     view: 'jobs',     toggleId: 'tabToggleJobs'     },
     { key: 'packingErrorTabDash',     btnId: 'tab-btn-dash',     bnavId: 'bnav-btn-dash',     view: 'dash',     toggleId: 'tabToggleDash'     },
     { key: 'packingErrorTabHelp',     btnId: 'tab-btn-help',     bnavId: 'bnav-btn-help',     view: 'help',     toggleId: 'tabToggleHelp'     },
   ];
@@ -2685,6 +2751,7 @@
     localStorage.setItem('b2cWarehousePicked', '1');
     renderWarehouseFilters();
     renderB2C(); renderB2B(); renderB2BOrders(); renderShortage(); renderShortageOrders();
+    if (typeof renderJobs === 'function') renderJobs();
   }
   // All warehouse codes grouped by country, from the b2c_data warehouse rows.
   function whGroups() {
@@ -2745,7 +2812,7 @@
   function renderWarehouseFilters() {
     const label = warehouseBtnLabel();
     const panel = whPanelHTML();
-    ['b2c', 'b2b', 'shortage'].forEach(tab => {
+    ['b2c', 'b2b', 'shortage', 'jobs'].forEach(tab => {
       const lbl = document.getElementById('whBtnLabel-' + tab);
       if (lbl) lbl.textContent = label;
       const p = document.getElementById('whPanel-' + tab);
@@ -3607,6 +3674,84 @@
     }).join('');
   }
 
+  // ── Jobs (pending warehouse jobs by priority) ──────────────────────────
+  let jobData = []; // { wh, total, high, medium, low, no_priority }
+  const wmsJobUrl = () => {
+    const enc2 = v => encodeURIComponent(encodeURIComponent(JSON.stringify(v)));
+    return 'https://wms.golocad.com/en/wms/job/management?wjst=' + enc2([1]) + '&wjstqt=in&wjstlbl=Pending';
+  };
+  async function fetchJobData() {
+    const modeEl = document.getElementById('jobsDataMode');
+    if (modeEl) { modeEl.textContent = 'Loading…'; modeEl.style.color = 'var(--muted)'; }
+    try {
+      const res = await fetch(SB_URL + '/job_data?select=*&order=wh.asc', { headers: SB_HDR });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      jobData = await res.json();
+      renderJobs();
+      if (modeEl) { modeEl.textContent = 'Supabase ●'; modeEl.style.color = 'var(--success)'; }
+    } catch (err) {
+      console.error('Jobs fetch error:', err);
+      if (modeEl) { modeEl.textContent = 'Offline'; modeEl.style.color = 'var(--danger)'; }
+    }
+  }
+  function renderJobs() {
+    const fmt = n => Number(n || 0).toLocaleString();
+    const filtered = jobData.filter(r => inWhFilter(r.wh));
+    const JK = ['total', 'high', 'medium', 'low', 'no_priority'];
+    const sum = k => filtered.reduce((a, r) => a + (r[k] || 0), 0);
+    const tot = {}; JK.forEach(k => tot[k] = sum(k));
+
+    const cards = [
+      { label: 'Total Jobs',  key: 'total',       color: 'var(--text)', link: true },
+      { label: 'High',        key: 'high',        color: '#f87171' },
+      { label: 'Medium',      key: 'medium',      color: '#fcd34d' },
+      { label: 'Low',         key: 'low',         color: '#86efac' },
+      { label: 'No Priority', key: 'no_priority', color: 'var(--muted)' },
+    ];
+    const kpiEl = document.getElementById('jobsKpis');
+    if (kpiEl) kpiEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
+      ${cards.map(s => {
+        const n = tot[s.key];
+        const sub = s.link ? 'pending jobs' : (tot.total ? (n / tot.total * 100).toFixed(1) + '% of total' : '—');
+        return `
+        <div class="card" style="padding:16px 18px">
+          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px">${s.label}</div>
+          ${s.link
+            ? `<a class="mp-link" href="${wmsJobUrl()}" target="_blank" title="Open pending jobs in WMS" style="display:inline-block;text-decoration:none;color:var(--text);font-size:2rem;font-weight:700;line-height:1">${fmt(n)}</a>`
+            : `<div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${fmt(n)}</div>`}
+          <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${sub}</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+
+    const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color || 'var(--text)'};font-size:.82rem">${fmt(n)}</td>`;
+    const cells = r => `${tdN(r.total || 0, 'var(--text)')}${tdN(r.high || 0, '#f87171')}${tdN(r.medium || 0, '#fcd34d')}${tdN(r.low || 0, '#86efac')}${tdN(r.no_priority || 0, 'var(--muted)')}`;
+    const row = (r, indent) => {
+      const pad = indent ? 'padding:9px 18px 9px 28px' : 'padding:10px 18px';
+      return `<tr style="border-top:1px solid var(--border)"><td style="${pad};color:var(--text);white-space:nowrap;font-size:.82rem">${escHtml(r.wh)}</td>${cells(r)}</tr>`;
+    };
+    const countryOf = {}; for (const r of b2cData) { if (r.wh && r.country) countryOf[r.wh] = r.country; }
+    const sel = getSelectedWhs();
+    const countries = [...new Set(filtered.map(r => countryOf[r.wh]).filter(Boolean))].sort();
+    let html = '';
+    if (sel.length !== 1 && countries.length) {
+      for (const c of countries) {
+        const whs = filtered.filter(r => countryOf[r.wh] === c);
+        const ct = {}; JK.forEach(k => ct[k] = whs.reduce((a, r) => a + (r[k] || 0), 0));
+        html += `<tr style="border-top:2px solid var(--border);background:var(--surface2)"><td style="padding:9px 18px;color:var(--text);font-weight:700;font-size:.8rem">${escHtml(c)}</td>${cells(ct)}</tr>`;
+        html += whs.map(r => row(r, true)).join('');
+      }
+      html += filtered.filter(r => !countryOf[r.wh]).map(r => row(r, false)).join('');
+    } else {
+      html += filtered.map(r => row(r, false)).join('');
+      if (filtered.length > 1) {
+        html += `<tr style="border-top:2px solid var(--border);background:var(--surface2)"><td style="padding:10px 18px;color:var(--text);font-weight:700;font-size:.82rem">Total</td>${cells(tot)}</tr>`;
+      }
+    }
+    const tbl = document.getElementById('jobsWHTable');
+    if (tbl) tbl.innerHTML = html || `<tr><td colspan="6" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No jobs synced yet.</td></tr>`;
+  }
+
   async function fetchShortageData() {
     const modeEl = document.getElementById('shortageDataMode');
     if (modeEl) { modeEl.textContent = 'Loading…'; modeEl.style.color = 'var(--muted)'; }
@@ -3656,6 +3801,8 @@
   renderShortageOrders();
   fetchShortageData();
   fetchShortageOrders();
+  fetchJobData();
+  setInterval(fetchJobData, 5 * 60 * 1000);
 
   // ── Productivity ──────────────────────────────────────────────────────
   // Sourced from Logiwa's authoritative user-performance report (per user, per
@@ -4354,7 +4501,7 @@
   // rewritten), so enhancing once on load is enough.
   function initCollapsibleTables() {
     const ids = ['b2cWHTable', 'b2bWHTable', 'b2bOrdersTable', 'shortageWHTable',
-                 'shortageOrdersTable', 'prodUserTable', 'prodDailyTable'];
+                 'shortageOrdersTable', 'prodUserTable', 'prodDailyTable', 'jobsWHTable'];
     ids.forEach(id => {
       const tb = document.getElementById(id);
       if (!tb) return;
@@ -4718,7 +4865,7 @@
   }
 
   // ── View switching ─────────────────────────────────────────────────────
-  const VIEW_ORDER = ['b2c', 'b2b', 'shortage', 'productivity', 'dash', 'help'];
+  const VIEW_ORDER = ['b2c', 'b2b', 'shortage', 'productivity', 'jobs', 'dash', 'help'];
   function showView(v) {
     if (!document.getElementById('view-' + v)) return;
     document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
@@ -4733,6 +4880,7 @@
     const fab = document.getElementById('fabReport');
     if (fab) fab.classList.toggle('visible', v === 'b2c');
     if (v === 'dash') { try { renderStats(); } catch(e){} try { initWarehouseFilter(); renderTable(); } catch(e){} }
+    if (v === 'jobs') { try { renderJobs(); } catch(e){} }
     // Scroll to top on mobile
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
