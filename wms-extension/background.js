@@ -353,13 +353,21 @@ async function performSync(isB2B) {
       console.error('[WMS bg] userperformance error:', e.message);
     }
 
-    // 7. Jobs: warehouse job list, Pending (status 1) only, aggregated per
-    // warehouse by priority (3=High, 2=Medium, 1=Low; anything else = none).
+    // 7. Jobs: Pending warehouse jobs only, aggregated per warehouse by priority
+    // (3=High, 2=Medium, 1=Low; anything else = none). Filter to Pending in the
+    // request body (WarehouseJobStatusId in [1]) — the unfiltered list returns
+    // every job ever (thousands of Completed), so filtering keeps this light.
     try {
+      const jobBody = JSON.stringify({
+        queries: [{ field: 'WarehouseJobStatusId', uniqueFieldName: 'WarehouseJobStatusId.wjst', keyword: 'wjst',
+                    label: 'Job Status', value: '[1]', summaryValue: 'Pending',
+                    comparator: 'in', comparatorLabel: 'in', type: 'numeric0', uiType: 'dropdown' }],
+        sorts: []
+      });
       let jobsAll = [], jIdx = 0, jTotal = 1;
       while (jobsAll.length < jTotal) {
         const jr = await fetch(`${LG_API}/api/warehousejob/list/i/${jIdx}/s/1000`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: '{}'
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: jobBody
         });
         if (!jr.ok) throw new Error('Logiwa warehousejob ' + jr.status);
         const jd = await jr.json();
@@ -369,17 +377,18 @@ async function performSync(isB2B) {
         jIdx++;
         if (!batch.length) break;
       }
-      // Zero-seed every warehouse seen (any status) so a Pending count dropping
-      // to zero actually gets written rather than keeping its last value.
+      // Zero-seed from the order-fetch warehouses so a Pending count dropping to
+      // zero still gets written rather than keeping its last value.
       const jobWhs = {};
-      for (const o of jobsAll) {
+      for (const o of all) {
         const wh = o.warehouseCode;
         if (wh && !jobWhs[wh]) jobWhs[wh] = { wh, total: 0, high: 0, medium: 0, low: 0, no_priority: 0 };
       }
       for (const o of jobsAll) {
-        if (o.warehouseJobStatusId !== 1) continue; // Pending only
+        if (o.warehouseJobStatusId !== 1) continue; // Pending only (safety; body already filters)
         const wh = o.warehouseCode;
         if (!wh) continue;
+        if (!jobWhs[wh]) jobWhs[wh] = { wh, total: 0, high: 0, medium: 0, low: 0, no_priority: 0 };
         const j = jobWhs[wh];
         j.total++;
         if (o.priority === 3) j.high++;
