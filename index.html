@@ -147,10 +147,24 @@
     .snav-group.collapsed .snav-chevron { transform: rotate(-90deg); }
     .snav-group.collapsed .snav-group-body { display: none; }
 
-    /* Mobile top bar + drawer overlay (hidden on desktop) */
-    .topbar { display: none; }
+    /* ── Top bar (always visible, desktop + mobile) ── */
+    .topbar {
+      display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 14px;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    }
+    .topbar .logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: .9rem; white-space: nowrap; }
+    .hamburger { background: none; border: none; color: var(--text); cursor: pointer; padding: 5px; display: flex; border-radius: 6px; }
+    .hamburger:hover { background: var(--surface2); }
     .sidebar-overlay { display: none; }
-    @media (min-width: 769px) { body { padding-left: 232px; } }
+
+    body { padding-top: 52px; }                 /* clear the fixed top bar */
+    .sidebar { top: 52px; }                      /* sit below the top bar */
+    body.nav-ready .sidebar { transition: transform .22s ease; }  /* animate only after load */
+    @media (min-width: 769px) {
+      body:not(.nav-collapsed) { padding-left: 232px; }
+      body.nav-collapsed .sidebar { transform: translateX(-100%); }
+    }
 
     /* ── Layout ── */
     main { max-width: 1200px; margin: 32px auto; padding: 0 16px 64px; }
@@ -1087,20 +1101,12 @@
 
     /* ── Mobile overrides ── */
     @media (max-width: 768px) {
-      /* Sidebar becomes a slide-in drawer; a top bar with a hamburger appears */
+      /* Sidebar becomes a slide-in drawer (below the fixed top bar) */
       .sidebar {
-        transform: translateX(-100%); transition: transform .25s ease;
+        transform: translateX(-100%);
         width: 270px; box-shadow: 0 0 34px rgba(0,0,0,.45);
       }
       .sidebar.open { transform: translateX(0); }
-      .topbar {
-        display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 12px;
-        background: var(--surface); border-bottom: 1px solid var(--border);
-        position: sticky; top: 0; z-index: 20;
-      }
-      .topbar .logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: .9rem; white-space: nowrap; }
-      .hamburger { background: none; border: none; color: var(--text); cursor: pointer; padding: 4px; display: flex; }
-      .topbar .settings-btn { margin-left: auto; }
       .sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 35; }
       .sidebar-overlay.open { display: block; }
 
@@ -1281,7 +1287,7 @@
   <button class="hamburger" onclick="toggleSidebar()" aria-label="Menu">
     <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
   </button>
-  <div class="logo"><img src="/daily-ops-webapp/icons/locad-logo.png" alt="LOCAD" height="20" style="display:block" /><span style="color:var(--muted);font-weight:500">Daily Ops</span></div>
+  <div class="logo"><img src="/daily-ops-webapp/icons/locad-logo.png" alt="LOCAD" height="20" style="display:block" /></div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
     <button class="btn btn-primary btn-sm" onclick="syncAllAndRefresh(this)" title="Sync from Logiwa"
       style="display:flex;align-items:center;gap:5px;font-size:.75rem;padding:5px 12px">
@@ -1298,7 +1304,9 @@
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-logo">
     <img src="/daily-ops-webapp/icons/locad-logo.png" alt="LOCAD" height="22" style="display:block" />
-    <span>Daily Ops</span>
+    <button class="hamburger" onclick="minimizeSidebar()" title="Minimize sidebar" style="margin-left:auto;color:var(--muted)">
+      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
   </div>
   <nav class="sidebar-nav">
     <button class="snav-btn" id="snav-btn-overview" onclick="showView('overview')">
@@ -1344,19 +1352,14 @@
       Help
     </button>
   </nav>
-  <div class="sidebar-footer" style="display:flex;gap:8px;align-items:center">
-    <button class="btn btn-primary btn-sm" onclick="syncAllAndRefresh(this)" title="Sync from Logiwa"
-      style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;font-size:.82rem;padding:9px 10px">
-      <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-      Sync
-    </button>
-    <button class="snav-btn" onclick="openSettings()" style="flex:1;width:auto;justify-content:center;gap:7px;padding:9px 10px">
-      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-      Settings
-    </button>
-  </div>
 </aside>
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+<script>
+  // Restore the desktop sidebar's collapsed state before the page paints, then
+  // enable slide transitions so the restore itself doesn't animate.
+  try { if (window.matchMedia('(min-width:769px)').matches && localStorage.getItem('navCollapsed') === '1') document.body.classList.add('nav-collapsed'); } catch (e) {}
+  requestAnimationFrame(function () { document.body.classList.add('nav-ready'); });
+</script>
 
 <!-- Settings modal -->
 <div class="modal-overlay" id="settingsModal">
@@ -2001,7 +2004,7 @@
   <div class="view active" id="view-overview">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div>
-        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Ops — Dashboard</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Dashboard</div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Key numbers across every dashboard · tap a card to open it</div>
       </div>
       <select id="overviewWarehouse" onchange="onOverviewWarehouseChange(this.value)"
@@ -2019,7 +2022,7 @@
     <!-- Header -->
     <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Ops — B2C Fulfillment</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">B2C Fulfillment</div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:2px">
           <span id="b2cDataMode">Snapshot</span> · <span id="b2cSyncTime">6 Jul 2026, 09:47 SGT</span>
         </div>
@@ -2095,7 +2098,7 @@
     <!-- Header -->
     <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Ops — B2B Fulfillment</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">B2B Fulfillment</div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:2px">
           <span id="b2bDataMode">Snapshot</span> · <span id="b2bSyncTime">—</span>
         </div>
@@ -2166,7 +2169,7 @@
     <!-- Header -->
     <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Ops — Shortage</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Shortage</div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:2px">
           <span id="shortageDataMode">Snapshot</span> · <span id="shortageSyncTime">—</span>
         </div>
@@ -2233,7 +2236,7 @@
     <!-- Header -->
     <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Ops — Productivity</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Productivity</div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:2px">
           Orders picked &amp; packed, from Logiwa's user-performance report · <span id="productivityMode">—</span>
         </div>
@@ -2315,7 +2318,7 @@
     <!-- Header -->
     <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Ops — Jobs</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Jobs</div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Pending warehouse jobs by priority · <span id="jobsDataMode">—</span></div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;justify-content:flex-end">
@@ -5081,10 +5084,30 @@
   }
 
   // ── Sidebar drawer / groups ────────────────────────────────────────────
+  const _navIsDesktop = () => window.matchMedia('(min-width: 769px)').matches;
+  // Top-bar burger: toggle. On desktop this collapses/expands the sidebar (state
+  // persisted); on mobile it opens/closes the slide-in drawer.
   function toggleSidebar() {
-    document.getElementById('sidebar')?.classList.toggle('open');
-    document.getElementById('sidebarOverlay')?.classList.toggle('open');
+    if (_navIsDesktop()) {
+      const collapsed = document.body.classList.toggle('nav-collapsed');
+      try { localStorage.setItem('navCollapsed', collapsed ? '1' : '0'); } catch (e) {}
+    } else {
+      document.getElementById('sidebar')?.classList.toggle('open');
+      document.getElementById('sidebarOverlay')?.classList.toggle('open');
+    }
   }
+  // Sidebar's own top-right burger: minimize. Collapses on desktop, closes the
+  // drawer on mobile.
+  function minimizeSidebar() {
+    if (_navIsDesktop()) {
+      document.body.classList.add('nav-collapsed');
+      try { localStorage.setItem('navCollapsed', '1'); } catch (e) {}
+    } else {
+      closeSidebar();
+    }
+  }
+  // Mobile drawer close only (overlay tap, and after navigating). Never collapses
+  // the desktop sidebar, so clicking a nav item doesn't minimize it.
   function closeSidebar() {
     document.getElementById('sidebar')?.classList.remove('open');
     document.getElementById('sidebarOverlay')?.classList.remove('open');
