@@ -2132,7 +2132,7 @@
       <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">
         Orders <span id="b2bOrdersCount" style="font-weight:400;color:var(--muted)"></span>
       </div>
-      <div class="fill-scroll" style="overflow:auto">
+      <div class="fill-scroll" style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:.82rem">
           <thead>
             <tr style="background:var(--surface2)">
@@ -2205,7 +2205,7 @@
       <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">
         Orders <span id="shortageOrdersCount" style="font-weight:400;color:var(--muted)"></span>
       </div>
-      <div class="fill-scroll" style="overflow:auto">
+      <div class="fill-scroll" style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:.82rem">
           <thead>
             <tr style="background:var(--surface2)">
@@ -2289,7 +2289,7 @@
     <!-- Daily -->
     <div class="card fill-card" style="padding:0;overflow:hidden;margin-top:16px">
       <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Daily — last 30 days · <span id="prodDailyMode">Picked</span></div>
-      <div class="fill-scroll" style="overflow:auto">
+      <div class="fill-scroll" style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:.82rem">
           <thead>
             <tr style="background:var(--surface2)">
@@ -2968,6 +2968,7 @@
           <div style="font-size:.82rem;margin-top:6px;display:flex;flex-direction:column;gap:2px;color:var(--muted)">
             <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Priority MP')}" target="_blank" title="Open Priority MP in WMS" style="text-decoration:none;color:inherit;width:fit-content">MP <b style="color:#c084fc">${fmt(s.prioritymp || 0)}</b></a>
             <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Non-MP')}" target="_blank" title="Open Non-MP in WMS" style="text-decoration:none;color:inherit;width:fit-content">Non-MP <b style="color:var(--text)">${fmt(s.nonmp || 0)}</b></a>
+            <span title="Orders with no MP / Non-MP tag" style="width:fit-content">Others <b style="color:#94a3b8">${fmt(Math.max(0, (s.count || 0) - (s.nonmp || 0) - (s.prioritymp || 0)))}</b></span>
           </div>
         </div>`;
       }).join('')}
