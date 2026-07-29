@@ -119,6 +119,39 @@
     }
     .tab-count.visible { display: inline-block; }
 
+    /* ── Sidebar navigation ── */
+    .sidebar {
+      position: fixed; top: 0; left: 0; bottom: 0; width: 232px;
+      background: var(--surface); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; z-index: 40; overflow-y: auto;
+    }
+    .sidebar-logo {
+      display: flex; align-items: center; gap: 8px;
+      padding: 18px 18px 14px; font-weight: 700; font-size: 1rem; letter-spacing: -.3px;
+      white-space: nowrap;
+    }
+    .sidebar-nav { flex: 1; padding: 6px 10px; display: flex; flex-direction: column; gap: 2px; }
+    .sidebar-footer { padding: 8px 10px; border-top: 1px solid var(--border); }
+    .snav-btn, .snav-group-header {
+      display: flex; align-items: center; gap: 11px; width: 100%;
+      padding: 9px 12px; border: none; background: none; color: var(--muted);
+      font-family: inherit; font-size: .85rem; font-weight: 600; border-radius: 8px;
+      cursor: pointer; text-align: left; white-space: nowrap;
+    }
+    .snav-btn:hover, .snav-group-header:hover { background: var(--surface2); color: var(--text); }
+    .snav-btn.active { background: var(--surface2); color: var(--primary); }
+    .snav-btn svg, .snav-group-header svg { flex-shrink: 0; }
+    .snav-sub { padding-left: 34px; font-size: .82rem; }
+    .snav-group-header.has-active { color: var(--primary); }
+    .snav-chevron { margin-left: auto; transition: transform .15s; }
+    .snav-group.collapsed .snav-chevron { transform: rotate(-90deg); }
+    .snav-group.collapsed .snav-group-body { display: none; }
+
+    /* Mobile top bar + drawer overlay (hidden on desktop) */
+    .topbar { display: none; }
+    .sidebar-overlay { display: none; }
+    @media (min-width: 769px) { body { padding-left: 232px; } }
+
     /* ── Layout ── */
     main { max-width: 1200px; margin: 32px auto; padding: 0 16px 64px; }
 
@@ -1049,14 +1082,22 @@
 
     /* ── Mobile overrides ── */
     @media (max-width: 768px) {
-      /* Compact header */
-      header { padding: 0 12px; gap: 8px; height: 52px; }
-      header .logo { font-size: .9rem; }
-      .tab-bar { display: none; }
-      .sync-wrap { display: none !important; }
-      .bottom-nav { display: block; }
-
-
+      /* Sidebar becomes a slide-in drawer; a top bar with a hamburger appears */
+      .sidebar {
+        transform: translateX(-100%); transition: transform .25s ease;
+        width: 270px; box-shadow: 0 0 34px rgba(0,0,0,.45);
+      }
+      .sidebar.open { transform: translateX(0); }
+      .topbar {
+        display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 12px;
+        background: var(--surface); border-bottom: 1px solid var(--border);
+        position: sticky; top: 0; z-index: 20;
+      }
+      .topbar .logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: .9rem; white-space: nowrap; }
+      .hamburger { background: none; border: none; color: var(--text); cursor: pointer; padding: 4px; display: flex; }
+      .topbar .settings-btn { margin-left: auto; }
+      .sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 35; }
+      .sidebar-overlay.open { display: block; }
 
       /* Main layout */
       main {
@@ -1230,89 +1271,75 @@
 </head>
 <body>
 
-<header>
-  <div class="header-inner">
-  <div class="logo">
+<!-- Mobile top bar -->
+<div class="topbar">
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="Menu">
+    <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+  </button>
+  <div class="logo"><img src="/daily-ops-webapp/icons/locad-logo.png" alt="LOCAD" height="20" style="display:block" /><span style="color:var(--muted);font-weight:500">Daily Ops</span></div>
+  <button class="settings-btn" onclick="openSettings()" title="Settings">
+    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+  </button>
+</div>
+
+<!-- Sidebar navigation -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
     <img src="/daily-ops-webapp/icons/locad-logo.png" alt="LOCAD" height="22" style="display:block" />
-    <span style="color:var(--muted);font-weight:500">Daily B2C</span>
+    <span>Daily Ops</span>
   </div>
-  <div class="tab-bar">
-    <button class="tab-btn active" id="tab-btn-b2c" onclick="showView('b2c')">
-      <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13l-1.4 7h12.8M7 13l-1-5m10 5l1-5M9 21a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z"/></svg>
-      B2C Dashboard
+  <nav class="sidebar-nav">
+    <button class="snav-btn" id="snav-btn-overview" onclick="showView('overview')">
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      Dashboard
     </button>
-    <button class="tab-btn" id="tab-btn-b2b" onclick="showView('b2b')">
-      <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path stroke-linecap="round" d="M16 12h.01"/></svg>
-      B2B Dashboard
-    </button>
-    <button class="tab-btn" id="tab-btn-shortage" onclick="showView('shortage')">
-      <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13" stroke-linecap="round"/><line x1="12" y1="17" x2="12.01" y2="17" stroke-linecap="round"/></svg>
-      Shortage
-    </button>
-    <button class="tab-btn" id="tab-btn-productivity" onclick="showView('productivity')">
-      <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-      Productivity
-    </button>
-    <button class="tab-btn" id="tab-btn-jobs" onclick="showView('jobs')">
-      <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><rect x="3" y="7" width="18" height="13" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+    <div class="snav-group" id="snav-group-outbound">
+      <button class="snav-group-header" onclick="toggleNavGroup(this)">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+        <span style="flex:1;text-align:left">Outbound</span>
+        <svg class="snav-chevron" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="snav-group-body">
+        <button class="snav-btn snav-sub" id="snav-btn-b2c" onclick="showView('b2c')">
+          <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13l-1.4 7h12.8M7 13l-1-5m10 5l1-5M9 21a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z"/></svg>
+          B2C Dashboard
+        </button>
+        <button class="snav-btn snav-sub" id="snav-btn-b2b" onclick="showView('b2b')">
+          <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path stroke-linecap="round" d="M16 12h.01"/></svg>
+          B2B Dashboard
+        </button>
+        <button class="snav-btn snav-sub" id="snav-btn-shortage" onclick="showView('shortage')">
+          <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13" stroke-linecap="round"/><line x1="12" y1="17" x2="12.01" y2="17" stroke-linecap="round"/></svg>
+          Shortage
+        </button>
+        <button class="snav-btn snav-sub" id="snav-btn-productivity" onclick="showView('productivity')">
+          <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          Productivity
+        </button>
+      </div>
+    </div>
+    <button class="snav-btn" id="snav-btn-jobs" onclick="showView('jobs')">
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="18" height="13" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
       Jobs
     </button>
-    <button class="tab-btn" id="tab-btn-dash" onclick="showView('dash')">
-      <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-      Error Dashboard
+    <button class="snav-btn" id="snav-btn-dash" onclick="showView('dash')">
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span style="flex:1;text-align:left">Error Dashboard</span>
       <span class="tab-count" id="dashCount"></span>
     </button>
-    <button class="tab-btn" id="tab-btn-help" onclick="showView('help')">
-      <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17" stroke-linecap="round"/></svg>
+    <button class="snav-btn" id="snav-btn-help" onclick="showView('help')">
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17" stroke-linecap="round"/></svg>
       Help
     </button>
-  </div>
-  <div class="sync-wrap" id="syncWrap" style="display:none">
-    <div class="sync-dot" id="syncDot"></div>
-    <span class="sync-label" id="syncLabel">—</span>
-  </div>
-  <button class="settings-btn" onclick="openSettings()" title="Settings">
-    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-      <circle cx="12" cy="12" r="3"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
-    </svg>
-  </button>
-  </div>
-</header>
-
-<!-- Bottom nav (mobile) -->
-<nav class="bottom-nav" id="bottomNav">
-  <div class="bottom-nav-inner">
-    <button class="bnav-btn active" id="bnav-btn-b2c" onclick="showView('b2c')">
-      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13l-1.4 7h12.8M7 13l-1-5m10 5l1-5M9 21a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z"/></svg>
-      B2C
-    </button>
-    <button class="bnav-btn" id="bnav-btn-b2b" onclick="showView('b2b')">
-      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path stroke-linecap="round" d="M16 12h.01"/></svg>
-      B2B
-    </button>
-    <button class="bnav-btn" id="bnav-btn-shortage" onclick="showView('shortage')">
-      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13" stroke-linecap="round"/><line x1="12" y1="17" x2="12.01" y2="17" stroke-linecap="round"/></svg>
-      Shortage
-    </button>
-    <button class="bnav-btn" id="bnav-btn-productivity" onclick="showView('productivity')">
-      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-      Productivity
-    </button>
-    <button class="bnav-btn" id="bnav-btn-jobs" onclick="showView('jobs')">
-      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="18" height="13" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-      Jobs
-    </button>
-    <button class="bnav-btn" id="bnav-btn-dash" onclick="showView('dash')">
-      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-      <span class="bnav-badge" id="bnavDashCount"></span>
-      Errors
-    </button>
-    <button class="bnav-btn" id="bnav-btn-help" onclick="showView('help')">
-      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17" stroke-linecap="round"/></svg>
-      Help
+  </nav>
+  <div class="sidebar-footer">
+    <button class="snav-btn" onclick="openSettings()">
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      Settings
     </button>
   </div>
-</nav>
+</aside>
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
 
 <!-- Settings modal -->
 <div class="modal-overlay" id="settingsModal">
@@ -1421,6 +1448,13 @@
               <svg id="tabsSectionChevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition:transform .15s"><polyline points="6 9 12 15 18 9"/></svg>
             </div>
             <div id="tabsSectionBody" style="display:none;margin-top:4px">
+              <div class="theme-toggle-row">
+                <div style="font-size:.85rem;color:var(--text);font-weight:500">Dashboard</div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="tabToggleOverview" onchange="applyTabVisibility()" checked />
+                  <span class="toggle-track"></span>
+                </label>
+              </div>
               <div class="theme-toggle-row">
                 <div style="font-size:.85rem;color:var(--text);font-weight:500">Error Dashboard</div>
                 <label class="toggle-switch">
@@ -1946,8 +1980,17 @@
     </div>
   </div>
 
+  <!-- ── DASHBOARD (OVERVIEW) VIEW ── -->
+  <div class="view active" id="view-overview">
+    <div style="margin-bottom:16px">
+      <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Ops — Dashboard</div>
+      <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Key numbers across every dashboard · tap a card to open it</div>
+    </div>
+    <div id="overviewKpis"></div>
+  </div>
+
   <!-- ── B2C DASHBOARD VIEW ── -->
-  <div class="view active" id="view-b2c">
+  <div class="view" id="view-b2c">
 
     <!-- Header -->
     <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
@@ -2603,7 +2646,7 @@
 
   // ── Init ───────────────────────────────────────────────────────────────
   (function init() {
-    document.getElementById('syncWrap').style.display = 'flex';
+    { const _sw = document.getElementById('syncWrap'); if (_sw) _sw.style.display = 'flex'; }
     loadFromSupabase();
     loadPickingIssues();
     refreshTimer = setInterval(() => { loadFromSupabase(); loadPickingIssues(); }, 30000);
@@ -2611,13 +2654,14 @@
 
   // ── Tab visibility ─────────────────────────────────────────────────────
   const TAB_KEYS = [
-    { key: 'packingErrorTabB2c',      btnId: 'tab-btn-b2c',      bnavId: 'bnav-btn-b2c',      view: 'b2c',      toggleId: 'tabToggleB2c'      },
-    { key: 'packingErrorTabB2b',      btnId: 'tab-btn-b2b',      bnavId: 'bnav-btn-b2b',      view: 'b2b',      toggleId: 'tabToggleB2b'      },
-    { key: 'packingErrorTabShortage', btnId: 'tab-btn-shortage', bnavId: 'bnav-btn-shortage', view: 'shortage', toggleId: 'tabToggleShortage' },
-    { key: 'packingErrorTabProductivity', btnId: 'tab-btn-productivity', bnavId: 'bnav-btn-productivity', view: 'productivity', toggleId: 'tabToggleProductivity' },
-    { key: 'packingErrorTabJobs',     btnId: 'tab-btn-jobs',     bnavId: 'bnav-btn-jobs',     view: 'jobs',     toggleId: 'tabToggleJobs'     },
-    { key: 'packingErrorTabDash',     btnId: 'tab-btn-dash',     bnavId: 'bnav-btn-dash',     view: 'dash',     toggleId: 'tabToggleDash'     },
-    { key: 'packingErrorTabHelp',     btnId: 'tab-btn-help',     bnavId: 'bnav-btn-help',     view: 'help',     toggleId: 'tabToggleHelp'     },
+    { key: 'packingErrorTabOverview',     navId: 'snav-btn-overview',     view: 'overview',     toggleId: 'tabToggleOverview'     },
+    { key: 'packingErrorTabB2c',      navId: 'snav-btn-b2c',      view: 'b2c',      toggleId: 'tabToggleB2c'      },
+    { key: 'packingErrorTabB2b',      navId: 'snav-btn-b2b',      view: 'b2b',      toggleId: 'tabToggleB2b'      },
+    { key: 'packingErrorTabShortage', navId: 'snav-btn-shortage', view: 'shortage', toggleId: 'tabToggleShortage' },
+    { key: 'packingErrorTabProductivity', navId: 'snav-btn-productivity', view: 'productivity', toggleId: 'tabToggleProductivity' },
+    { key: 'packingErrorTabJobs',     navId: 'snav-btn-jobs',     view: 'jobs',     toggleId: 'tabToggleJobs'     },
+    { key: 'packingErrorTabDash',     navId: 'snav-btn-dash',     view: 'dash',     toggleId: 'tabToggleDash'     },
+    { key: 'packingErrorTabHelp',     navId: 'snav-btn-help',     view: 'help',     toggleId: 'tabToggleHelp'     },
   ];
 
   function applyTabVisibility() {
@@ -2631,15 +2675,13 @@
     TAB_KEYS.forEach((t, i) => {
       const visible = checked[i];
       localStorage.setItem(t.key, visible ? '1' : '0');
-      const btn = document.getElementById(t.btnId);
+      const btn = document.getElementById(t.navId);
       if (btn) btn.style.display = visible ? '' : 'none';
-      const bnav = document.getElementById(t.bnavId);
-      if (bnav) bnav.style.display = visible ? '' : 'none';
     });
-    // If current view's tab is now hidden, switch to first visible tab
+    // If current view's nav item is now hidden, switch to first visible tab
     const activeView = document.querySelector('.view.active')?.id?.replace('view-', '');
-    const activeTabHidden = TAB_KEYS.find(t => t.view === activeView && !document.getElementById(t.btnId)?.style.display !== 'none' && document.getElementById(t.btnId)?.style.display === 'none');
-    if (activeTabHidden) {
+    const activeHidden = TAB_KEYS.find(t => t.view === activeView && document.getElementById(t.navId)?.style.display === 'none');
+    if (activeHidden) {
       const first = TAB_KEYS.find(t => (localStorage.getItem(t.key) ?? '1') !== '0');
       if (first) showView(first.view);
     }
@@ -2654,10 +2696,8 @@
     TAB_KEYS.forEach(t => {
       const def = t.key === 'packingErrorTabDash' ? '0' : '1';
       const visible = (localStorage.getItem(t.key) ?? def) !== '0';
-      const btn = document.getElementById(t.btnId);
+      const btn = document.getElementById(t.navId);
       if (btn) btn.style.display = visible ? '' : 'none';
-      const bnav = document.getElementById(t.bnavId);
-      if (bnav) bnav.style.display = visible ? '' : 'none';
     });
   }
   initTabVisibility();
@@ -3755,6 +3795,38 @@
     if (tbl) tbl.innerHTML = html || `<tr><td colspan="6" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No jobs synced yet.</td></tr>`;
   }
 
+  // ── Dashboard (overview) ───────────────────────────────────────────────
+  // Summary cards pulling live numbers from every dashboard's in-memory data.
+  function renderDashboard() {
+    const el = document.getElementById('overviewKpis');
+    if (!el) return;
+    const fmt = n => Number(n || 0).toLocaleString();
+    const sumField = (arr, k) => (arr || []).reduce((a, r) => a + (r[k] || 0), 0);
+    const b2cWh = (b2cData || []).filter(r => (!r.type || r.type === 'warehouse') && r.wh);
+    const shortTotal = sumField(shortageData, 'age_1_3') + sumField(shortageData, 'age_4_7') + sumField(shortageData, 'age_7_plus');
+    const jobsHigh = sumField(jobData, 'high');
+    const today = (typeof localDateStr === 'function') ? localDateStr() : new Date().toISOString().slice(0, 10);
+    const todayPerf = (userPerf || []).filter(r => r.activity_date === today);
+
+    const cards = [
+      { label: 'B2C Open',         n: sumField(b2cWh, 'new'),        sub: 'orders to pick',    color: '#fb923c', view: 'b2c' },
+      { label: 'B2C Ready to Pack', n: sumField(b2cWh, 'picked'),    sub: 'awaiting packing',  color: '#86efac', view: 'b2c' },
+      { label: 'B2B Ready to Ship', n: sumField(b2bData, 'ready_ship'), sub: 'awaiting dispatch', color: '#5eead4', view: 'b2b' },
+      { label: 'Shortages',        n: shortTotal,                    sub: 'orders short',      color: '#f87171', view: 'shortage' },
+      { label: 'Pending Jobs',     n: sumField(jobData, 'total'),    sub: jobsHigh ? fmt(jobsHigh) + ' high priority' : 'in queue', color: '#c4b5fd', view: 'jobs' },
+      { label: 'Picked Today',     n: sumField(todayPerf, 'picked_orders'), sub: 'orders', color: '#86efac', view: 'productivity' },
+      { label: 'Packed Today',     n: sumField(todayPerf, 'packed_orders'), sub: 'orders', color: '#5eead4', view: 'productivity' },
+    ];
+    el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
+      ${cards.map(c => `
+        <div class="card kpi-link" onclick="showView('${c.view}')" style="padding:18px;cursor:pointer">
+          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${c.color};margin-bottom:8px">${c.label}</div>
+          <div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${fmt(c.n)}</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${c.sub}</div>
+        </div>`).join('')}
+    </div>`;
+  }
+
   async function fetchShortageData() {
     const modeEl = document.getElementById('shortageDataMode');
     if (modeEl) { modeEl.textContent = 'Loading…'; modeEl.style.color = 'var(--muted)'; }
@@ -3995,6 +4067,12 @@
 
   fetchProductivity();
   setInterval(fetchProductivity, 5 * 60 * 1000);
+
+  // Overview dashboard reads all the in-memory data (b2c/b2b/shortage/jobs/
+  // productivity); refresh periodically so the landing page fills in as each
+  // source loads. Placed after the productivity vars above exist.
+  renderDashboard();
+  setInterval(renderDashboard, 8000);
 
   // ── Warehouse Picker ──────────────────────────────────────────────────
   function showWarehousePicker() {
@@ -4765,12 +4843,12 @@
     clearInterval(refreshTimer);
     refreshTimer = null;
     if (true) {
-      document.getElementById('syncWrap').style.display = 'flex';
+      { const _sw = document.getElementById('syncWrap'); if (_sw) _sw.style.display = 'flex'; }
       errors.length = 0;
       loadFromSupabase();
       refreshTimer = setInterval(() => { loadFromSupabase(); loadPickingIssues(); }, 30000);
     } else {
-      document.getElementById('syncWrap').style.display = 'none';
+      { const _sw = document.getElementById('syncWrap'); if (_sw) _sw.style.display = 'none'; }
       loadSampleData();
       updateBadge();
       if (document.getElementById('view-dash').classList.contains('active')) {
@@ -4797,8 +4875,8 @@
   function setSyncStatus(state, label) {
     const dot = document.getElementById('syncDot');
     const lbl = document.getElementById('syncLabel');
-    dot.className = 'sync-dot ' + state;
-    lbl.textContent = label || { ok:'Synced', syncing:'Syncing…', error:'Sync failed' }[state];
+    if (dot) dot.className = 'sync-dot ' + state;
+    if (lbl) lbl.textContent = label || { ok:'Synced', syncing:'Syncing…', error:'Sync failed' }[state];
   }
 
   async function loadFromSupabase() {
@@ -4868,21 +4946,25 @@
   }
 
   // ── View switching ─────────────────────────────────────────────────────
-  const VIEW_ORDER = ['b2c', 'b2b', 'shortage', 'productivity', 'jobs', 'dash', 'help'];
+  const VIEW_ORDER = ['overview', 'b2c', 'b2b', 'shortage', 'productivity', 'jobs', 'dash', 'help'];
   let _lastJobsSync = 0;
   function showView(v) {
     if (!document.getElementById('view-' + v)) return;
     document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('.bnav-btn').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.snav-btn').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.snav-group-header').forEach(el => el.classList.remove('has-active'));
     document.getElementById('view-' + v).classList.add('active');
-    const idx = VIEW_ORDER.indexOf(v);
-    if (idx >= 0) document.querySelectorAll('.tab-btn')[idx].classList.add('active');
-    const bnavBtn = document.getElementById('bnav-btn-' + v);
-    if (bnavBtn) bnavBtn.classList.add('active');
+    // Highlight the matching sidebar item; if it lives in a group, mark + expand it.
+    const navBtn = document.getElementById('snav-btn-' + v);
+    if (navBtn) {
+      navBtn.classList.add('active');
+      const grp = navBtn.closest('.snav-group');
+      if (grp) { grp.classList.remove('collapsed'); grp.querySelector('.snav-group-header')?.classList.add('has-active'); }
+    }
     // Toggle Report Error FAB (before renderTable so errors don't hide it)
     const fab = document.getElementById('fabReport');
     if (fab) fab.classList.toggle('visible', v === 'b2c');
+    if (v === 'overview') { try { renderDashboard(); } catch(e){} }
     if (v === 'dash') { try { renderStats(); } catch(e){} try { initWarehouseFilter(); renderTable(); } catch(e){} }
     if (v === 'jobs') {
       try { renderJobs(); } catch(e){}
@@ -4893,8 +4975,21 @@
         try { syncLogiwaAndRefresh(document.getElementById('jobsSyncBtn'), true); } catch(e){}
       }
     }
-    // Scroll to top on mobile
+    closeSidebar(); // close the mobile drawer after navigating
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // ── Sidebar drawer / groups ────────────────────────────────────────────
+  function toggleSidebar() {
+    document.getElementById('sidebar')?.classList.toggle('open');
+    document.getElementById('sidebarOverlay')?.classList.toggle('open');
+  }
+  function closeSidebar() {
+    document.getElementById('sidebar')?.classList.remove('open');
+    document.getElementById('sidebarOverlay')?.classList.remove('open');
+  }
+  function toggleNavGroup(headerEl) {
+    headerEl.closest('.snav-group')?.classList.toggle('collapsed');
   }
 
   // ── Code.gs template & rendering ──────────────────────────────────────
