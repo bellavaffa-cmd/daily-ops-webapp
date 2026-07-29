@@ -180,6 +180,11 @@
     .mp-link { cursor: pointer; }
     .mp-link:hover { text-decoration: underline !important; }
 
+    /* Productivity Picked/Packed segmented toggle */
+    .prod-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+    .prod-seg-btn { font-size: .78rem; padding: 5px 14px; border: none; background: var(--surface2); color: var(--muted); cursor: pointer; font-weight: 600; }
+    .prod-seg-btn.active { background: var(--primary); color: var(--on-primary); }
+
     /* ── Multi-select warehouse filter (B2C/B2B/Shortage headers) ── */
     .wh-multi { position: relative; }
     .wh-multi-btn {
@@ -2229,7 +2234,13 @@
           Orders picked &amp; packed, from Logiwa's user-performance report · <span id="productivityMode">—</span>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;justify-content:flex-end">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+        <div class="prod-seg">
+          <button type="button" id="prodModePicked" class="prod-seg-btn active" onclick="onProdModeChange('picked')">Picked</button>
+          <button type="button" id="prodModePacked" class="prod-seg-btn" onclick="onProdModeChange('packed')">Packed</button>
+        </div>
+        <select id="prodPersonFilter" onchange="onProdPersonChange(this.value)"
+          style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;flex:0 1 170px;min-width:110px;max-width:190px"></select>
         <select id="productivityViewWarehouse" onchange="onProdWarehouseChange(this.value)"
           style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;flex:0 1 180px;min-width:120px;max-width:200px"></select>
       </div>
@@ -2260,14 +2271,14 @@
 
     <!-- By person (today) -->
     <div class="card" style="padding:0;overflow:hidden">
-      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">By person — today <span id="prodUserCount" style="font-weight:400;color:var(--muted)"></span></div>
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">By person — today · <span id="prodByPersonMode">Picked</span> <span id="prodUserCount" style="font-weight:400;color:var(--muted)"></span></div>
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:.82rem">
           <thead>
             <tr style="background:var(--surface2)">
               <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Person</th>
-              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#86efac;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)">Picked</th>
-              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#5eead4;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)">Packed</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)">Orders</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)">Items</th>
             </tr>
           </thead>
           <tbody id="prodUserTable"></tbody>
@@ -2277,14 +2288,14 @@
 
     <!-- Daily -->
     <div class="card fill-card" style="padding:0;overflow:hidden;margin-top:16px">
-      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Daily — last 30 days</div>
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Daily — last 30 days · <span id="prodDailyMode">Picked</span></div>
       <div class="fill-scroll" style="overflow:auto">
         <table style="width:100%;border-collapse:collapse;font-size:.82rem">
           <thead>
             <tr style="background:var(--surface2)">
               <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Day</th>
-              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#86efac;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)">Picked</th>
-              <th style="text-align:right;padding:10px 14px;font-weight:600;color:#5eead4;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)">Packed</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)">Orders</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)">Items</th>
             </tr>
           </thead>
           <tbody id="prodDailyTable"></tbody>
@@ -3911,6 +3922,19 @@
     if (el.value !== sel) localStorage.setItem('prodWarehouseFilter', el.value);
   }
 
+  // Picked/Packed mode + person filter for the Productivity tab.
+  function onProdModeChange(mode) { localStorage.setItem('prodMode', mode); renderProductivity(); }
+  function onProdPersonChange(value) { localStorage.setItem('prodPersonFilter', value); renderProductivity(); }
+  function populateProdPersonSelect() {
+    const el = document.getElementById('prodPersonFilter');
+    if (!el) return;
+    const sel = localStorage.getItem('prodPersonFilter') || '';
+    const names = [...new Set(userPerf.map(r => r.executed_by_name || ('#' + r.executed_by)).filter(Boolean))].sort();
+    el.innerHTML = `<option value="">All people</option>` + names.map(n => `<option value="${escHtml(n)}">${escHtml(n)}</option>`).join('');
+    el.value = names.includes(sel) ? sel : '';
+    if (el.value !== sel) localStorage.setItem('prodPersonFilter', el.value);
+  }
+
   async function fetchProductivity() {
     const modeEl = document.getElementById('productivityMode');
     if (modeEl) { modeEl.textContent = 'Loading…'; modeEl.style.color = 'var(--muted)'; }
@@ -3929,6 +3953,7 @@
       userPerf = await res.json();
       prodSnaps = snapRes.ok ? await snapRes.json() : [];
       populateProdWarehouseSelect();
+      populateProdPersonSelect();
       renderProductivity();
       if (modeEl) { modeEl.textContent = 'Supabase ●'; modeEl.style.color = 'var(--success)'; }
     } catch (err) {
@@ -3941,21 +3966,36 @@
     const fmt = n => Number(n || 0).toLocaleString();
     const sum = (rows, k) => rows.reduce((a, r) => a + Number(r[k] || 0), 0);
     const selWh = localStorage.getItem('prodWarehouseFilter') || '';
-    const rows = selWh ? userPerf.filter(r => r.warehouse_code === selWh) : userPerf;
+    const selPerson = localStorage.getItem('prodPersonFilter') || '';
+    const mode = (localStorage.getItem('prodMode') === 'packed') ? 'packed' : 'picked';
+    const ordersKey = mode === 'packed' ? 'packed_orders' : 'picked_orders';
+    const itemsKey  = mode === 'packed' ? 'packed_items'  : 'picked_items';
+    const modeLabel = mode === 'packed' ? 'Packed' : 'Picked';
+    const modeColor = mode === 'packed' ? '#5eead4' : '#86efac';
+
+    // Reflect mode in the toggle + section titles.
+    document.getElementById('prodModePicked')?.classList.toggle('active', mode === 'picked');
+    document.getElementById('prodModePacked')?.classList.toggle('active', mode === 'packed');
+    const bpm = document.getElementById('prodByPersonMode'); if (bpm) bpm.textContent = modeLabel;
+    const dmd = document.getElementById('prodDailyMode');    if (dmd) dmd.textContent = modeLabel;
+
+    const personName = r => r.executed_by_name || ('#' + r.executed_by);
+    let rows = selWh ? userPerf.filter(r => r.warehouse_code === selWh) : userPerf;
+    if (selPerson) rows = rows.filter(r => personName(r) === selPerson);
     const today = localDateStr();
     const todayRows = rows.filter(r => r.activity_date === today);
 
     const kpis = [
-      { label: 'Picked Today', count: sum(todayRows, 'picked_orders'), color: '#86efac' },
-      { label: 'Packed Today', count: sum(todayRows, 'packed_orders'), color: '#5eead4' },
-      { label: 'Picked (30d)', count: sum(rows, 'picked_orders'), color: '#86efac' },
-      { label: 'Packed (30d)', count: sum(rows, 'packed_orders'), color: '#5eead4' },
+      { label: modeLabel + ' Today · Orders', count: sum(todayRows, ordersKey) },
+      { label: modeLabel + ' Today · Items',  count: sum(todayRows, itemsKey) },
+      { label: modeLabel + ' 30d · Orders',   count: sum(rows, ordersKey) },
+      { label: modeLabel + ' 30d · Items',    count: sum(rows, itemsKey) },
     ];
     const kpiEl = document.getElementById('productivityKpis');
     if (kpiEl) kpiEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
       ${kpis.map(s => `
         <div class="card" style="padding:16px 18px">
-          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px">${s.label}</div>
+          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${modeColor};margin-bottom:8px">${s.label}</div>
           <div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${fmt(s.count)}</div>
         </div>`).join('')}
     </div>`;
@@ -3968,50 +4008,46 @@
           <span style="position:relative">${fmt(n)}</span>
         </span></td>`;
     };
-    const bodyHtml = (rows, labelKey, colspan) => {
-      if (!rows.length) return `<tr><td colspan="${colspan}" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No data yet.</td></tr>`;
-      const max = rows.reduce((m, r) => Math.max(m, Number(r.picked||0), Number(r.packed||0)), 0);
-      return rows.map(r => `<tr style="border-top:1px solid var(--border)">
+    // Rows carry { orders, items }; render an Orders bar (mode colour) + Items bar (neutral).
+    const tableHtml = (arr, labelKey) => {
+      if (!arr.length) return `<tr><td colspan="3" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No data yet.</td></tr>`;
+      const maxO = arr.reduce((m, r) => Math.max(m, Number(r.orders || 0)), 0);
+      const maxI = arr.reduce((m, r) => Math.max(m, Number(r.items || 0)), 0);
+      return arr.map(r => `<tr style="border-top:1px solid var(--border)">
         <td style="padding:7px 18px;color:var(--text);font-size:.82rem;white-space:nowrap">${r[labelKey]}</td>
-        ${barCell(r.picked, max, '#86efac')}
-        ${barCell(r.packed, max, '#5eead4')}
+        ${barCell(r.orders, maxO, modeColor)}
+        ${barCell(r.items, maxI, '#94a3b8')}
       </tr>`).join('');
     };
 
-    // Per-person (today): sum picked/packed per person across warehouses.
+    // Per-person (today) for the selected mode.
     const byUser = {};
     for (const r of todayRows) {
-      const k = r.executed_by_name || ('#' + r.executed_by);
-      (byUser[k] = byUser[k] || { name: k, picked: 0, packed: 0 });
-      byUser[k].picked += Number(r.picked_orders || 0);
-      byUser[k].packed += Number(r.packed_orders || 0);
+      const k = personName(r);
+      (byUser[k] = byUser[k] || { name: k, orders: 0, items: 0 });
+      byUser[k].orders += Number(r[ordersKey] || 0);
+      byUser[k].items  += Number(r[itemsKey]  || 0);
     }
-    const users = Object.values(byUser).filter(u => u.picked || u.packed)
-      .sort((a, b) => (b.picked + b.packed) - (a.picked + a.packed));
+    const users = Object.values(byUser).filter(u => u.orders || u.items).sort((a, b) => b.orders - a.orders);
     const uCount = document.getElementById('prodUserCount');
     if (uCount) uCount.textContent = users.length ? `(${users.length})` : '';
     const uEl = document.getElementById('prodUserTable');
-    if (uEl) uEl.innerHTML = bodyHtml(users.map(u => ({ name: escHtml(u.name), picked: u.picked, packed: u.packed })), 'name', 3);
+    if (uEl) uEl.innerHTML = tableHtml(users.map(u => ({ name: escHtml(u.name), orders: u.orders, items: u.items })), 'name');
 
-    // Hourly depletion rate: how many orders were picked/packed in the last hour.
-    // Snapshots record the day's cumulative totals at each sync (sync time =
-    // captured_at). We take the latest snapshot and the one closest to an hour
-    // before it, then diff the cumulative totals. Both must be the same day (the
-    // cumulative resets at midnight). Values are clamped to >= 0.
     renderHourlyRate(selWh);
 
-    // Daily totals: sum picked/packed per day.
+    // Daily totals for the selected mode.
     const byDay = {};
     for (const r of rows) {
       const k = r.activity_date;
-      (byDay[k] = byDay[k] || { date: k, picked: 0, packed: 0 });
-      byDay[k].picked += Number(r.picked_orders || 0);
-      byDay[k].packed += Number(r.packed_orders || 0);
+      (byDay[k] = byDay[k] || { date: k, orders: 0, items: 0 });
+      byDay[k].orders += Number(r[ordersKey] || 0);
+      byDay[k].items  += Number(r[itemsKey]  || 0);
     }
     const days = Object.values(byDay).sort((a, b) => String(b.date).localeCompare(String(a.date)))
-      .map(d => ({ label: dayLabel(d.date), picked: d.picked, packed: d.packed }));
+      .map(d => ({ label: dayLabel(d.date), orders: d.orders, items: d.items }));
     const dEl = document.getElementById('prodDailyTable');
-    if (dEl) dEl.innerHTML = bodyHtml(days, 'label', 3);
+    if (dEl) dEl.innerHTML = tableHtml(days, 'label');
   }
 
   // Compute the hourly depletion rate from the snapshot history for the selected
