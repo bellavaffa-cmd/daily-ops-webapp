@@ -1987,9 +1987,13 @@
 
   <!-- ── DASHBOARD (OVERVIEW) VIEW ── -->
   <div class="view active" id="view-overview">
-    <div style="margin-bottom:16px">
-      <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Ops — Dashboard</div>
-      <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Key numbers across every dashboard · tap a card to open it</div>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+      <div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Ops — Dashboard</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Key numbers across every dashboard · tap a card to open it</div>
+      </div>
+      <select id="overviewWarehouse" onchange="onOverviewWarehouseChange(this.value)"
+        style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;flex:0 1 220px;min-width:140px;max-width:240px"></select>
     </div>
     <div id="overviewKpis"></div>
   </div>
@@ -3809,23 +3813,56 @@
 
   // ── Dashboard (overview) ───────────────────────────────────────────────
   // Summary cards pulling live numbers from every dashboard's in-memory data.
+  // The Dashboard has its own warehouse filter (stored in overviewWarehouseFilter,
+  // independent of every other tab). All data sources key warehouses by the same
+  // full name — b2c/b2b/shortage/jobs use `wh`, user_performance uses
+  // `warehouse_code` holding the identical string — so one selector filters every
+  // card. Default is "All warehouses" ('').
+  function onOverviewWarehouseChange(value) { localStorage.setItem('overviewWarehouseFilter', value); renderDashboard(); }
+
+  function populateOverviewWarehouseSelect(selWh) {
+    const el = document.getElementById('overviewWarehouse');
+    if (!el) return selWh;
+    const names = new Set();
+    (b2cData || []).forEach(r => { if ((!r.type || r.type === 'warehouse') && r.wh) names.add(r.wh); });
+    (b2bData || []).forEach(r => { if (r.wh) names.add(r.wh); });
+    (shortageData || []).forEach(r => { if (r.wh) names.add(r.wh); });
+    (jobData || []).forEach(r => { if (r.wh) names.add(r.wh); });
+    (userPerf || []).forEach(r => { if (r.warehouse_code) names.add(r.warehouse_code); });
+    const whs = [...names].sort();
+    const keep = whs.includes(selWh) ? selWh : '';
+    // Only rewrite options when the warehouse set actually changed, so the 8s
+    // refresh doesn't collapse the dropdown while the user has it open.
+    const html = `<option value="">All warehouses</option>` +
+      whs.map(w => `<option value="${escHtml(w)}">${escHtml(w)}</option>`).join('');
+    if (el.dataset.opts !== html) { el.innerHTML = html; el.dataset.opts = html; }
+    el.value = keep;
+    if (keep !== selWh) localStorage.setItem('overviewWarehouseFilter', keep);
+    return keep;
+  }
+
   function renderDashboard() {
     const el = document.getElementById('overviewKpis');
     if (!el) return;
     const fmt = n => Number(n || 0).toLocaleString();
     const sumField = (arr, k) => (arr || []).reduce((a, r) => a + (r[k] || 0), 0);
-    const b2cWh = (b2cData || []).filter(r => (!r.type || r.type === 'warehouse') && r.wh);
-    const shortTotal = sumField(shortageData, 'age_1_3') + sumField(shortageData, 'age_4_7') + sumField(shortageData, 'age_7_plus');
-    const jobsHigh = sumField(jobData, 'high');
+    const selWh = populateOverviewWarehouseSelect(localStorage.getItem('overviewWarehouseFilter') || '');
+    const whMatch = w => !selWh || w === selWh;
+    const b2cWh = (b2cData || []).filter(r => (!r.type || r.type === 'warehouse') && r.wh && whMatch(r.wh));
+    const b2bWh = (b2bData || []).filter(r => whMatch(r.wh));
+    const shortWh = (shortageData || []).filter(r => whMatch(r.wh));
+    const jobsWh = (jobData || []).filter(r => whMatch(r.wh));
+    const shortTotal = sumField(shortWh, 'age_1_3') + sumField(shortWh, 'age_4_7') + sumField(shortWh, 'age_7_plus');
+    const jobsHigh = sumField(jobsWh, 'high');
     const today = (typeof localDateStr === 'function') ? localDateStr() : new Date().toISOString().slice(0, 10);
-    const todayPerf = (userPerf || []).filter(r => r.activity_date === today);
+    const todayPerf = (userPerf || []).filter(r => r.activity_date === today && whMatch(r.warehouse_code));
 
     const cards = [
       { label: 'B2C Open',         n: sumField(b2cWh, 'new'),        sub: 'orders to pick',    color: '#fb923c', view: 'b2c' },
       { label: 'B2C Ready to Pack', n: sumField(b2cWh, 'picked'),    sub: 'awaiting packing',  color: '#86efac', view: 'b2c' },
-      { label: 'B2B Ready to Ship', n: sumField(b2bData, 'ready_ship'), sub: 'awaiting dispatch', color: '#5eead4', view: 'b2b' },
+      { label: 'B2B Ready to Ship', n: sumField(b2bWh, 'ready_ship'), sub: 'awaiting dispatch', color: '#5eead4', view: 'b2b' },
       { label: 'Shortages',        n: shortTotal,                    sub: 'orders short',      color: '#f87171', view: 'shortage' },
-      { label: 'Pending Jobs',     n: sumField(jobData, 'total'),    sub: jobsHigh ? fmt(jobsHigh) + ' high priority' : 'in queue', color: '#c4b5fd', view: 'jobs' },
+      { label: 'Pending Jobs',     n: sumField(jobsWh, 'total'),    sub: jobsHigh ? fmt(jobsHigh) + ' high priority' : 'in queue', color: '#c4b5fd', view: 'jobs' },
       { label: 'Picked Today',     n: sumField(todayPerf, 'picked_orders'), sub: 'orders', color: '#86efac', view: 'productivity' },
       { label: 'Packed Today',     n: sumField(todayPerf, 'packed_orders'), sub: 'orders', color: '#5eead4', view: 'productivity' },
     ];
