@@ -1996,6 +1996,8 @@
         style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;flex:0 1 220px;min-width:140px;max-width:240px"></select>
     </div>
     <div id="overviewKpis"></div>
+    <div style="margin:24px 0 12px;font-size:.95rem;font-weight:700;color:var(--text)">Today's B2C</div>
+    <div id="overviewB2cKpis"></div>
   </div>
 
   <!-- ── B2C DASHBOARD VIEW ── -->
@@ -2904,6 +2906,70 @@
     if (!e.target.closest('.wh-multi')) closeAllWhPanels();
   });
 
+  // Builds the B2C KPI status cards for an already warehouse-filtered set of
+  // rows. Shared by the B2C tab (interactive: shows the exclude-from-total
+  // toggles) and the Dashboard's "Today's B2C" mirror (read-only), so the two
+  // can never drift. Honours the same exclude toggles either way.
+  function b2cKpiCardsHtml(filtered, opts = {}) {
+    const interactive = !!opts.interactive;
+    const tot = filtered.reduce((a, r) => ({
+      new:     a.new     + (r.new     || 0),
+      rfp:     a.rfp     + (r.rfp     || 0),
+      picking: a.picking + (r.picking || 0),
+      picked:  a.picked  + (r.picked  || 0),
+      packing: a.packing + (r.packing || 0),
+    }), { new: 0, rfp: 0, picking: 0, picked: 0, packing: 0 });
+
+    const B2C_KEYS = ['new', 'rfp', 'picking', 'picked', 'packing'];
+    const b2cExcl  = new Set(getExcluded('b2c'));
+    const incSum   = o => B2C_KEYS.reduce((a, k) => b2cExcl.has(k) ? a : a + (o[k] || 0), 0);
+    const total = incSum(tot);
+    const fmt   = n => n.toLocaleString();
+    const pct   = (n, d) => d ? (n / d * 100).toFixed(1) + '%' : '—';
+
+    const tagSum   = c => filtered.reduce((a, r) => a + (r[c] || 0), 0);
+    const mpOf     = k => ({ nonmp: tagSum(k + '_nonmp'), prioritymp: tagSum(k + '_prioritymp') });
+    const totNonmp = B2C_KEYS.reduce((a, k) => b2cExcl.has(k) ? a : a + tagSum(k + '_nonmp'), 0);
+    const totPrio  = B2C_KEYS.reduce((a, k) => b2cExcl.has(k) ? a : a + tagSum(k + '_prioritymp'), 0);
+
+    const statuses = [
+      { key: 'new',     label: 'Open',            count: tot.new,     color: '#fb923c', ...mpOf('new') },
+      { key: 'rfp',     label: 'Ready to Pick',   count: tot.rfp,     color: '#fcd34d', ...mpOf('rfp') },
+      { key: 'picking', label: 'Picking Started', count: tot.picking, color: '#93c5fd', ...mpOf('picking') },
+      { key: 'picked',  label: 'Ready to Pack',   count: tot.picked,  color: '#86efac', ...mpOf('picked') },
+      { key: 'packing', label: 'Packing Started', count: tot.packing, color: '#c4b5fd', ...mpOf('packing') },
+      { key: 'total',   label: 'Total Orders',    count: total,       color: 'var(--text)', nonmp: totNonmp, prioritymp: totPrio },
+    ];
+
+    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
+      ${statuses.map(s => {
+        const isTotal  = s.key === 'total';
+        const excluded = !isTotal && b2cExcl.has(s.key);
+        const statusIds = isTotal ? WMS_ALL_STATUS : [WMS_STATUS_ID[s.label]];
+        const statusLbl = isTotal ? 'All' : s.label;
+        const url = wmsStatusUrl('B2C', statusIds, statusLbl);
+        const subtitle = isTotal
+          ? (b2cExcl.size ? `excludes ${b2cExcl.size} status${b2cExcl.size > 1 ? 'es' : ''}` : 'across all statuses')
+          : (excluded ? 'Excluded from total' : pct(s.count, total) + ' of total');
+        // Card is a div (not one big <a>) so the MP/Non-MP tag links below aren't
+        // nested inside the status link — nested <a> is invalid and the status
+        // link would otherwise swallow their clicks.
+        return `
+        <div class="card" style="position:relative;padding:16px 18px${excluded ? ';opacity:.5' : ''}">
+          ${interactive && !isTotal ? excludeBtn('b2c', s.key, excluded) : ''}
+          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px${excluded ? ';text-decoration:line-through' : ''}">${s.label}</div>
+          <a class="mp-link" href="${url}" target="_blank" title="Open in WMS" style="display:inline-block;text-decoration:none;color:var(--text);font-size:2rem;font-weight:700;line-height:1">${fmt(s.count)}</a>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${subtitle}</div>
+          <div style="font-size:.82rem;margin-top:6px;display:flex;flex-direction:column;gap:2px;color:var(--muted)">
+            <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Priority MP')}" target="_blank" title="Open Priority MP in WMS" style="text-decoration:none;color:inherit;width:fit-content">MP <b style="color:#c084fc">${fmt(s.prioritymp || 0)}</b></a>
+            <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Non-MP')}" target="_blank" title="Open Non-MP in WMS" style="text-decoration:none;color:inherit;width:fit-content">Non-MP <b style="color:var(--text)">${fmt(s.nonmp || 0)}</b></a>
+            <span title="Orders with no MP / Non-MP tag" style="width:fit-content">Others <b style="color:#94a3b8">${fmt(Math.max(0, (s.count || 0) - (s.nonmp || 0) - (s.prioritymp || 0)))}</b></span>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
   function renderB2C() {
     const sel = getSelectedWhs();
 
@@ -2930,53 +2996,8 @@
 
     const total = incSum(tot);
     const fmt   = n => n.toLocaleString();
-    const pct   = (n, d) => d ? (n / d * 100).toFixed(1) + '%' : '—';
 
-    // Per-status MP-tag counts (feature 6), summed over the filtered warehouses.
-    const tagSum = c => filtered.reduce((a, r) => a + (r[c] || 0), 0);
-    const mpOf = k => ({ nonmp: tagSum(k + '_nonmp'), prioritymp: tagSum(k + '_prioritymp') });
-    // Total-box tag counts exclude the statuses toggled out of the total.
-    const totNonmp = B2C_KEYS.reduce((a, k) => b2cExcl.has(k) ? a : a + tagSum(k + '_nonmp'), 0);
-    const totPrio  = B2C_KEYS.reduce((a, k) => b2cExcl.has(k) ? a : a + tagSum(k + '_prioritymp'), 0);
-
-    // KPI cards
-    const statuses = [
-      { key: 'new',     label: 'Open',            count: tot.new,     color: '#fb923c', ...mpOf('new') },
-      { key: 'rfp',     label: 'Ready to Pick',   count: tot.rfp,     color: '#fcd34d', ...mpOf('rfp') },
-      { key: 'picking', label: 'Picking Started', count: tot.picking, color: '#93c5fd', ...mpOf('picking') },
-      { key: 'picked',  label: 'Ready to Pack',   count: tot.picked,  color: '#86efac', ...mpOf('picked') },
-      { key: 'packing', label: 'Packing Started', count: tot.packing, color: '#c4b5fd', ...mpOf('packing') },
-      { key: 'total',   label: 'Total Orders',    count: total,       color: 'var(--text)', nonmp: totNonmp, prioritymp: totPrio },
-    ];
-
-    const kpiEl = document.getElementById('b2cKpis');
-    kpiEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
-      ${statuses.map(s => {
-        const isTotal  = s.key === 'total';
-        const excluded = !isTotal && b2cExcl.has(s.key);
-        const statusIds = isTotal ? WMS_ALL_STATUS : [WMS_STATUS_ID[s.label]];
-        const statusLbl = isTotal ? 'All' : s.label;
-        const url = wmsStatusUrl('B2C', statusIds, statusLbl);
-        const subtitle = isTotal
-          ? (b2cExcl.size ? `excludes ${b2cExcl.size} status${b2cExcl.size > 1 ? 'es' : ''}` : 'across all statuses')
-          : (excluded ? 'Excluded from total' : pct(s.count, total) + ' of total');
-        // Card is a div (not one big <a>) so the MP/Non-MP tag links below aren't
-        // nested inside the status link — nested <a> is invalid and the status
-        // link would otherwise swallow their clicks.
-        return `
-        <div class="card" style="position:relative;padding:16px 18px${excluded ? ';opacity:.5' : ''}">
-          ${isTotal ? '' : excludeBtn('b2c', s.key, excluded)}
-          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px${excluded ? ';text-decoration:line-through' : ''}">${s.label}</div>
-          <a class="mp-link" href="${url}" target="_blank" title="Open in WMS" style="display:inline-block;text-decoration:none;color:var(--text);font-size:2rem;font-weight:700;line-height:1">${fmt(s.count)}</a>
-          <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${subtitle}</div>
-          <div style="font-size:.82rem;margin-top:6px;display:flex;flex-direction:column;gap:2px;color:var(--muted)">
-            <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Priority MP')}" target="_blank" title="Open Priority MP in WMS" style="text-decoration:none;color:inherit;width:fit-content">MP <b style="color:#c084fc">${fmt(s.prioritymp || 0)}</b></a>
-            <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Non-MP')}" target="_blank" title="Open Non-MP in WMS" style="text-decoration:none;color:inherit;width:fit-content">Non-MP <b style="color:var(--text)">${fmt(s.nonmp || 0)}</b></a>
-            <span title="Orders with no MP / Non-MP tag" style="width:fit-content">Others <b style="color:#94a3b8">${fmt(Math.max(0, (s.count || 0) - (s.nonmp || 0) - (s.prioritymp || 0)))}</b></span>
-          </div>
-        </div>`;
-      }).join('')}
-    </div>`;
+    document.getElementById('b2cKpis').innerHTML = b2cKpiCardsHtml(filtered, { interactive: true });
 
     // Table helpers
     const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color||'var(--text)'};font-size:.82rem">${fmt(n)}</td>`;
@@ -3874,6 +3895,11 @@
           <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${c.sub}</div>
         </div>`).join('')}
     </div>`;
+
+    // "Today's B2C" — the full B2C status boxes, mirrored from the B2C tab via the
+    // shared builder, filtered by the Dashboard's own warehouse selector (b2cWh).
+    const b2cBox = document.getElementById('overviewB2cKpis');
+    if (b2cBox) b2cBox.innerHTML = b2cKpiCardsHtml(b2cWh, { interactive: false });
   }
 
   async function fetchShortageData() {
