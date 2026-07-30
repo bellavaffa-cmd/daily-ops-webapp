@@ -6401,7 +6401,32 @@ function fail(error) {
     {key:'prod_person', title:'Productivity by Person', kind:'table', w:6,h:5},
     {key:'prod_daily', title:'Productivity Daily', kind:'table', w:6,h:5},
   ]; }
-  function dashDef(key) { return dashCatalog().find(d=>d.key===key); }
+  // Single-box widgets: each individual KPI tile can live on the dashboard on its
+  // own. A box widget key is `box:<source>:<index>`; it renders exactly one card
+  // by reusing the group builder's HTML and pulling out the Nth card — so a single
+  // box never drifts from its group.
+  function dashBoxSources() { return {
+    b2c:      { title:"B2C",          w:4, fn:dashB2CBoxHtml,      labels:['Open','Ready to Pick','Picking Started','Ready to Pack','Packing Started','Total Orders'] },
+    b2b:      { title:"B2B",          w:3, fn:dashB2BBoxHtml,      labels:['Open','Ready to Pick','Picking Started','Ready to Pack','Packing Started','Ready to Ship','Total Orders'] },
+    shortage: { title:"Shortage",     w:3, fn:dashShortageBoxHtml, labels:['1-3 Days','4-7 Days','7+ Days','Total Orders'] },
+    jobs:     { title:"Jobs",         w:3, fn:dashJobsBoxHtml,     labels:['Total Jobs','High','Medium','Low','No Priority'] },
+    prod:     { title:"Productivity", w:3, fn:dashProdBoxHtml,     labels:['Today · Orders','Today · Items','30d · Orders','30d · Items'] },
+    overview: { title:"Summary",      w:3, fn:dashOverviewHtml,    labels:['B2C Open','B2C Ready to Pack','B2B Ready to Ship','Shortages','Pending Jobs','Picked Today','Packed Today'] },
+  }; }
+  function dashParseBox(key){ const m=/^box:([a-z0-9]+):(\d+)$/.exec(key); return m?{source:m[1],index:+m[2]}:null; }
+  function dashBoxWidgetHtml(source, index, selWh){
+    const src=dashBoxSources()[source]; if(!src) return '<div style="padding:12px;color:var(--muted);font-size:.82rem">n/a</div>';
+    const tmp=document.createElement('div'); tmp.innerHTML=src.fn(selWh);
+    const grid=tmp.firstElementChild, card=grid&&grid.children[index];
+    return card?card.outerHTML:'<div style="padding:12px;color:var(--muted);font-size:.82rem">n/a</div>';
+  }
+  function dashDef(key) {
+    const b=dashParseBox(key);
+    if(b){ const src=dashBoxSources()[b.source]; if(!src) return null;
+      return { key, title:src.title+' — '+(src.labels[b.index]||('#'+b.index)), kind:'box', w:src.w, h:3,
+        render:(el,wh)=>el.innerHTML=dashBoxWidgetHtml(b.source,b.index,wh) }; }
+    return dashCatalog().find(d=>d.key===key);
+  }
 
   // ── Grid state + persistence ──
   // Declaration-only (no initializers): this module is appended after the init
@@ -6546,12 +6571,22 @@ function fail(error) {
   function dashDuplicateInst(inst){ const el=dashInstEl(inst), n=el&&el.gridstackNode; dashMountWidget({key:inst.key,w:n?n.w:undefined,h:n?n.h:undefined,wh:inst.wh,hidden:inst.hidden.slice()},true); dashCloseMenu(); }
 
   // ── Add-widget button + reset ──
-  function dashOpenAddMenu(btn){
-    dashEnsureGrid(); const r=btn.getBoundingClientRect(); const present=new Set(Object.values(_dashInst).map(i=>i.key));
-    const items=dashCatalog().map(d=>({label:(present.has(d.key)?'✓ ':'')+d.title,onClick:()=>dashMountWidget({key:d.key},true)}));
-    items.push({sep:true},{label:'Reset layout',danger:true,onClick:()=>dashResetLayout()});
-    dashMenu(r.left,r.bottom+4,items);
-  }
+  var _dashAddAnchor;
+  function dashOpenAddMenu(btn){ dashEnsureGrid(); const r=btn.getBoundingClientRect(); _dashAddAnchor={x:r.left,y:r.bottom+4}; dashAddRoot(); }
+  function dashAddRoot(){ const a=_dashAddAnchor; dashMenu(a.x,a.y,[
+    {label:'Box groups', arrow:true, onClick:()=>dashAddGroupList('boxes')},
+    {label:'Single boxes', arrow:true, onClick:()=>dashAddBoxSources()},
+    {label:'Tables', arrow:true, onClick:()=>dashAddGroupList('table')},
+    {sep:true},{label:'Reset layout', danger:true, onClick:()=>dashResetLayout()} ]); }
+  function dashAddGroupList(kind){ const a=_dashAddAnchor;
+    const items=dashCatalog().filter(d=>d.kind===kind).map(d=>({label:d.title,onClick:()=>dashMountWidget({key:d.key},true)}));
+    dashMenu(a.x,a.y,[{label:'‹ Back',onClick:()=>dashAddRoot()},{sep:true},...items]); }
+  function dashAddBoxSources(){ const a=_dashAddAnchor; const src=dashBoxSources();
+    const items=Object.keys(src).map(s=>({label:src[s].title, arrow:true, onClick:()=>dashAddBoxMetrics(s)}));
+    dashMenu(a.x,a.y,[{label:'‹ Back',onClick:()=>dashAddRoot()},{sep:true},...items]); }
+  function dashAddBoxMetrics(source){ const a=_dashAddAnchor; const src=dashBoxSources()[source];
+    const items=src.labels.map((lb,i)=>({label:lb,onClick:()=>dashMountWidget({key:'box:'+source+':'+i},true)}));
+    dashMenu(a.x,a.y,[{label:'‹ Back',onClick:()=>dashAddBoxSources()},{sep:true},...items]); }
   function dashResetLayout(){ if(!_dashGrid){dashCloseMenu();return;} Object.keys(_dashInst).forEach(id=>{const el=document.querySelector('.grid-stack-item[gs-id="'+id+'"]'); if(el)_dashGrid.removeWidget(el);}); _dashInst={}; localStorage.removeItem('dashboardLayout'); dashDefaultLayout().forEach(it=>dashMountWidget(it,false)); dashSaveLayout(); dashCloseMenu(); }
 
   // ── Long-press / right-click / menu-button → widget menu (Dashboard only) ──
