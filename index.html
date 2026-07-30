@@ -2007,7 +2007,7 @@
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div>
         <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Dashboard</div>
-        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Drag to move · resize from the corner · long-press a widget for options</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Drag to move · resize width from the sides · long-press a widget for options</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <select id="overviewWarehouse" onchange="onOverviewWarehouseChange(this.value)"
@@ -6439,13 +6439,15 @@ function fail(error) {
     dashInjectStyles();
     // v11 escapes widget `content` as text by default; render it as HTML instead.
     GridStack.renderCB = function(el, w){ el.innerHTML = w.content || ''; };
-    _dashGrid=GridStack.init({column:12,cellHeight:64,margin:8,float:true,handle:'.dash-widget-head',draggable:{cancel:'.dash-widget-menu'}}, host);
+    _dashGrid=GridStack.init({column:12,cellHeight:64,margin:8,float:true,handle:'.dash-widget-head',resizable:{handles:'e,w'},draggable:{cancel:'.dash-widget-menu'}}, host);
     if(window.innerWidth<=768) _dashGrid.column(1,'moveScale');
     _dashGrid.on('change',()=>dashSaveLayout());
+    // Width can change how content wraps, so refit height when a resize ends.
+    _dashGrid.on('resizestop',(e,el)=>{ const inst=el&&el.gridstackNode&&_dashInst[el.gridstackNode.id]; if(inst) requestAnimationFrame(()=>dashAutosize(inst)); });
     window.addEventListener('resize', dashOnResize);
     dashLoadLayout().forEach(item=>dashMountWidget(item,false));
   }
-  function dashOnResize(){ clearTimeout(_dashRT); _dashRT=setTimeout(()=>{ if(_dashGrid) _dashGrid.column(window.innerWidth<=768?1:12,'moveScale'); },160); }
+  function dashOnResize(){ clearTimeout(_dashRT); _dashRT=setTimeout(()=>{ if(!_dashGrid) return; _dashGrid.column(window.innerWidth<=768?1:12,'moveScale'); requestAnimationFrame(()=>Object.values(_dashInst).forEach(dashAutosize)); },160); }
   function dashInstEl(inst){ return document.querySelector('.grid-stack-item[gs-id="'+inst.id+'"]'); }
   function dashMountWidget(item, save){
     const def=dashDef(item.key); if(!def||!_dashGrid) return;
@@ -6455,14 +6457,42 @@ function fail(error) {
     const content=`<div class="dash-widget" data-inst="${id}"><div class="dash-widget-head"><span class="dash-widget-title">${escHtml(def.title)}</span><button class="dash-widget-menu" data-inst="${id}" title="Options">⋯</button></div><div class="dash-widget-body"></div></div>`;
     _dashGrid.addWidget({x:item.x,y:item.y,w:item.w||def.w,h:item.h||def.h,id,content});
     dashRenderInst(inst);
+    // Refit height whenever the widget's WIDTH settles/changes (initial layout,
+    // sidebar collapse, window resize). Keyed on width only so our own height
+    // updates don't retrigger it into a loop.
+    const el=dashInstEl(inst), cont=el&&el.querySelector('.grid-stack-item-content');
+    if(cont&&window.ResizeObserver){ let lw=-1; inst._ro=new ResizeObserver(es=>{ const w=es[0].contentRect.width; if(Math.abs(w-lw)>1){ lw=w; dashAutosize(inst); } }); inst._ro.observe(cont); }
     if(save) dashSaveLayout();
   }
   function dashRenderInst(inst){
     const body=document.querySelector('.dash-widget[data-inst="'+inst.id+'"] .dash-widget-body'); if(!body) return;
     const def=dashDef(inst.key); if(!def) return; const wh=dashEffWh(inst);
     if(def.kind==='table') body.innerHTML=dashTableHtml(inst.key,wh,inst.hidden); else def.render(body,wh);
+    requestAnimationFrame(()=>dashAutosize(inst));
   }
   function dashRefreshWidgets(){ Object.values(_dashInst).forEach(dashRenderInst); }
+
+  // Grow a widget's row height so all its content shows without an inner
+  // scrollbar. Skipped while the Dashboard isn't visible (measurements are 0).
+  function dashAutosize(inst){
+    if(!_dashGrid || !_dashOnOverview()) return;
+    const item=dashInstEl(inst); if(!item) return;
+    const node=item.gridstackNode; if(!node) return;
+    const content=item.querySelector('.grid-stack-item-content');
+    const head=item.querySelector('.dash-widget-head'), body=item.querySelector('.dash-widget-body');
+    if(!content||!head||!body) return;
+    if(content.clientWidth < 120) return;   // skip transient/uncomposited widths (would mis-size)
+    // Measure the inner content's NATURAL height (body.scrollHeight can't shrink
+    // below the container, so it would never let an over-tall widget contract).
+    const inner=body.firstElementChild;
+    const bodyPad=24; // .dash-widget-body padding: 12px top+bottom
+    const contentH=inner?Math.ceil(inner.getBoundingClientRect().height):body.scrollHeight;
+    const cell=_dashGrid.getCellHeight()||64;
+    const need=head.offsetHeight + contentH + bodyPad;
+    const inset=Math.max(0, node.h*cell - content.clientHeight); // self-calibrated per item
+    const rows=Math.max(2, Math.ceil((need + inset + 2)/cell));
+    if(rows!==node.h) _dashGrid.update(item,{h:rows});
+  }
 
   // ── Popup menu helper ──
   var _dashMenuEl=null, _dashMenuPos={x:0,y:0};
@@ -6484,10 +6514,10 @@ function fail(error) {
   function dashWidgetMenu(inst,x,y,opts){
     opts=opts||{}; const def=dashDef(inst.key); if(!def) return;
     const items=[
-      {label:'Resize', arrow:true, onClick:()=>dashMenu(_dashMenuPos.x,_dashMenuPos.y,[
+      {label:'Width', arrow:true, onClick:()=>dashMenu(_dashMenuPos.x,_dashMenuPos.y,[
         {label:'‹ Back',onClick:()=>dashWidgetMenu(inst,_dashMenuPos.x,_dashMenuPos.y,opts)},{sep:true},
-        {label:'Small',onClick:()=>dashResizeInst(inst,4,3)},{label:'Medium',onClick:()=>dashResizeInst(inst,6,4)},
-        {label:'Large',onClick:()=>dashResizeInst(inst,8,5)},{label:'Full width',onClick:()=>dashResizeInst(inst,12,def.kind==='table'?6:4)} ])},
+        {label:'Small',onClick:()=>dashResizeInst(inst,4)},{label:'Medium',onClick:()=>dashResizeInst(inst,6)},
+        {label:'Large',onClick:()=>dashResizeInst(inst,8)},{label:'Full width',onClick:()=>dashResizeInst(inst,12)} ])},
       {label:'Set warehouse…', arrow:true, onClick:()=>dashWhMenu(inst)},
       {label:'Duplicate', onClick:()=>dashDuplicateInst(inst)},
     ];
@@ -6509,10 +6539,10 @@ function fail(error) {
       ...def.cols.map(c=>({label:c.label,check:true,checked:!inst.hidden.includes(c.key),onClick:()=>dashToggleCol(inst,c.key)}))]);
   }
   function dashWhNames(){ const s=new Set(); (b2cData||[]).forEach(r=>{if((!r.type||r.type==='warehouse')&&r.wh)s.add(r.wh);});(b2bData||[]).forEach(r=>{if(r.wh)s.add(r.wh);});(shortageData||[]).forEach(r=>{if(r.wh)s.add(r.wh);});(jobData||[]).forEach(r=>{if(r.wh)s.add(r.wh);});(userPerf||[]).forEach(r=>{if(r.warehouse_code)s.add(r.warehouse_code);}); return [...s].sort(); }
-  function dashResizeInst(inst,w,h){ const el=dashInstEl(inst); if(el&&_dashGrid){_dashGrid.update(el,{w,h}); dashSaveLayout();} dashCloseMenu(); }
+  function dashResizeInst(inst,w){ const el=dashInstEl(inst); if(el&&_dashGrid){_dashGrid.update(el,{w}); dashAutosize(inst); dashSaveLayout();} dashCloseMenu(); }
   function dashSetWh(inst,wh){ inst.wh=wh; dashRenderInst(inst); dashSaveLayout(); dashCloseMenu(); }
   function dashToggleCol(inst,key){ const i=inst.hidden.indexOf(key); if(i>=0)inst.hidden.splice(i,1); else inst.hidden.push(key); dashRenderInst(inst); dashSaveLayout(); dashColMenu(inst); }
-  function dashRemoveInst(inst){ const el=dashInstEl(inst); if(el&&_dashGrid)_dashGrid.removeWidget(el); delete _dashInst[inst.id]; dashSaveLayout(); dashCloseMenu(); }
+  function dashRemoveInst(inst){ if(inst._ro)inst._ro.disconnect(); const el=dashInstEl(inst); if(el&&_dashGrid)_dashGrid.removeWidget(el); delete _dashInst[inst.id]; dashSaveLayout(); dashCloseMenu(); }
   function dashDuplicateInst(inst){ const el=dashInstEl(inst), n=el&&el.gridstackNode; dashMountWidget({key:inst.key,w:n?n.w:undefined,h:n?n.h:undefined,wh:inst.wh,hidden:inst.hidden.slice()},true); dashCloseMenu(); }
 
   // ── Add-widget button + reset ──
