@@ -6508,7 +6508,7 @@ function fail(error) {
 
   function dashInjectStyles(){ if(document.getElementById('dash-w-styles')) return; document.head.insertAdjacentHTML('beforeend',`<style id="dash-w-styles">
     #dashGrid .grid-stack-item-content{overflow:hidden;background:transparent;border:0;}
-    .dash-widget{display:flex;flex-direction:column;height:100%;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+    .dash-widget{display:flex;flex-direction:column;height:100%;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
     .dash-widget-head{display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid var(--border);cursor:move;user-select:none;background:var(--surface2);flex:none;}
     .dash-widget-title{font-size:.75rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
     .dash-widget-menu{margin-left:auto;background:none;border:none;color:var(--muted);font-size:1.15rem;line-height:.6;cursor:pointer;padding:2px 8px;border-radius:6px;}
