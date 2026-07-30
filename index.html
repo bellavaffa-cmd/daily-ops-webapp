@@ -6491,7 +6491,7 @@ function fail(error) {
   // code that first calls renderDashboard(), so an inline `= {}` here would run
   // LATER and clobber state the init already populated. dashEnsureGrid() seeds
   // these on first run instead.
-  var _dashGrid, _dashInst, _dashSeq, _dashRT, _dashRZ;
+  var _dashGrid, _dashInst, _dashSeq, _dashRT, _dashBusy;
   // Lock layout: freezes drag/resize and stops the periodic refresh from
   // reflowing, so the dashboard stays put. Persisted in dashboardLocked.
   function dashLocked(){ return localStorage.getItem('dashboardLocked')==='1'; }
@@ -6533,10 +6533,13 @@ function fail(error) {
     _dashGrid=GridStack.init({column:12,cellHeight:64,margin:8,float:true,handle:'.dash-widget-head',resizable:{handles:'e,w'},draggable:{cancel:'.dash-widget-menu'}}, host);
     if(window.innerWidth<=768) _dashGrid.column(1,'moveScale');
     _dashGrid.on('change',()=>dashSaveLayout());
-    // Width can change how content wraps, so refit height live during a resize
-    // and once it ends — the widget never has to scroll at any width.
-    _dashGrid.on('resize',(e,el)=>{ const inst=el&&el.gridstackNode&&_dashInst[el.gridstackNode.id]; if(inst){ clearTimeout(_dashRZ); _dashRZ=setTimeout(()=>dashAutosize(inst),50); } });
-    _dashGrid.on('resizestop',(e,el)=>{ const inst=el&&el.gridstackNode&&_dashInst[el.gridstackNode.id]; if(inst) requestAnimationFrame(()=>dashAutosize(inst)); });
+    // Never mutate the grid (grid.update) while a drag/resize is in progress —
+    // doing so corrupts Gridstack's state so the mouse never releases the widget.
+    // Auto-fit (incl. the width ResizeObserver) is suppressed via _dashBusy until
+    // the interaction ends, then we refit once.
+    _dashGrid.on('resizestart',()=>{_dashBusy=true;}); _dashGrid.on('dragstart',()=>{_dashBusy=true;});
+    _dashGrid.on('dragstop',()=>{_dashBusy=false;});
+    _dashGrid.on('resizestop',(e,el)=>{ _dashBusy=false; const inst=el&&el.gridstackNode&&_dashInst[el.gridstackNode.id]; if(inst) requestAnimationFrame(()=>dashAutosize(inst)); });
     window.addEventListener('resize', dashOnResize);
     dashLoadLayout().forEach(item=>dashMountWidget(item,false));
     if(dashLocked()) _dashGrid.setStatic(true);
@@ -6572,7 +6575,7 @@ function fail(error) {
   // Grow a widget's row height so all its content shows without an inner
   // scrollbar. Skipped while the Dashboard isn't visible (measurements are 0).
   function dashAutosize(inst){
-    if(!_dashGrid || !_dashOnOverview()) return;
+    if(!_dashGrid || _dashBusy || !_dashOnOverview()) return;   // never resize mid drag/resize
     const item=dashInstEl(inst); if(!item) return;
     const node=item.gridstackNode; if(!node) return;
     const content=item.querySelector('.grid-stack-item-content');
