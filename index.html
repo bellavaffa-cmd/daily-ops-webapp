@@ -15,6 +15,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="vendor/gridstack.min.css" />
+  <script src="vendor/gridstack-all.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -2005,15 +2007,19 @@
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div>
         <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Dashboard</div>
-        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Key numbers across every dashboard · tap a card to open it</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Drag to move · resize from the corner · long-press a widget for options</div>
       </div>
-      <select id="overviewWarehouse" onchange="onOverviewWarehouseChange(this.value)"
-        style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;flex:0 1 220px;min-width:140px;max-width:240px"></select>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <select id="overviewWarehouse" onchange="onOverviewWarehouseChange(this.value)"
+          style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;flex:0 1 220px;min-width:140px;max-width:240px"></select>
+        <button class="btn btn-primary btn-sm" onclick="dashOpenAddMenu(this)" title="Add a widget to the dashboard"
+          style="display:flex;align-items:center;gap:5px;font-size:.78rem;padding:6px 12px;white-space:nowrap">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add widget
+        </button>
+      </div>
     </div>
-    <div style="margin:0 0 12px;font-size:.95rem;font-weight:700;color:var(--text)">Today's B2C</div>
-    <div id="overviewB2cKpis"></div>
-    <div style="margin:24px 0 12px;font-size:.95rem;font-weight:700;color:var(--text)">Overview</div>
-    <div id="overviewKpis"></div>
+    <div class="grid-stack" id="dashGrid"></div>
   </div>
 
   <!-- ── B2C DASHBOARD VIEW ── -->
@@ -3866,12 +3872,12 @@
     return keep;
   }
 
-  function renderDashboard() {
-    const el = document.getElementById('overviewKpis');
-    if (!el) return;
+  // Builder for the "Overview" summary widget — 7 headline KPI tiles, filtered by
+  // a warehouse (selWh; '' = all). Extracted so the customizable dashboard can
+  // mount it as a widget.
+  function dashOverviewHtml(selWh) {
     const fmt = n => Number(n || 0).toLocaleString();
     const sumField = (arr, k) => (arr || []).reduce((a, r) => a + (r[k] || 0), 0);
-    const selWh = populateOverviewWarehouseSelect(localStorage.getItem('overviewWarehouseFilter') || '');
     const whMatch = w => !selWh || w === selWh;
     const b2cWh = (b2cData || []).filter(r => (!r.type || r.type === 'warehouse') && r.wh && whMatch(r.wh));
     const b2bWh = (b2bData || []).filter(r => whMatch(r.wh));
@@ -3891,7 +3897,7 @@
       { label: 'Picked Today',     n: sumField(todayPerf, 'picked_orders'), sub: 'orders', color: '#86efac', view: 'productivity' },
       { label: 'Packed Today',     n: sumField(todayPerf, 'packed_orders'), sub: 'orders', color: '#5eead4', view: 'productivity' },
     ];
-    el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
+    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
       ${cards.map(c => `
         <div class="card kpi-link" onclick="showView('${c.view}')" style="padding:18px;cursor:pointer">
           <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${c.color};margin-bottom:8px">${c.label}</div>
@@ -3899,11 +3905,17 @@
           <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${c.sub}</div>
         </div>`).join('')}
     </div>`;
+  }
 
-    // "Today's B2C" — the full B2C status boxes, mirrored from the B2C tab via the
-    // shared builder, filtered by the Dashboard's own warehouse selector (b2cWh).
-    const b2cBox = document.getElementById('overviewB2cKpis');
-    if (b2cBox) b2cBox.innerHTML = b2cKpiCardsHtml(b2cWh, { interactive: false });
+  // Dashboard entry point. Keeps the warehouse selector populated, then hands off
+  // to the customizable widget grid (defined in the Dashboard-widgets module
+  // below): build it on first run, refresh widget bodies on every call (incl. the
+  // 8 s tick) without disturbing the user's layout.
+  function renderDashboard() {
+    if (!document.getElementById('dashGrid')) return;
+    populateOverviewWarehouseSelect(localStorage.getItem('overviewWarehouseFilter') || '');
+    dashEnsureGrid();
+    dashRefreshWidgets();
   }
 
   async function fetchShortageData() {
@@ -6255,6 +6267,272 @@ function fail(error) {
     a.download = `packing-errors-${new Date().toISOString().slice(0,10)}.csv`;
     a.click();
   }
+
+  /* ═══════════════ Customizable Dashboard — widgets + Gridstack ═══════════════
+     The Dashboard tab is a Gridstack grid of widgets. Each widget is a pure
+     builder that renders into its own cell for an effective warehouse filter
+     (per-widget override, else the dashboard's overviewWarehouseFilter). Layout
+     (which widgets, x/y/w/h, per-widget wh + hidden columns) persists to
+     localStorage.dashboardLayout. Box builders mirror the home tabs; b2c reuses
+     the shared b2cKpiCardsHtml. Scope: Dashboard tab only.                      */
+
+  function _dfmt(n) { return Number(n || 0).toLocaleString(); }
+
+  // ── Box builders (mirror the home-tab KPI grids, read-only) ──
+  function dashB2CBoxHtml(selWh) {
+    const f = (b2cData || []).filter(r => (!r.type || r.type === 'warehouse') && r.wh && (!selWh || r.wh === selWh));
+    return b2cKpiCardsHtml(f, { interactive: false });
+  }
+  function dashB2BBoxHtml(selWh) {
+    const f = (b2bData || []).filter(r => !selWh || r.wh === selWh);
+    const tot = f.reduce((a, r) => ({ open:a.open+(r.open||0), rfp:a.rfp+(r.rfp||0), picking:a.picking+(r.picking||0), pack_ready:a.pack_ready+(r.pack_ready||0), packing:a.packing+(r.packing||0), ready_ship:a.ready_ship+(r.ready_ship||0) }), { open:0,rfp:0,picking:0,pack_ready:0,packing:0,ready_ship:0 });
+    const KEYS = ['open','rfp','picking','pack_ready','packing','ready_ship'];
+    const excl = new Set(getExcluded('b2b'));
+    const total = KEYS.reduce((a,k)=>excl.has(k)?a:a+(tot[k]||0),0);
+    const pct = (n,d)=>d?(n/d*100).toFixed(1)+'%':'—';
+    const st = [
+      {key:'open',label:'Open',count:tot.open,color:'#fb923c'},
+      {key:'rfp',label:'Ready to Pick',count:tot.rfp,color:'#fcd34d'},
+      {key:'picking',label:'Picking Started',count:tot.picking,color:'#93c5fd'},
+      {key:'pack_ready',label:'Ready to Pack',count:tot.pack_ready,color:'#86efac'},
+      {key:'packing',label:'Packing Started',count:tot.packing,color:'#a78bfa'},
+      {key:'ready_ship',label:'Ready to Ship',count:tot.ready_ship,color:'#5eead4'},
+      {key:'total',label:'Total Orders',count:total,color:'var(--text)'},
+    ];
+    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">${st.map(s=>{
+      const isTot=s.key==='total', ex=!isTot&&excl.has(s.key);
+      const url=wmsStatusUrl('B2B',isTot?WMS_ALL_STATUS:[WMS_STATUS_ID[s.label]],isTot?'All':s.label);
+      const sub=isTot?'across all statuses':(ex?'Excluded from total':pct(s.count,total)+' of total');
+      return `<a class="card kpi-link" href="${url}" target="_blank" title="Open in WMS" style="padding:16px 18px;text-decoration:none;color:inherit;display:block${ex?';opacity:.5':''}"><div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px${ex?';text-decoration:line-through':''}">${s.label}</div><div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${_dfmt(s.count)}</div><div style="font-size:.72rem;color:var(--muted);margin-top:5px">${sub}</div></a>`;
+    }).join('')}</div>`;
+  }
+  function dashShortageBoxHtml(selWh) {
+    const f = (shortageData || []).filter(r => !selWh || r.wh === selWh);
+    const t = f.reduce((a,r)=>({a13:a.a13+(r.age_1_3||0),a47:a.a47+(r.age_4_7||0),a7:a.a7+(r.age_7_plus||0)}),{a13:0,a47:0,a7:0});
+    const total=t.a13+t.a47+t.a7, pct=(n,d)=>d?(n/d*100).toFixed(1)+'%':'—', base=wmsStatusUrl(null,[2],'Shortage');
+    const st=[{label:'1-3 Days',count:t.a13,color:'#86efac',age:[1,3]},{label:'4-7 Days',count:t.a47,color:'#fcd34d',age:[4,7]},{label:'7+ Days',count:t.a7,color:'#f87171',age:[8,9999]},{label:'Total Orders',count:total,color:'var(--text)',age:null}];
+    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">${st.map(s=>{
+      const url=base+(s.age?'&soag='+encodeURIComponent(encodeURIComponent(s.age[0]+','+s.age[1]))+'&soagqt=rng':'');
+      return `<a class="card kpi-link" href="${url}" target="_blank" title="Open in WMS" style="padding:16px 18px;text-decoration:none;color:inherit;display:block"><div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px">${s.label}</div><div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${_dfmt(s.count)}</div><div style="font-size:.72rem;color:var(--muted);margin-top:5px">${s.label==='Total Orders'?'across all ages':pct(s.count,total)+' of total'}</div></a>`;
+    }).join('')}</div>`;
+  }
+  function dashJobsBoxHtml(selWh) {
+    const f = (jobData || []).filter(r => !selWh || r.wh === selWh);
+    const K=['total','high','medium','low','no_priority'], tot={}; K.forEach(k=>tot[k]=f.reduce((a,r)=>a+(r[k]||0),0));
+    const cards=[{label:'Total Jobs',key:'total',color:'var(--text)',link:true},{label:'High',key:'high',color:'#f87171'},{label:'Medium',key:'medium',color:'#fcd34d'},{label:'Low',key:'low',color:'#86efac'},{label:'No Priority',key:'no_priority',color:'var(--muted)'}];
+    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">${cards.map(s=>{
+      const n=tot[s.key], sub=s.link?'pending jobs':(tot.total?(n/tot.total*100).toFixed(1)+'% of total':'—');
+      return `<div class="card" style="padding:16px 18px"><div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px">${s.label}</div>${s.link?`<a class="mp-link" href="${wmsJobUrl()}" target="_blank" style="display:inline-block;text-decoration:none;color:var(--text);font-size:2rem;font-weight:700;line-height:1">${_dfmt(n)}</a>`:`<div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${_dfmt(n)}</div>`}<div style="font-size:.72rem;color:var(--muted);margin-top:5px">${sub}</div></div>`;
+    }).join('')}</div>`;
+  }
+  function dashProdBoxHtml(selWh) {
+    const sum=(rows,k)=>rows.reduce((a,r)=>a+Number(r[k]||0),0);
+    const mode=(localStorage.getItem('prodMode')==='packed')?'packed':'picked';
+    const oK=mode==='packed'?'packed_orders':'picked_orders', iK=mode==='packed'?'packed_items':'picked_items';
+    const ml=mode==='packed'?'Packed':'Picked', mc=mode==='packed'?'#5eead4':'#86efac';
+    let rows=selWh?(userPerf||[]).filter(r=>r.warehouse_code===selWh):(userPerf||[]);
+    const today=localDateStr(), todayRows=rows.filter(r=>r.activity_date===today);
+    const kpis=[{label:ml+' Today · Orders',count:sum(todayRows,oK)},{label:ml+' Today · Items',count:sum(todayRows,iK)},{label:ml+' 30d · Orders',count:sum(rows,oK)},{label:ml+' 30d · Items',count:sum(rows,iK)}];
+    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">${kpis.map(s=>`<div class="card" style="padding:16px 18px"><div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${mc};margin-bottom:8px">${s.label}</div><div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${_dfmt(s.count)}</div></div>`).join('')}</div>`;
+  }
+
+  // ── Table builders (flat, filterable, with a column spec for show/hide) ──
+  function dashProdTableDef(kind) {
+    const mode=(localStorage.getItem('prodMode')==='packed')?'packed':'picked';
+    const oK=mode==='packed'?'packed_orders':'picked_orders', iK=mode==='packed'?'packed_items':'picked_items';
+    if (kind==='person') return {
+      cols:[{key:'name',label:'Person'},{key:'orders',label:'Orders',num:true,fmt:r=>_dfmt(r.orders)},{key:'items',label:'Items',num:true,fmt:r=>_dfmt(r.items)}],
+      rows: wh=>{ let rows=wh?(userPerf||[]).filter(r=>r.warehouse_code===wh):(userPerf||[]); const today=localDateStr(); rows=rows.filter(r=>r.activity_date===today);
+        const by={}; for(const r of rows){const k=r.executed_by_name||('#'+r.executed_by);(by[k]=by[k]||{name:escHtml(k),orders:0,items:0});by[k].orders+=Number(r[oK]||0);by[k].items+=Number(r[iK]||0);}
+        return Object.values(by).filter(u=>u.orders||u.items).sort((a,b)=>b.orders-a.orders); } };
+    return {
+      cols:[{key:'day',label:'Day',fmt:r=>(typeof dayLabel==='function'?dayLabel(r.day):r.day)},{key:'orders',label:'Orders',num:true,fmt:r=>_dfmt(r.orders)},{key:'items',label:'Items',num:true,fmt:r=>_dfmt(r.items)}],
+      rows: wh=>{ let rows=wh?(userPerf||[]).filter(r=>r.warehouse_code===wh):(userPerf||[]);
+        const by={}; for(const r of rows){const d=r.activity_date;(by[d]=by[d]||{day:d,orders:0,items:0});by[d].orders+=Number(r[oK]||0);by[d].items+=Number(r[iK]||0);}
+        return Object.values(by).sort((a,b)=>a.day<b.day?1:-1); } };
+  }
+  function dashTableDef(key) {
+    const num=(k,label)=>({key:k,label,num:true,fmt:r=>_dfmt(r[k])});
+    switch (key) {
+      case 'b2c_table': return { rows: wh=>(b2cData||[]).filter(r=>(!r.type||r.type==='warehouse')&&r.wh&&(!wh||r.wh===wh)), cols:[
+        {key:'wh',label:'Warehouse',fmt:r=>escHtml(r.wh)}, num('new','Open'), num('rfp','Ready to Pick'), num('picking','Picking'), num('picked','Ready to Pack'), num('packing','Packing'),
+        {key:'total',label:'Total',num:true,fmt:r=>_dfmt((r.new||0)+(r.rfp||0)+(r.picking||0)+(r.picked||0)+(r.packing||0))} ] };
+      case 'b2b_table': return { rows: wh=>(b2bData||[]).filter(r=>!wh||r.wh===wh), cols:[
+        {key:'wh',label:'Warehouse',fmt:r=>escHtml(r.wh)}, num('open','Open'), num('rfp','Ready to Pick'), num('picking','Picking'), num('pack_ready','Ready to Pack'), num('packing','Packing'), num('ready_ship','Ready to Ship'),
+        {key:'total',label:'Total',num:true,fmt:r=>_dfmt((r.open||0)+(r.rfp||0)+(r.picking||0)+(r.pack_ready||0)+(r.packing||0)+(r.ready_ship||0))} ] };
+      case 'shortage_table': return { rows: wh=>(shortageData||[]).filter(r=>!wh||r.wh===wh), cols:[
+        {key:'wh',label:'Warehouse',fmt:r=>escHtml(r.wh)}, num('age_1_3','1-3 Days'), num('age_4_7','4-7 Days'), num('age_7_plus','7+ Days'),
+        {key:'total',label:'Total',num:true,fmt:r=>_dfmt((r.age_1_3||0)+(r.age_4_7||0)+(r.age_7_plus||0))} ] };
+      case 'jobs_table': return { rows: wh=>(jobData||[]).filter(r=>!wh||r.wh===wh), cols:[
+        {key:'wh',label:'Warehouse',fmt:r=>escHtml(r.wh)}, num('total','Total'), num('high','High'), num('medium','Medium'), num('low','Low'), num('no_priority','No Priority') ] };
+      case 'b2b_orders': return { rows: wh=>(b2bOrders||[]).filter(o=>!wh||o.wh===wh), cols:[
+        {key:'order_id',label:'Order ID',fmt:r=>wmsOrderLink(r.order_id)},{key:'brand',label:'Brand',fmt:r=>escHtml(r.brand)||'—'},{key:'wh',label:'Warehouse',fmt:r=>escHtml(r.wh)},
+        {key:'status',label:'Status',fmt:r=>{const m=(typeof B2B_STATUS_META!=='undefined'&&B2B_STATUS_META[r.status])||{label:r.status||'—',color:'var(--text)'};return `<span style="color:${m.color}">${m.label}</span>`;}},
+        {key:'expected_ship_date',label:'Expected Ship',fmt:r=>(typeof fmtShipDate==='function'?fmtShipDate(r.expected_ship_date):(r.expected_ship_date||'—'))},{key:'collected_by',label:'Collected By',fmt:r=>escHtml(r.collected_by)||'—'} ] };
+      case 'shortage_orders': return { rows: wh=>(shortageOrders||[]).filter(o=>!wh||o.wh===wh), cols:[
+        {key:'order_id',label:'Order ID',fmt:r=>wmsOrderLink(r.order_id)},{key:'brand',label:'Brand',fmt:r=>escHtml(r.brand)||'—'},{key:'wh',label:'Warehouse',fmt:r=>escHtml(r.wh)},{key:'order_type',label:'Type',fmt:r=>escHtml(r.order_type)||'—'},{key:'age',label:'Age (days)',num:true,fmt:r=>_dfmt(r.age)} ] };
+      case 'prod_person': return dashProdTableDef('person');
+      case 'prod_daily': return dashProdTableDef('daily');
+    }
+    return null;
+  }
+  function dashTableHtml(key, selWh, hidden) {
+    const def=dashTableDef(key); if(!def) return '<div style="padding:16px;color:var(--muted);font-size:.82rem">No data.</div>';
+    hidden=hidden||[]; const cols=def.cols.filter(c=>!hidden.includes(c.key)); const rows=def.rows(selWh)||[];
+    const th=cols.map(c=>`<th data-col="${c.key}" style="text-align:${c.num?'right':'left'};padding:8px 14px;font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);white-space:nowrap;position:sticky;top:0;background:var(--surface2);cursor:context-menu">${c.label}</th>`).join('');
+    const body=rows.length?rows.map(r=>`<tr style="border-top:1px solid var(--border)">${cols.map(c=>`<td style="padding:8px 14px;font-size:.82rem;white-space:nowrap;text-align:${c.num?'right':'left'};color:var(--text)">${c.fmt?c.fmt(r):(r[c.key]??'')}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${cols.length}" style="padding:16px 14px;color:var(--muted);font-size:.82rem">No data.</td></tr>`;
+    return `<table style="width:100%;border-collapse:collapse"><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table>`;
+  }
+
+  // ── Widget catalog ──
+  function dashCatalog() { return [
+    {key:'overview', title:'Overview', kind:'boxes', w:12,h:3, render:(el,wh)=>el.innerHTML=dashOverviewHtml(wh)},
+    {key:'b2c', title:"Today's B2C", kind:'boxes', w:12,h:4, render:(el,wh)=>el.innerHTML=dashB2CBoxHtml(wh)},
+    {key:'b2b', title:'B2B Status', kind:'boxes', w:12,h:3, render:(el,wh)=>el.innerHTML=dashB2BBoxHtml(wh)},
+    {key:'shortage', title:'Shortage Ages', kind:'boxes', w:8,h:3, render:(el,wh)=>el.innerHTML=dashShortageBoxHtml(wh)},
+    {key:'jobs', title:'Jobs', kind:'boxes', w:10,h:3, render:(el,wh)=>el.innerHTML=dashJobsBoxHtml(wh)},
+    {key:'prod', title:'Productivity', kind:'boxes', w:8,h:3, render:(el,wh)=>el.innerHTML=dashProdBoxHtml(wh)},
+    {key:'b2c_table', title:'B2C Breakdown', kind:'table', w:8,h:5},
+    {key:'b2b_table', title:'B2B Breakdown', kind:'table', w:8,h:5},
+    {key:'shortage_table', title:'Shortage Breakdown', kind:'table', w:6,h:5},
+    {key:'jobs_table', title:'Jobs Breakdown', kind:'table', w:7,h:5},
+    {key:'b2b_orders', title:'B2B Orders', kind:'table', w:8,h:6},
+    {key:'shortage_orders', title:'Shortage Orders', kind:'table', w:7,h:6},
+    {key:'prod_person', title:'Productivity by Person', kind:'table', w:6,h:5},
+    {key:'prod_daily', title:'Productivity Daily', kind:'table', w:6,h:5},
+  ]; }
+  function dashDef(key) { return dashCatalog().find(d=>d.key===key); }
+
+  // ── Grid state + persistence ──
+  // Declaration-only (no initializers): this module is appended after the init
+  // code that first calls renderDashboard(), so an inline `= {}` here would run
+  // LATER and clobber state the init already populated. dashEnsureGrid() seeds
+  // these on first run instead.
+  var _dashGrid, _dashInst, _dashSeq, _dashRT;
+  function dashDashboardWh(){ return localStorage.getItem('overviewWarehouseFilter')||''; }
+  function dashEffWh(inst){ return inst.wh===undefined?dashDashboardWh():inst.wh; }
+  function dashDefaultLayout(){ return [ {key:'b2c',x:0,y:0,w:12,h:4}, {key:'overview',x:0,y:4,w:12,h:3} ]; }
+  function dashLoadLayout(){ try{const a=JSON.parse(localStorage.getItem('dashboardLayout')); if(Array.isArray(a)&&a.length) return a;}catch(e){} return dashDefaultLayout(); }
+  function dashSaveLayout(){ if(!_dashGrid) return; const out=_dashGrid.engine.nodes.slice().sort((a,b)=>(a.y-b.y)||(a.x-b.x)).map(n=>{const inst=_dashInst[n.id]; if(!inst) return null; const o={key:inst.key,x:n.x,y:n.y,w:n.w,h:n.h}; if(inst.wh!==undefined)o.wh=inst.wh; if(inst.hidden&&inst.hidden.length)o.hidden=inst.hidden; return o;}).filter(Boolean); try{localStorage.setItem('dashboardLayout',JSON.stringify(out));}catch(e){} }
+
+  function dashInjectStyles(){ if(document.getElementById('dash-w-styles')) return; document.head.insertAdjacentHTML('beforeend',`<style id="dash-w-styles">
+    #dashGrid .grid-stack-item-content{overflow:hidden;background:transparent;border:0;}
+    .dash-widget{display:flex;flex-direction:column;height:100%;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+    .dash-widget-head{display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid var(--border);cursor:move;user-select:none;background:var(--surface2);flex:none;}
+    .dash-widget-title{font-size:.75rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .dash-widget-menu{margin-left:auto;background:none;border:none;color:var(--muted);font-size:1.15rem;line-height:.6;cursor:pointer;padding:2px 8px;border-radius:6px;}
+    .dash-widget-menu:hover{background:var(--surface);color:var(--text);}
+    .dash-widget-body{flex:1;overflow:auto;padding:12px;}
+    .dash-menu{position:fixed;z-index:400;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 36px rgba(0,0,0,.55);padding:5px;min-width:190px;max-height:72vh;overflow:auto;font-size:.82rem;}
+    .dash-menu-item{display:flex;align-items:center;gap:7px;padding:8px 10px;border-radius:7px;color:var(--text);cursor:pointer;white-space:nowrap;}
+    .dash-menu-item:hover{background:var(--surface2);}
+    .dash-menu-item.danger{color:#f87171;}
+    .dash-menu-sep{height:1px;background:var(--border);margin:4px 6px;}
+    #dashGrid .grid-stack-item-content>.ui-resizable-handle{z-index:5;}
+  </style>`); }
+
+  // ── Grid build / mount / render ──
+  function dashEnsureGrid(){
+    if(_dashGrid) return;
+    _dashInst=_dashInst||{}; _dashSeq=_dashSeq||0; _dashMenuPos=_dashMenuPos||{x:0,y:0};
+    const host=document.getElementById('dashGrid'); if(!host||typeof GridStack==='undefined') return;
+    dashInjectStyles();
+    // v11 escapes widget `content` as text by default; render it as HTML instead.
+    GridStack.renderCB = function(el, w){ el.innerHTML = w.content || ''; };
+    _dashGrid=GridStack.init({column:12,cellHeight:64,margin:8,float:true,handle:'.dash-widget-head',draggable:{cancel:'.dash-widget-menu'}}, host);
+    if(window.innerWidth<=768) _dashGrid.column(1,'moveScale');
+    _dashGrid.on('change',()=>dashSaveLayout());
+    window.addEventListener('resize', dashOnResize);
+    dashLoadLayout().forEach(item=>dashMountWidget(item,false));
+  }
+  function dashOnResize(){ clearTimeout(_dashRT); _dashRT=setTimeout(()=>{ if(_dashGrid) _dashGrid.column(window.innerWidth<=768?1:12,'moveScale'); },160); }
+  function dashInstEl(inst){ return document.querySelector('.grid-stack-item[gs-id="'+inst.id+'"]'); }
+  function dashMountWidget(item, save){
+    const def=dashDef(item.key); if(!def||!_dashGrid) return;
+    const id='dw'+(++_dashSeq);
+    const inst={id,key:item.key,title:def.title,kind:def.kind,wh:item.wh,hidden:(item.hidden||[]).slice()};
+    _dashInst[id]=inst;
+    const content=`<div class="dash-widget" data-inst="${id}"><div class="dash-widget-head"><span class="dash-widget-title">${escHtml(def.title)}</span><button class="dash-widget-menu" data-inst="${id}" title="Options">⋯</button></div><div class="dash-widget-body"></div></div>`;
+    _dashGrid.addWidget({x:item.x,y:item.y,w:item.w||def.w,h:item.h||def.h,id,content});
+    dashRenderInst(inst);
+    if(save) dashSaveLayout();
+  }
+  function dashRenderInst(inst){
+    const body=document.querySelector('.dash-widget[data-inst="'+inst.id+'"] .dash-widget-body'); if(!body) return;
+    const def=dashDef(inst.key); if(!def) return; const wh=dashEffWh(inst);
+    if(def.kind==='table') body.innerHTML=dashTableHtml(inst.key,wh,inst.hidden); else def.render(body,wh);
+  }
+  function dashRefreshWidgets(){ Object.values(_dashInst).forEach(dashRenderInst); }
+
+  // ── Popup menu helper ──
+  var _dashMenuEl=null, _dashMenuPos={x:0,y:0};
+  function dashCloseMenu(){ if(_dashMenuEl){_dashMenuEl.remove();_dashMenuEl=null;document.removeEventListener('pointerdown',_dashMenuOutside,true);} }
+  function _dashMenuOutside(e){ if(_dashMenuEl && !_dashMenuEl.contains(e.target)) dashCloseMenu(); }
+  function dashMenu(x,y,items){
+    dashCloseMenu(); _dashMenuPos={x,y};
+    const m=document.createElement('div'); m.className='dash-menu';
+    m.innerHTML=items.map((it,i)=> it.sep?'<div class="dash-menu-sep"></div>':`<div class="dash-menu-item${it.danger?' danger':''}" data-i="${i}">${it.check?('<span style="width:14px;display:inline-block;text-align:center">'+(it.checked?'✓':'')+'</span>'):''}<span>${escHtml(it.label)}</span>${it.arrow?'<span style="margin-left:auto;opacity:.6">›</span>':''}</div>`).join('');
+    document.body.appendChild(m);
+    m.style.left=Math.max(6,Math.min(x,window.innerWidth-m.offsetWidth-8))+'px';
+    m.style.top=Math.max(6,Math.min(y,window.innerHeight-m.offsetHeight-8))+'px';
+    m.addEventListener('click',ev=>{const el=ev.target.closest('.dash-menu-item');if(!el)return;const it=items[+el.dataset.i];if(it&&it.onClick)it.onClick();});
+    _dashMenuEl=m;
+    setTimeout(()=>document.addEventListener('pointerdown',_dashMenuOutside,true),0);
+  }
+
+  // ── Widget option menus ──
+  function dashWidgetMenu(inst,x,y,opts){
+    opts=opts||{}; const def=dashDef(inst.key); if(!def) return;
+    const items=[
+      {label:'Resize', arrow:true, onClick:()=>dashMenu(_dashMenuPos.x,_dashMenuPos.y,[
+        {label:'‹ Back',onClick:()=>dashWidgetMenu(inst,_dashMenuPos.x,_dashMenuPos.y,opts)},{sep:true},
+        {label:'Small',onClick:()=>dashResizeInst(inst,4,3)},{label:'Medium',onClick:()=>dashResizeInst(inst,6,4)},
+        {label:'Large',onClick:()=>dashResizeInst(inst,8,5)},{label:'Full width',onClick:()=>dashResizeInst(inst,12,def.kind==='table'?6:4)} ])},
+      {label:'Set warehouse…', arrow:true, onClick:()=>dashWhMenu(inst)},
+      {label:'Duplicate', onClick:()=>dashDuplicateInst(inst)},
+    ];
+    if(def.kind==='table') items.push({label:'Show / hide columns…', arrow:true, onClick:()=>dashColMenu(inst)});
+    items.push({sep:true},{label:'Remove from dashboard', danger:true, onClick:()=>dashRemoveInst(inst)});
+    dashMenu(x,y,items);
+  }
+  function dashWhMenu(inst){
+    const names=dashWhNames(), x=_dashMenuPos.x, y=_dashMenuPos.y;
+    dashMenu(x,y,[{label:'‹ Back',onClick:()=>dashWidgetMenu(inst,x,y)},{sep:true},
+      {label:'Follow dashboard',check:true,checked:inst.wh===undefined,onClick:()=>dashSetWh(inst,undefined)},
+      {label:'All warehouses',check:true,checked:inst.wh==='',onClick:()=>dashSetWh(inst,'')},
+      ...names.map(nm=>({label:nm,check:true,checked:inst.wh===nm,onClick:()=>dashSetWh(inst,nm)}))]);
+  }
+  function dashColMenu(inst){
+    const def=dashTableDef(inst.key); if(!def) return;
+    const x=_dashMenuPos.x, y=_dashMenuPos.y;
+    dashMenu(x,y,[{label:'‹ Back',onClick:()=>dashWidgetMenu(inst,x,y)},{sep:true},
+      ...def.cols.map(c=>({label:c.label,check:true,checked:!inst.hidden.includes(c.key),onClick:()=>dashToggleCol(inst,c.key)}))]);
+  }
+  function dashWhNames(){ const s=new Set(); (b2cData||[]).forEach(r=>{if((!r.type||r.type==='warehouse')&&r.wh)s.add(r.wh);});(b2bData||[]).forEach(r=>{if(r.wh)s.add(r.wh);});(shortageData||[]).forEach(r=>{if(r.wh)s.add(r.wh);});(jobData||[]).forEach(r=>{if(r.wh)s.add(r.wh);});(userPerf||[]).forEach(r=>{if(r.warehouse_code)s.add(r.warehouse_code);}); return [...s].sort(); }
+  function dashResizeInst(inst,w,h){ const el=dashInstEl(inst); if(el&&_dashGrid){_dashGrid.update(el,{w,h}); dashSaveLayout();} dashCloseMenu(); }
+  function dashSetWh(inst,wh){ inst.wh=wh; dashRenderInst(inst); dashSaveLayout(); dashCloseMenu(); }
+  function dashToggleCol(inst,key){ const i=inst.hidden.indexOf(key); if(i>=0)inst.hidden.splice(i,1); else inst.hidden.push(key); dashRenderInst(inst); dashSaveLayout(); dashColMenu(inst); }
+  function dashRemoveInst(inst){ const el=dashInstEl(inst); if(el&&_dashGrid)_dashGrid.removeWidget(el); delete _dashInst[inst.id]; dashSaveLayout(); dashCloseMenu(); }
+  function dashDuplicateInst(inst){ const el=dashInstEl(inst), n=el&&el.gridstackNode; dashMountWidget({key:inst.key,w:n?n.w:undefined,h:n?n.h:undefined,wh:inst.wh,hidden:inst.hidden.slice()},true); dashCloseMenu(); }
+
+  // ── Add-widget button + reset ──
+  function dashOpenAddMenu(btn){
+    dashEnsureGrid(); const r=btn.getBoundingClientRect(); const present=new Set(Object.values(_dashInst).map(i=>i.key));
+    const items=dashCatalog().map(d=>({label:(present.has(d.key)?'✓ ':'')+d.title,onClick:()=>dashMountWidget({key:d.key},true)}));
+    items.push({sep:true},{label:'Reset layout',danger:true,onClick:()=>dashResetLayout()});
+    dashMenu(r.left,r.bottom+4,items);
+  }
+  function dashResetLayout(){ if(!_dashGrid){dashCloseMenu();return;} Object.keys(_dashInst).forEach(id=>{const el=document.querySelector('.grid-stack-item[gs-id="'+id+'"]'); if(el)_dashGrid.removeWidget(el);}); _dashInst={}; localStorage.removeItem('dashboardLayout'); dashDefaultLayout().forEach(it=>dashMountWidget(it,false)); dashSaveLayout(); dashCloseMenu(); }
+
+  // ── Long-press / right-click / menu-button → widget menu (Dashboard only) ──
+  var _lpTimer=null,_lpStart=null,_lpFired=false;
+  function _dashOnOverview(){ const v=document.getElementById('view-overview'); return v&&v.classList.contains('active'); }
+  document.addEventListener('click',e=>{ const b=e.target.closest('.dash-widget-menu'); if(b){ e.preventDefault(); e.stopPropagation(); const inst=_dashInst[b.dataset.inst]; if(inst){const r=b.getBoundingClientRect(); dashWidgetMenu(inst,r.left,r.bottom+4);} } });
+  document.addEventListener('click',e=>{ if(_lpFired){ _lpFired=false; e.preventDefault(); e.stopPropagation(); } },true);
+  document.addEventListener('contextmenu',e=>{ if(!_dashOnOverview())return; const w=e.target.closest('.dash-widget'); if(!w)return; e.preventDefault(); const inst=_dashInst[w.dataset.inst]; if(!inst)return; dashWidgetMenu(inst,e.clientX,e.clientY,{header:!!e.target.closest('th')}); });
+  document.addEventListener('pointerdown',e=>{ if(!_dashOnOverview())return; const w=e.target.closest('.dash-widget'); if(!w||e.target.closest('.dash-widget-menu'))return; const inst=_dashInst[w.dataset.inst]; if(!inst)return; const header=!!e.target.closest('th'); _lpStart={x:e.clientX,y:e.clientY}; _lpFired=false; clearTimeout(_lpTimer); _lpTimer=setTimeout(()=>{ _lpTimer=null; _lpFired=true; dashWidgetMenu(inst,_lpStart.x,_lpStart.y,{header}); },500); });
+  document.addEventListener('pointermove',e=>{ if(_lpTimer&&_lpStart&&(Math.abs(e.clientX-_lpStart.x)>8||Math.abs(e.clientY-_lpStart.y)>8)){clearTimeout(_lpTimer);_lpTimer=null;} });
+  ['pointerup','pointercancel'].forEach(ev=>document.addEventListener(ev,()=>{ if(_lpTimer){clearTimeout(_lpTimer);_lpTimer=null;} }));
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
