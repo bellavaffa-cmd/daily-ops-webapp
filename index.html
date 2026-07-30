@@ -6410,9 +6410,40 @@ function fail(error) {
   }
 
   // ── Widget catalog ──
+  // Hourly-flow composite box (new B2C orders vs picking & packing / net). Mirrors
+  // renderB2CFlow, but filtered by a per-widget warehouse instead of the global one.
+  function dashFlowCompute(selWh){
+    const whMatch=w=>!selWh||w===selWh, fmt=n=>Number(n||0).toLocaleString();
+    const tStr=t=>new Date(t).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+    const inb={}, seen=new Set();
+    for(const r of (b2cFlow||[])){ if(!whMatch(r.warehouse_code))continue; const t=new Date(r.captured_at).getTime(); const k=r.warehouse_code+'@'+t; if(seen.has(k))continue; seen.add(k); (inb[t]=inb[t]||{t,val:0}).val+=Number(r.inflow_1h||0); }
+    const inflowArr=Object.values(inb).sort((a,b)=>b.t-a.t); const newVal=inflowArr[0]?inflowArr[0].val:null;
+    const prod={}, pseen=new Set();
+    for(const r of (b2cPackSnaps||[])){ if(!whMatch(r.warehouse_code))continue; const t=new Date(r.captured_at).getTime(); const k=r.warehouse_code+'@'+t; if(pseen.has(k))continue; pseen.add(k); const o=(prod[t]=prod[t]||{t,picked:0,packed:0,date:r.activity_date}); o.picked+=Number(r.picked_orders||0); o.packed+=Number(r.packed_orders||0); }
+    const prodArr=Object.values(prod).sort((a,b)=>b.t-a.t); const latest=prodArr[0]; let prev=null,best=Infinity;
+    if(latest){ const target=latest.t-3600000; for(let i=1;i<prodArr.length;i++){ const bkt=prodArr[i]; if(latest.date&&bkt.date&&bkt.date!==latest.date)continue; const gap=latest.t-bkt.t; if(gap<1800000||gap>6000000)continue; const d=Math.abs(bkt.t-target); if(d<best){best=d;prev=bkt;} } }
+    let picked='—',packed='—',net='—',netColor='var(--text)',windowStr='Collecting data…';
+    if(latest&&prev){ const packVal=Math.max(0,latest.packed-prev.packed); picked=fmt(Math.max(0,latest.picked-prev.picked)); packed=fmt(packVal);
+      if(newVal!=null){ const n=packVal-newVal; net=(n>0?'+':'')+fmt(n); netColor=n>0?'#86efac':(n<0?'#f87171':'var(--text)'); }
+      windowStr=`${tStr(prev.t)} → ${tStr(latest.t)} · picking & packing count all order types`; }
+    return { inflow:newVal!=null?fmt(newVal):'—', picked, packed, net, netColor, windowStr };
+  }
+  function dashFlowHtml(selWh){
+    const f=dashFlowCompute(selWh);
+    const metric=(label,color,val)=>`<div style="text-align:center"><div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${color};margin-bottom:4px">${label}</div><div style="font-size:1.9rem;font-weight:700;color:var(--text);line-height:1">${val}</div></div>`;
+    return `<div style="display:flex;flex-direction:column;gap:12px">
+      <div><div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--brand,#94ffa1)">Hourly flow — new B2C orders vs picking &amp; packing</div>
+      <div style="font-size:.7rem;color:var(--muted);margin-top:3px">${f.windowStr}</div></div>
+      <div style="display:flex;gap:24px;flex-wrap:wrap">
+        ${metric('New Order / hr','#fb923c',f.inflow)}${metric('Picking / hr','#86efac',f.picked)}${metric('Packing / hr','#5eead4',f.packed)}
+        <div style="text-align:center;padding-left:20px;border-left:1px solid var(--border)"><div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px">Net Depletion / hr</div><div style="font-size:1.9rem;font-weight:700;color:${f.netColor};line-height:1">${f.net}</div></div>
+      </div>
+    </div>`;
+  }
   function dashCatalog() { return [
     {key:'overview', title:'Overview', kind:'boxes', w:12,h:3, render:(el,wh)=>el.innerHTML=dashOverviewHtml(wh)},
     {key:'b2c', title:"Today's B2C", kind:'boxes', w:12,h:4, render:(el,wh)=>el.innerHTML=dashB2CBoxHtml(wh)},
+    {key:'flow', title:'Hourly Flow', kind:'boxes', w:12,h:3, render:(el,wh)=>el.innerHTML=dashFlowHtml(wh)},
     {key:'b2b', title:'B2B Status', kind:'boxes', w:12,h:3, render:(el,wh)=>el.innerHTML=dashB2BBoxHtml(wh)},
     {key:'shortage', title:'Shortage Ages', kind:'boxes', w:8,h:3, render:(el,wh)=>el.innerHTML=dashShortageBoxHtml(wh)},
     {key:'jobs', title:'Jobs', kind:'boxes', w:10,h:3, render:(el,wh)=>el.innerHTML=dashJobsBoxHtml(wh)},
@@ -6628,13 +6659,14 @@ function fail(error) {
   //    Productivity) → same menu as a dashboard box, but "Add to dashboard"
   //    instead of Remove. Adds that exact box as a single-box widget. ──
   function dashHomeBoxAt(target){
-    const map={b2cKpis:'b2c',b2bKpis:'b2b',shortageKpis:'shortage',jobsKpis:'jobs',productivityKpis:'prod'};
     const card=target.closest&&target.closest('.card'); if(!card) return null;
-    for(const id in map){ const cont=document.getElementById(id); if(cont&&cont.contains(card)){ const grid=cont.firstElementChild; if(!grid) return null; const idx=[...grid.children].indexOf(card); if(idx>=0) return {source:map[id],index:idx}; } }
+    if(card.id==='b2cFlowBox') return {key:'flow'};   // the Hourly Flow composite box
+    const map={b2cKpis:'b2c',b2bKpis:'b2b',shortageKpis:'shortage',jobsKpis:'jobs',productivityKpis:'prod'};
+    for(const id in map){ const cont=document.getElementById(id); if(cont&&cont.contains(card)){ const grid=cont.firstElementChild; if(!grid) return null; const idx=[...grid.children].indexOf(card); if(idx>=0) return {key:'box:'+map[id]+':'+idx}; } }
     return null;
   }
   function dashHomeBoxMenu(box,x,y){
-    const key='box:'+box.source+':'+box.index;
+    const key=box.key;
     const add=opts=>{ dashEnsureGrid(); dashMountWidget(Object.assign({key},opts||{}),true); if(typeof showToast==='function') showToast('Added to dashboard ✓',true); dashCloseMenu(); };
     dashMenu(x,y,[
       {label:'Width', arrow:true, onClick:()=>dashMenu(_dashMenuPos.x,_dashMenuPos.y,[
