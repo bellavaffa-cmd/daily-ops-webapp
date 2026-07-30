@@ -6699,8 +6699,20 @@ function fail(error) {
       {label:'Add to dashboard', onClick:()=>add()},
     ]);
   }
-  document.addEventListener('contextmenu',e=>{ const box=dashHomeBoxAt(e.target); if(!box)return; e.preventDefault(); dashHomeBoxMenu(box,e.clientX,e.clientY); });
-  document.addEventListener('pointerdown',e=>{ const box=dashHomeBoxAt(e.target); if(!box)return; _lpStart={x:e.clientX,y:e.clientY}; _lpFired=false; clearTimeout(_lpTimer); _lpTimer=setTimeout(()=>{ _lpTimer=null; _lpFired=true; dashHomeBoxMenu(box,_lpStart.x,_lpStart.y); },500); });
+  // Home-tab tables → same "Add to dashboard" menu, mapped to their table widget.
+  function dashHomeTableAt(target){
+    const map={ b2cWHTable:'b2c_table', b2bWHTable:'b2b_table', b2bOrdersTable:'b2b_orders', shortageWHTable:'shortage_table', shortageOrdersTable:'shortage_orders', jobsWHTable:'jobs_table', prodUserTable:'prod_person', prodDailyTable:'prod_daily' };
+    const table=target.closest&&target.closest('table'); if(!table) return null;
+    for(const id in map){ if(table.querySelector('#'+id)) return {key:map[id]}; }
+    return null;
+  }
+  function dashHomeTarget(t){ return dashHomeBoxAt(t) || dashHomeTableAt(t); }
+  // Text selection on dense table text hijacks tap-and-hold; suppress it on these
+  // tables so long-press reliably opens the menu (right-click always works too).
+  function dashMarkHomeTables(){ ['b2cWHTable','b2bWHTable','b2bOrdersTable','shortageWHTable','shortageOrdersTable','jobsWHTable','prodUserTable','prodDailyTable'].forEach(id=>{ const tb=document.getElementById(id), tbl=tb&&tb.closest('table'); if(tbl){ tbl.style.userSelect='none'; tbl.style.webkitUserSelect='none'; tbl.style.webkitTouchCallout='none'; } }); }
+  dashMarkHomeTables();
+  document.addEventListener('contextmenu',e=>{ const box=dashHomeTarget(e.target); if(!box)return; e.preventDefault(); dashHomeBoxMenu(box,e.clientX,e.clientY); });
+  document.addEventListener('pointerdown',e=>{ const box=dashHomeTarget(e.target); if(!box)return; _lpStart={x:e.clientX,y:e.clientY}; _lpFired=false; clearTimeout(_lpTimer); _lpTimer=setTimeout(()=>{ _lpTimer=null; _lpFired=true; dashHomeBoxMenu(box,_lpStart.x,_lpStart.y); },500); });
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
