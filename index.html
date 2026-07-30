@@ -2018,7 +2018,7 @@
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div>
         <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Dashboard</div>
-        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Drag to move · resize width from the sides · long-press a widget for options</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Drag to move · resize width from the sides · long-press for options · Lock to freeze the layout</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <select id="overviewWarehouse" onchange="onOverviewWarehouseChange(this.value)"
@@ -2028,6 +2028,8 @@
           <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Add widget
         </button>
+        <button id="dashLockBtn" class="btn btn-ghost btn-sm" onclick="dashToggleLock()"
+          style="display:flex;align-items:center;gap:5px;font-size:.78rem;padding:6px 12px;white-space:nowrap">Lock</button>
       </div>
     </div>
     <div class="grid-stack" id="dashGrid"></div>
@@ -6441,21 +6443,21 @@ function fail(error) {
     </div>`;
   }
   function dashCatalog() { return [
-    {key:'overview', title:'Overview', kind:'boxes', w:12,h:3, render:(el,wh)=>el.innerHTML=dashOverviewHtml(wh)},
-    {key:'b2c', title:"Today's B2C", kind:'boxes', w:12,h:4, render:(el,wh)=>el.innerHTML=dashB2CBoxHtml(wh)},
-    {key:'flow', title:'Hourly Flow', kind:'boxes', w:12,h:3, render:(el,wh)=>el.innerHTML=dashFlowHtml(wh)},
-    {key:'b2b', title:'B2B Status', kind:'boxes', w:12,h:3, render:(el,wh)=>el.innerHTML=dashB2BBoxHtml(wh)},
-    {key:'shortage', title:'Shortage Ages', kind:'boxes', w:8,h:3, render:(el,wh)=>el.innerHTML=dashShortageBoxHtml(wh)},
-    {key:'jobs', title:'Jobs', kind:'boxes', w:10,h:3, render:(el,wh)=>el.innerHTML=dashJobsBoxHtml(wh)},
-    {key:'prod', title:'Productivity', kind:'boxes', w:8,h:3, render:(el,wh)=>el.innerHTML=dashProdBoxHtml(wh)},
-    {key:'b2c_table', title:'B2C Breakdown', kind:'table', w:8,h:5},
-    {key:'b2b_table', title:'B2B Breakdown', kind:'table', w:8,h:5},
-    {key:'shortage_table', title:'Shortage Breakdown', kind:'table', w:6,h:5},
-    {key:'jobs_table', title:'Jobs Breakdown', kind:'table', w:7,h:5},
-    {key:'b2b_orders', title:'B2B Orders', kind:'table', w:8,h:6},
-    {key:'shortage_orders', title:'Shortage Orders', kind:'table', w:7,h:6},
-    {key:'prod_person', title:'Productivity by Person', kind:'table', w:6,h:5},
-    {key:'prod_daily', title:'Productivity Daily', kind:'table', w:6,h:5},
+    {key:'overview', title:'Overview', kind:'boxes', w:12,h:3, minW:5, render:(el,wh)=>el.innerHTML=dashOverviewHtml(wh)},
+    {key:'b2c', title:"Today's B2C", kind:'boxes', w:12,h:4, minW:5, render:(el,wh)=>el.innerHTML=dashB2CBoxHtml(wh)},
+    {key:'flow', title:'Hourly Flow', kind:'boxes', w:12,h:3, minW:5, render:(el,wh)=>el.innerHTML=dashFlowHtml(wh)},
+    {key:'b2b', title:'B2B Status', kind:'boxes', w:12,h:3, minW:5, render:(el,wh)=>el.innerHTML=dashB2BBoxHtml(wh)},
+    {key:'shortage', title:'Shortage Ages', kind:'boxes', w:8,h:3, minW:4, render:(el,wh)=>el.innerHTML=dashShortageBoxHtml(wh)},
+    {key:'jobs', title:'Jobs', kind:'boxes', w:10,h:3, minW:4, render:(el,wh)=>el.innerHTML=dashJobsBoxHtml(wh)},
+    {key:'prod', title:'Productivity', kind:'boxes', w:8,h:3, minW:4, render:(el,wh)=>el.innerHTML=dashProdBoxHtml(wh)},
+    {key:'b2c_table', title:'B2C Breakdown', kind:'table', w:8,h:5, minW:6},
+    {key:'b2b_table', title:'B2B Breakdown', kind:'table', w:8,h:5, minW:6},
+    {key:'shortage_table', title:'Shortage Breakdown', kind:'table', w:6,h:5, minW:4},
+    {key:'jobs_table', title:'Jobs Breakdown', kind:'table', w:7,h:5, minW:5},
+    {key:'b2b_orders', title:'B2B Orders', kind:'table', w:8,h:6, minW:6},
+    {key:'shortage_orders', title:'Shortage Orders', kind:'table', w:7,h:6, minW:5},
+    {key:'prod_person', title:'Productivity by Person', kind:'table', w:6,h:5, minW:3},
+    {key:'prod_daily', title:'Productivity Daily', kind:'table', w:6,h:5, minW:3},
   ]; }
   // Single-box widgets: each individual KPI tile can live on the dashboard on its
   // own. A box widget key is `box:<source>:<index>`; it renders exactly one card
@@ -6479,7 +6481,7 @@ function fail(error) {
   function dashDef(key) {
     const b=dashParseBox(key);
     if(b){ const src=dashBoxSources()[b.source]; if(!src) return null;
-      return { key, title:src.title+' — '+(src.labels[b.index]||('#'+b.index)), kind:'box', w:src.w, h:3,
+      return { key, title:src.title+' — '+(src.labels[b.index]||('#'+b.index)), kind:'box', w:src.w, h:3, minW:(b.source==='b2c'?3:2),
         render:(el,wh)=>el.innerHTML=dashBoxWidgetHtml(b.source,b.index,wh) }; }
     return dashCatalog().find(d=>d.key===key);
   }
@@ -6489,7 +6491,15 @@ function fail(error) {
   // code that first calls renderDashboard(), so an inline `= {}` here would run
   // LATER and clobber state the init already populated. dashEnsureGrid() seeds
   // these on first run instead.
-  var _dashGrid, _dashInst, _dashSeq, _dashRT;
+  var _dashGrid, _dashInst, _dashSeq, _dashRT, _dashRZ;
+  // Lock layout: freezes drag/resize and stops the periodic refresh from
+  // reflowing, so the dashboard stays put. Persisted in dashboardLocked.
+  function dashLocked(){ return localStorage.getItem('dashboardLocked')==='1'; }
+  function dashToggleLock(){ const now=!dashLocked(); try{localStorage.setItem('dashboardLocked', now?'1':'0');}catch(e){} if(_dashGrid) _dashGrid.setStatic(now); dashUpdateLockBtn(); if(!now){ dashRefreshWidgets(); } if(typeof showToast==='function') showToast(now?'Layout locked':'Layout unlocked', true); }
+  function dashUpdateLockBtn(){ const b=document.getElementById('dashLockBtn'); if(!b) return; const locked=dashLocked();
+    b.innerHTML=`<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path stroke-linecap="round" d="${locked?'M8 11V7a4 4 0 018 0v4':'M8 11V7a4 4 0 017-2.6'}"/></svg> ${locked?'Locked':'Lock'}`;
+    b.classList.toggle('btn-primary', locked); b.classList.toggle('btn-ghost', !locked);
+    b.title=locked?'Layout locked — widgets stay put during refresh. Click to edit.':'Lock the layout so it stays put during refresh'; }
   function dashDashboardWh(){ return localStorage.getItem('overviewWarehouseFilter')||''; }
   function dashEffWh(inst){ return inst.wh===undefined?dashDashboardWh():inst.wh; }
   function dashDefaultLayout(){ return [ {key:'b2c',x:0,y:0,w:12,h:4}, {key:'overview',x:0,y:4,w:12,h:3} ]; }
@@ -6523,10 +6533,14 @@ function fail(error) {
     _dashGrid=GridStack.init({column:12,cellHeight:64,margin:8,float:true,handle:'.dash-widget-head',resizable:{handles:'e,w'},draggable:{cancel:'.dash-widget-menu'}}, host);
     if(window.innerWidth<=768) _dashGrid.column(1,'moveScale');
     _dashGrid.on('change',()=>dashSaveLayout());
-    // Width can change how content wraps, so refit height when a resize ends.
+    // Width can change how content wraps, so refit height live during a resize
+    // and once it ends — the widget never has to scroll at any width.
+    _dashGrid.on('resize',(e,el)=>{ const inst=el&&el.gridstackNode&&_dashInst[el.gridstackNode.id]; if(inst){ clearTimeout(_dashRZ); _dashRZ=setTimeout(()=>dashAutosize(inst),50); } });
     _dashGrid.on('resizestop',(e,el)=>{ const inst=el&&el.gridstackNode&&_dashInst[el.gridstackNode.id]; if(inst) requestAnimationFrame(()=>dashAutosize(inst)); });
     window.addEventListener('resize', dashOnResize);
     dashLoadLayout().forEach(item=>dashMountWidget(item,false));
+    if(dashLocked()) _dashGrid.setStatic(true);
+    dashUpdateLockBtn();
   }
   function dashOnResize(){ clearTimeout(_dashRT); _dashRT=setTimeout(()=>{ if(!_dashGrid) return; _dashGrid.column(window.innerWidth<=768?1:12,'moveScale'); requestAnimationFrame(()=>Object.values(_dashInst).forEach(dashAutosize)); },160); }
   function dashInstEl(inst){ return document.querySelector('.grid-stack-item[gs-id="'+inst.id+'"]'); }
@@ -6536,7 +6550,7 @@ function fail(error) {
     const inst={id,key:item.key,title:def.title,kind:def.kind,wh:item.wh,hidden:(item.hidden||[]).slice()};
     _dashInst[id]=inst;
     const content=`<div class="dash-widget" data-inst="${id}"><div class="dash-widget-head"><span class="dash-widget-title">${escHtml(def.title)}</span><button class="dash-widget-menu" data-inst="${id}" title="Options">⋯</button></div><div class="dash-widget-body"></div></div>`;
-    _dashGrid.addWidget({x:item.x,y:item.y,w:item.w||def.w,h:item.h||def.h,id,content});
+    _dashGrid.addWidget({x:item.x,y:item.y,w:item.w||def.w,h:item.h||def.h,minW:def.minW||2,id,content});
     dashRenderInst(inst);
     // Refit height whenever the widget's WIDTH settles/changes (initial layout,
     // sidebar collapse, window resize). Keyed on width only so our own height
@@ -6545,13 +6559,15 @@ function fail(error) {
     if(cont&&window.ResizeObserver){ let lw=-1; inst._ro=new ResizeObserver(es=>{ const w=es[0].contentRect.width; if(Math.abs(w-lw)>1){ lw=w; dashAutosize(inst); } }); inst._ro.observe(cont); }
     if(save) dashSaveLayout();
   }
-  function dashRenderInst(inst){
+  function dashRenderInst(inst, autosize){
     const body=document.querySelector('.dash-widget[data-inst="'+inst.id+'"] .dash-widget-body'); if(!body) return;
     const def=dashDef(inst.key); if(!def) return; const wh=dashEffWh(inst);
     if(def.kind==='table') body.innerHTML=dashTableHtml(inst.key,wh,inst.hidden); else def.render(body,wh);
-    requestAnimationFrame(()=>dashAutosize(inst));
+    if(autosize!==false) requestAnimationFrame(()=>dashAutosize(inst));
   }
-  function dashRefreshWidgets(){ Object.values(_dashInst).forEach(dashRenderInst); }
+  // Periodic refresh: when the layout is locked, only update numbers — never
+  // resize/reflow — so widgets stay exactly where the user put them.
+  function dashRefreshWidgets(){ const auto=!dashLocked(); Object.values(_dashInst).forEach(i=>dashRenderInst(i,auto)); }
 
   // Grow a widget's row height so all its content shows without an inner
   // scrollbar. Skipped while the Dashboard isn't visible (measurements are 0).
