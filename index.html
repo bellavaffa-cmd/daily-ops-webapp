@@ -2972,7 +2972,7 @@
       { key: 'total',   label: 'Total Orders',    count: total,       color: 'var(--text)', nonmp: totNonmp, prioritymp: totPrio },
     ];
 
-    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
+    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(${opts.minCard||140}px,1fr));gap:12px">
       ${statuses.map(s => {
         const isTotal  = s.key === 'total';
         const excluded = !isTotal && b2cExcl.has(s.key);
@@ -6310,7 +6310,10 @@ function fail(error) {
   // ── Box builders (mirror the home-tab KPI grids, read-only) ──
   function dashB2CBoxHtml(selWh) {
     const f = (b2cData || []).filter(r => (!r.type || r.type === 'warehouse') && r.wh && (!selWh || r.wh === selWh));
-    return b2cKpiCardsHtml(f, { interactive: false });
+    // Smaller min card width compensates for the widget frame (~42px narrower
+    // grid than the B2C tab: 140 − 42/6 ≈ 133) so a full-width widget wraps the
+    // 6 boxes into the same number per row as the tab.
+    return b2cKpiCardsHtml(f, { interactive: false, minCard: 133 });
   }
   function dashB2BBoxHtml(selWh) {
     const f = (b2bData || []).filter(r => !selWh || r.wh === selWh);
