@@ -6547,7 +6547,7 @@ function fail(error) {
     if(dashLocked()) _dashGrid.setStatic(true);
     dashUpdateLockBtn();
   }
-  function dashOnResize(){ clearTimeout(_dashRT); _dashRT=setTimeout(()=>{ if(!_dashGrid) return; _dashGrid.column(window.innerWidth<=768?1:12,'moveScale'); requestAnimationFrame(()=>Object.values(_dashInst).forEach(dashAutosize)); },160); }
+  function dashOnResize(){ clearTimeout(_dashRT); _dashRT=setTimeout(()=>{ if(!_dashGrid) return; _dashGrid.column(window.innerWidth<=768?1:12,'moveScale'); if(!dashLocked()) requestAnimationFrame(()=>Object.values(_dashInst).forEach(dashAutosize)); },160); }
   function dashInstEl(inst){ return document.querySelector('.grid-stack-item[gs-id="'+inst.id+'"]'); }
   function dashMountWidget(item, save){
     const def=dashDef(item.key); if(!def||!_dashGrid) return;
@@ -6561,7 +6561,7 @@ function fail(error) {
     // sidebar collapse, window resize). Keyed on width only so our own height
     // updates don't retrigger it into a loop.
     const el=dashInstEl(inst), cont=el&&el.querySelector('.grid-stack-item-content');
-    if(cont&&window.ResizeObserver){ let lw=-1; inst._ro=new ResizeObserver(es=>{ const w=es[0].contentRect.width; if(Math.abs(w-lw)>1){ lw=w; dashAutosize(inst); } }); inst._ro.observe(cont); }
+    if(cont&&window.ResizeObserver){ let lw=-1; inst._ro=new ResizeObserver(es=>{ const w=es[0].contentRect.width; if(Math.abs(w-lw)>1){ lw=w; if(!dashLocked()) dashAutosize(inst); } }); inst._ro.observe(cont); }
     if(save) dashSaveLayout();
   }
   function dashRenderInst(inst, autosize){
