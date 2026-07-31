@@ -164,7 +164,9 @@
     .sidebar { top: 52px; }                      /* sit below the top bar */
     body.nav-ready .sidebar { transition: transform .22s ease; }  /* animate only after load */
     @media (min-width: 769px) {
-      body:not(.nav-collapsed) { padding-left: 232px; }
+      /* Sidebar floats OVER the content (overlay) instead of pushing it, so the
+         page stays full-width and widgets never resize when the sidebar toggles. */
+      .sidebar { box-shadow: 0 0 28px rgba(0,0,0,.4); }
       body.nav-collapsed .sidebar { transform: translateX(-100%); }
     }
 
