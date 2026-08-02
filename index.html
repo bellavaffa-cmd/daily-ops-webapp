@@ -6538,7 +6538,100 @@ function fail(error) {
   function dashEffWh(inst){ return inst.wh===undefined?dashDashboardWh():inst.wh; }
   function dashDefaultLayout(){ return [ {key:'b2c',x:0,y:0,w:12,h:4}, {key:'overview',x:0,y:4,w:12,h:3} ]; }
   function dashLoadLayout(){ try{const a=JSON.parse(localStorage.getItem('dashboardLayout')); if(Array.isArray(a)&&a.length) return a;}catch(e){} return dashDefaultLayout(); }
-  function dashSaveLayout(){ if(!_dashGrid) return; const out=_dashGrid.engine.nodes.slice().sort((a,b)=>(a.y-b.y)||(a.x-b.x)).map(n=>{const inst=_dashInst[n.id]; if(!inst) return null; const o={key:inst.key,x:n.x,y:n.y,w:n.w,h:n.h}; if(inst.wh!==undefined)o.wh=inst.wh; if(inst.hidden&&inst.hidden.length)o.hidden=inst.hidden; const def=dashDef(inst.key); if(inst.title && (!def||inst.title!==def.title)) o.title=inst.title; return o;}).filter(Boolean); try{localStorage.setItem('dashboardLayout',JSON.stringify(out));}catch(e){} }
+  function dashSaveLayout(){ if(!_dashGrid) return; if(_dashSuppressSave) return; const _cols=(_dashGrid.getColumn?_dashGrid.getColumn():(_dashGrid.opts&&_dashGrid.opts.column))||12; if(_cols<12) return; /* never persist the collapsed 1-col layout — it'd store w:1 slivers and clobber the canonical arrangement shared with wide tabs */ const out=_dashGrid.engine.nodes.slice().sort((a,b)=>(a.y-b.y)||(a.x-b.x)).map(n=>{const inst=_dashInst[n.id]; if(!inst) return null; const o={key:inst.key,x:n.x,y:n.y,w:n.w,h:n.h}; if(inst.wh!==undefined)o.wh=inst.wh; if(inst.hidden&&inst.hidden.length)o.hidden=inst.hidden; const def=dashDef(inst.key); if(inst.title && (!def||inst.title!==def.title)) o.title=inst.title; return o;}).filter(Boolean); const str=JSON.stringify(out); try{localStorage.setItem('dashboardLayout',str);}catch(e){} dashSaveRemote(str); }
+  // ── Cross-context layout sync (Supabase) ─────────────────────────────────
+  // localStorage is partitioned separately in the Chrome side-panel iframe vs a
+  // normal browser tab, so a layout saved in one wouldn't appear in the other.
+  // Mirror the layout to a single Supabase row (id=1) so every context shares it.
+  var _dashSuppressSave = false;   // set while rebuilding from a remote layout
+  var _dashRemoteT = null;         // debounce timer for remote writes
+  var _dashRemoteLast = null;      // last layout string we pushed/pulled (dedupe)
+  var _dashRemoteReady = false;    // true once the initial remote pull has resolved
+  var _dashPendingSave = null;     // save requested before the pull finished
+  // ── Per-device id ────────────────────────────────────────────────────────
+  // The layout is scoped to a device id (so teammates don't share one layout).
+  // The extension's content script mints a stable id in chrome.storage.local —
+  // shared across the side-panel iframe and normal tabs, which otherwise have
+  // partitioned localStorage — and postMessages it in here. Without the
+  // extension we fall back to a per-browser localStorage id.
+  var _dashDeviceId = null;
+  var _dashDeviceIdResolve;
+  var _dashDeviceIdP = new Promise(function(res){ _dashDeviceIdResolve = res; });
+  window.addEventListener('message', function(e){
+    if(e.source!==window || !e.data || e.data.type!=='dash-device-id' || !e.data.id) return;
+    if(_dashDeviceId) return;                 // keep the first id stable for the session
+    _dashDeviceId = String(e.data.id);
+    _dashDeviceIdResolve(_dashDeviceId);
+  });
+  async function dashGetDeviceId(){
+    if(_dashDeviceId) return _dashDeviceId;
+    // Wait briefly for the extension's id; fall back to a local one if absent.
+    await Promise.race([ _dashDeviceIdP, new Promise(function(res){ setTimeout(res, 1500); }) ]);
+    if(_dashDeviceId) return _dashDeviceId;
+    var id=null; try{ id=localStorage.getItem('dashDeviceId'); }catch(_){ }
+    if(!id){ id='loc-'+Math.random().toString(36).slice(2,10)+Date.now().toString(36); try{ localStorage.setItem('dashDeviceId', id); }catch(_){ } }
+    _dashDeviceId=id; return id;
+  }
+  function dashSaveRemote(str){
+    // Hold any save until the first pull decides who's authoritative — otherwise
+    // the initial local-mount 'change' could overwrite a real remote layout.
+    if(!_dashRemoteReady){ _dashPendingSave = str; return; }
+    if(str===_dashRemoteLast) return;         // nothing changed since last sync
+    const dev = _dashDeviceId; if(!dev) return;  // id resolved before ready is set
+    _dashRemoteLast = str;
+    clearTimeout(_dashRemoteT);
+    _dashRemoteT = setTimeout(()=>{
+      try{
+        fetch(SB_URL + '/dashboard_layout?on_conflict=device', {
+          method:'POST',
+          headers:{ ...SB_HDR, Prefer:'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify([{ device: dev, layout: JSON.parse(str), updated_at: new Date().toISOString() }])
+        }).catch(()=>{});
+      }catch(e){}
+    }, 900);
+  }
+  async function dashLoadRemote(){
+    let applied = false;
+    try{
+      const dev = await dashGetDeviceId();
+      const r = await fetch(SB_URL + '/dashboard_layout?device=eq.' + encodeURIComponent(dev) + '&select=layout', { headers: SB_HDR });
+      if(r.ok){
+        const rows = await r.json();
+        const remote = rows && rows[0] && rows[0].layout;
+        if(Array.isArray(remote) && remote.length){          // a shared layout exists
+          const remoteStr = JSON.stringify(remote);
+          _dashRemoteLast = remoteStr;                        // avoid echoing it straight back
+          const localStr = localStorage.getItem('dashboardLayout') || '';
+          if(remoteStr !== localStr){
+            try{ localStorage.setItem('dashboardLayout', remoteStr); }catch(e){}
+            dashRebuildFrom(remote);
+          }
+          applied = true;                                     // remote wins; drop any pending local push
+        }
+      }
+    }catch(e){}
+    finally{
+      _dashRemoteReady = true;
+      const pending = _dashPendingSave; _dashPendingSave = null;
+      // Seed the shared row only when no layout existed remotely AND we have a
+      // real (12-col) local layout waiting — never clobber an adopted layout,
+      // and never seed from a collapsed 1-col context (pending stays null there).
+      if(!applied && pending!=null){ dashSaveRemote(pending); }
+    }
+  }
+  function dashRebuildFrom(layout){
+    if(!_dashGrid) return;
+    _dashSuppressSave = true;
+    try{
+      Object.values(_dashInst).forEach(inst=>{ if(inst && inst._ro) try{ inst._ro.disconnect(); }catch(e){} });
+      _dashGrid.removeAll();
+      _dashInst = {};
+      layout.forEach(item=>{ try{ dashMountWidget(item, false); }catch(e){} });
+      if(typeof dashUpdateEmptyState==='function') dashUpdateEmptyState();
+    } finally {
+      _dashSuppressSave = false;
+    }
+  }
 
   function dashInjectStyles(){ if(document.getElementById('dash-w-styles')) return; document.head.insertAdjacentHTML('beforeend',`<style id="dash-w-styles">
     #dashGrid .grid-stack-item-content{overflow:hidden;background:transparent;border:0;}
@@ -6592,6 +6685,10 @@ function fail(error) {
     if(dashLocked()) _dashGrid.setStatic(true);
     dashUpdateLockBtn();
     dashUpdateEmptyState();
+    // Pull the shared layout (saved from any tab / the side panel) and apply it
+    // if it differs — keeps the arrangement consistent across storage-partitioned
+    // contexts (normal tab vs Chrome side-panel iframe).
+    dashLoadRemote();
     // One-time tip that boxes/tables on other tabs can be added here.
     try { if(!localStorage.getItem('dashHintSeen') && typeof showToast==='function'){ localStorage.setItem('dashHintSeen','1'); setTimeout(()=>showToast('Tip: long-press or right-click any box or table (on any tab) to add it to the dashboard.', true), 1200); } } catch(e){}
   }

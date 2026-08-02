@@ -6,6 +6,23 @@
 //  2. Loaded as a standalone tab (opened by the old flow or direct link) →
 //     ask the background service worker to close the tab.
 
+// Provide a stable per-device id to the webapp. This content script runs in
+// every Daily Ops frame — the side-panel iframe AND normal tabs — which have
+// SEPARATE (partitioned) localStorage, so the page can't share an id between
+// them on its own. chrome.storage.local IS shared across the extension on this
+// browser profile, so we mint the id here and postMessage it into the page,
+// letting the dashboard scope its saved layout per device (not globally).
+try {
+  chrome.storage.local.get('dashDeviceId', (res) => {
+    let id = res && res.dashDeviceId;
+    if (!id) {
+      id = 'dev-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      chrome.storage.local.set({ dashDeviceId: id });
+    }
+    window.postMessage({ type: 'dash-device-id', id: id }, '*');
+  });
+} catch (e) { /* storage unavailable — app falls back to a local id */ }
+
 window.addEventListener('message', (e) => {
   if (!e.data || e.data.type !== 'wms-ext-close') return;
 
