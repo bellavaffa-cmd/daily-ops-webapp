@@ -2992,7 +2992,7 @@
         const url = wmsStatusUrl('B2C', statusIds, statusLbl);
         const subtitle = isTotal
           ? (b2cExcl.size ? `excludes ${b2cExcl.size} status${b2cExcl.size > 1 ? 'es' : ''}` : 'across all statuses')
-          : (excluded ? 'Excluded from total' : (opts.hidePct ? '' : pct(s.count, total) + ' of total'));
+          : (opts.hidePct ? '' : (excluded ? 'Excluded from total' : pct(s.count, total) + ' of total'));
         // Card is a div (not one big <a>) so the MP/Non-MP tag links below aren't
         // nested inside the status link — nested <a> is invalid and the status
         // link would otherwise swallow their clicks.
