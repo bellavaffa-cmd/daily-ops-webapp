@@ -2073,27 +2073,27 @@
 
     <!-- B2C hourly flow: new orders created in vs orders reaching Ready to Ship -->
     <div class="card" id="b2cFlowBox" style="padding:16px 18px;margin-bottom:20px;border:1px solid var(--brand,#94ffa1)">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
-        <div>
+      <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+        <div style="flex:0 1 auto;min-width:160px">
           <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--brand,#94ffa1)">Hourly flow — new B2C orders vs picking &amp; packing</div>
           <div id="b2cFlowWindow" style="font-size:.7rem;color:var(--muted);margin-top:3px">Collecting data…</div>
         </div>
-        <div style="display:flex;gap:24px;flex-wrap:wrap">
+        <div style="flex:1;min-width:280px;display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:12px;align-items:center">
           <div style="text-align:center">
-            <div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#fb923c;margin-bottom:4px">New Order / hr</div>
-            <div id="b2cFlowInflow" style="font-size:1.9rem;font-weight:700;color:var(--text);line-height:1">—</div>
+            <div style="font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#fb923c;margin-bottom:3px">New Order / hr</div>
+            <div id="b2cFlowInflow" style="font-size:1.8rem;font-weight:700;color:var(--text);line-height:1">—</div>
           </div>
           <div style="text-align:center">
-            <div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#86efac;margin-bottom:4px">Picking / hr</div>
-            <div id="b2cFlowPicked" style="font-size:1.9rem;font-weight:700;color:var(--text);line-height:1">—</div>
+            <div style="font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#86efac;margin-bottom:3px">Picking / hr</div>
+            <div id="b2cFlowPicked" style="font-size:1.8rem;font-weight:700;color:var(--text);line-height:1">—</div>
           </div>
           <div style="text-align:center">
-            <div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#5eead4;margin-bottom:4px">Packing / hr</div>
-            <div id="b2cFlowCleared" style="font-size:1.9rem;font-weight:700;color:var(--text);line-height:1">—</div>
+            <div style="font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#5eead4;margin-bottom:3px">Packing / hr</div>
+            <div id="b2cFlowCleared" style="font-size:1.8rem;font-weight:700;color:var(--text);line-height:1">—</div>
           </div>
-          <div style="text-align:center;padding-left:20px;border-left:1px solid var(--border)">
-            <div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px">Net Depletion / hr</div>
-            <div id="b2cFlowNet" style="font-size:1.9rem;font-weight:700;color:var(--text);line-height:1">—</div>
+          <div style="text-align:center">
+            <div style="font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:3px">Net Depletion / hr</div>
+            <div id="b2cFlowNet" style="font-size:1.8rem;font-weight:700;color:var(--text);line-height:1">—</div>
           </div>
         </div>
       </div>
@@ -6464,13 +6464,12 @@ function fail(error) {
   }
   function dashFlowHtml(selWh){
     const f=dashFlowCompute(selWh);
-    const metric=(label,color,val)=>`<div style="text-align:center"><div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${color};margin-bottom:4px">${label}</div><div style="font-size:1.9rem;font-weight:700;color:var(--text);line-height:1">${val}</div></div>`;
-    return `<div style="display:flex;flex-direction:column;gap:12px">
-      <div><div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--brand,#94ffa1)">Hourly flow — new B2C orders vs picking &amp; packing</div>
-      <div style="font-size:.7rem;color:var(--muted);margin-top:3px">${f.windowStr}</div></div>
-      <div style="display:flex;gap:24px;flex-wrap:wrap">
+    const metric=(label,color,val)=>`<div style="text-align:center"><div style="font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${color};margin-bottom:3px">${label}</div><div style="font-size:1.8rem;font-weight:700;color:var(--text);line-height:1">${val}</div></div>`;
+    return `<div style="display:flex;flex-direction:column;gap:10px">
+      <div style="font-size:.7rem;color:var(--muted)">${f.windowStr}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:10px;align-items:center">
         ${metric('New Order / hr','#fb923c',f.inflow)}${metric('Picking / hr','#86efac',f.picked)}${metric('Packing / hr','#5eead4',f.packed)}
-        <div style="text-align:center;padding-left:20px;border-left:1px solid var(--border)"><div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px">Net Depletion / hr</div><div style="font-size:1.9rem;font-weight:700;color:${f.netColor};line-height:1">${f.net}</div></div>
+        ${metric('Net Depletion / hr','var(--muted)','<span style=\"color:'+f.netColor+'\">'+f.net+'</span>')}
       </div>
     </div>`;
   }
