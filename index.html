@@ -6467,7 +6467,7 @@ function fail(error) {
     const metric=(label,color,val)=>`<div style="text-align:center"><div style="font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${color};margin-bottom:3px">${label}</div><div style="font-size:1.8rem;font-weight:700;color:var(--text);line-height:1">${val}</div></div>`;
     return `<div style="display:flex;flex-direction:column;gap:10px">
       <div style="font-size:.7rem;color:var(--muted)">${f.windowStr}</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:10px;align-items:center">
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;align-items:center">
         ${metric('New Order / hr','#fb923c',f.inflow)}${metric('Picking / hr','#86efac',f.picked)}${metric('Packing / hr','#5eead4',f.packed)}
         ${metric('Net Depletion / hr','var(--muted)','<span style=\"color:'+f.netColor+'\">'+f.net+'</span>')}
       </div>
