@@ -6475,7 +6475,7 @@ function fail(error) {
   }
   function dashCatalog() { return [
     {key:'overview', title:'Overview', kind:'boxes', w:12,h:3, minW:5, render:(el,wh)=>el.innerHTML=dashOverviewHtml(wh)},
-    {key:'b2c', title:"Today's B2C", kind:'boxes', w:12,h:4, minW:5, render:(el,wh)=>el.innerHTML=dashB2CBoxHtml(wh)},
+    {key:'b2c', title:"Today's B2C", kind:'boxes', w:12,h:4, minW:2, minH:3, render:(el,wh)=>el.innerHTML=dashB2CBoxHtml(wh)},
     {key:'flow', title:'Hourly Flow', kind:'boxes', w:12,h:3, minW:5, render:(el,wh)=>el.innerHTML=dashFlowHtml(wh)},
     {key:'b2b', title:'B2B Status', kind:'boxes', w:12,h:3, minW:5, render:(el,wh)=>el.innerHTML=dashB2BBoxHtml(wh)},
     {key:'shortage', title:'Shortage Ages', kind:'boxes', w:8,h:3, minW:4, render:(el,wh)=>el.innerHTML=dashShortageBoxHtml(wh)},
@@ -6608,7 +6608,7 @@ function fail(error) {
     const inst={id,key:item.key,title:item.title||def.title,kind:def.kind,wh:item.wh,hidden:(item.hidden||[]).slice()};
     _dashInst[id]=inst;
     const content=`<div class="dash-widget" data-inst="${id}"><div class="dash-widget-head"><span class="dash-widget-title">${escHtml(inst.title)}</span><button class="dash-widget-menu" data-inst="${id}" title="Options" aria-label="Widget options">⋯</button></div><div class="dash-widget-body"></div></div>`;
-    _dashGrid.addWidget({x:item.x,y:item.y,w:item.w||def.w,h:item.h||def.h,minW:def.minW||2,id,content});
+    _dashGrid.addWidget({x:item.x,y:item.y,w:item.w||def.w,h:item.h||def.h,minW:def.minW||2,id,content,...(def.minH?{minH:def.minH}:{})});
     dashRenderInst(inst);
     // Refit height whenever the widget's WIDTH settles/changes (initial layout,
     // sidebar collapse, window resize). Keyed on width only so our own height
@@ -6646,7 +6646,7 @@ function fail(error) {
     const cell=_dashGrid.getCellHeight()||64;
     const need=head.offsetHeight + contentH + bodyPad;
     const inset=Math.max(0, node.h*cell - content.clientHeight); // self-calibrated per item
-    const rows=Math.max(2, Math.ceil((need + inset + 2)/cell));
+    const rows=Math.max(node.minH||2, Math.ceil((need + inset + 2)/cell));
     if(rows!==node.h) _dashGrid.update(item,{h:rows});
   }
 
