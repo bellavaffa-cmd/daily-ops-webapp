@@ -2818,6 +2818,8 @@
     if (set.has(key)) set.delete(key); else set.add(key);
     localStorage.setItem(tab + 'Excluded', JSON.stringify([...set]));
     if (tab === 'b2b') renderB2B(); else renderB2C();
+    // Reflect the change in the dashboard's mirrored box widgets too.
+    if (_dashGrid && typeof dashRefreshWidgets === 'function') dashRefreshWidgets();
   }
   // Small round toggle pinned to the top-right of a status card.
   function excludeBtn(tab, key, isExcluded) {
@@ -6335,10 +6337,10 @@ function fail(error) {
   // ── Box builders (mirror the home-tab KPI grids, read-only) ──
   function dashB2CBoxHtml(selWh) {
     const f = (b2cData || []).filter(r => (!r.type || r.type === 'warehouse') && r.wh && (!selWh || r.wh === selWh));
-    // Smaller min card width compensates for the widget frame (~42px narrower
-    // grid than the B2C tab: 140 − 42/6 ≈ 133) so a full-width widget wraps the
-    // 6 boxes into the same number per row as the tab.
-    return b2cKpiCardsHtml(f, { interactive: false, minCard: 133 });
+    // interactive:true → same exclude-from-total toggles as the B2C tab (shared
+    // b2cExcluded state). Smaller min card width (140 − 42/6 ≈ 133) compensates
+    // for the widget frame so it wraps the same number per row as the tab.
+    return b2cKpiCardsHtml(f, { interactive: true, minCard: 133 });
   }
   function dashB2BBoxHtml(selWh) {
     const f = (b2bData || []).filter(r => !selWh || r.wh === selWh);
