@@ -1,6 +1,11 @@
 const frame    = document.getElementById('appFrame');
 const BASE_URL = 'https://bellavaffa-cmd.github.io/daily-ops-webapp/';
 
+// Load the app fresh each time the panel opens — a cache-busting query param
+// stops the browser serving a stale cached build (so app updates show up
+// without a manual hard-refresh).
+frame.src = BASE_URL + '?t=' + Date.now();
+
 // ── Respond to background pings (used to detect if panel is already open) ──
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'ping') {
