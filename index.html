@@ -2992,7 +2992,7 @@
         const url = wmsStatusUrl('B2C', statusIds, statusLbl);
         const subtitle = isTotal
           ? (b2cExcl.size ? `excludes ${b2cExcl.size} status${b2cExcl.size > 1 ? 'es' : ''}` : 'across all statuses')
-          : (excluded ? 'Excluded from total' : pct(s.count, total) + ' of total');
+          : (excluded ? 'Excluded from total' : (opts.hidePct ? '' : pct(s.count, total) + ' of total'));
         // Card is a div (not one big <a>) so the MP/Non-MP tag links below aren't
         // nested inside the status link — nested <a> is invalid and the status
         // link would otherwise swallow their clicks.
@@ -3001,7 +3001,7 @@
           ${interactive && !isTotal ? excludeBtn('b2c', s.key, excluded) : ''}
           <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px${excluded ? ';text-decoration:line-through' : ''}">${s.label}</div>
           <a class="mp-link" href="${url}" target="_blank" title="Open in WMS" style="display:inline-block;text-decoration:none;color:var(--text);font-size:2rem;font-weight:700;line-height:1">${fmt(s.count)}</a>
-          <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${subtitle}</div>
+          ${subtitle ? `<div style="font-size:.72rem;color:var(--muted);margin-top:5px">${subtitle}</div>` : ''}
           <div style="font-size:.82rem;margin-top:6px;display:flex;flex-direction:column;gap:2px;color:var(--muted)">
             <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Priority MP')}" target="_blank" title="Open Priority MP in WMS" style="text-decoration:none;color:inherit;width:fit-content">MP <b style="color:#c084fc">${fmt(s.prioritymp || 0)}</b></a>
             <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Non-MP')}" target="_blank" title="Open Non-MP in WMS" style="text-decoration:none;color:inherit;width:fit-content">Non-MP <b style="color:var(--text)">${fmt(s.nonmp || 0)}</b></a>
@@ -6340,7 +6340,7 @@ function fail(error) {
     // interactive:true → same exclude-from-total toggles as the B2C tab (shared
     // b2cExcluded state). Smaller min card width (140 − 42/6 ≈ 133) compensates
     // for the widget frame so it wraps the same number per row as the tab.
-    return b2cKpiCardsHtml(f, { interactive: true, minCard: 133 });
+    return b2cKpiCardsHtml(f, { interactive: true, minCard: 133, hidePct: true });
   }
   function dashB2BBoxHtml(selWh) {
     const f = (b2bData || []).filter(r => !selWh || r.wh === selWh);
