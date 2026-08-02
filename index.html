@@ -195,6 +195,13 @@
     /* Clickable KPI status boxes (open the matching order list in WMS) */
     .kpi-link { cursor: pointer; transition: border-color .15s, transform .1s; }
     .kpi-link:hover { border-color: var(--primary); transform: translateY(-1px); }
+    /* First-paint loading shimmer (used before the dashboard grid builds) */
+    @keyframes dashShimmer { 0% { background-position: -360px 0; } 100% { background-position: 360px 0; } }
+    .kpi-skeleton { height: 118px; border-radius: 12px; background: linear-gradient(90deg, var(--surface) 25%, var(--surface2) 37%, var(--surface) 63%); background-size: 720px 100%; animation: dashShimmer 1.3s infinite linear; }
+    .kpi-skeleton-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+    :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+    a:focus-visible, button:focus-visible { border-radius: 6px; }
+    @media (max-width: 560px) { .last-sync { display: none; } }
     .mp-link { cursor: pointer; }
     .mp-link:hover { text-decoration: underline !important; }
 
@@ -1293,12 +1300,13 @@
   </button>
   <div class="logo"><img src="/daily-ops-webapp/icons/locad-logo.png" alt="LOCAD" height="20" style="display:block" /></div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
-    <button class="btn btn-primary btn-sm" onclick="syncAllAndRefresh(this)" title="Sync from Logiwa"
+    <span id="lastSyncLabel" class="last-sync" aria-live="polite" style="font-size:.7rem;color:var(--muted);white-space:nowrap"></span>
+    <button class="btn btn-primary btn-sm" onclick="syncAllAndRefresh(this)" title="Sync from Logiwa" aria-label="Sync from Logiwa"
       style="display:flex;align-items:center;gap:5px;font-size:.75rem;padding:5px 12px">
       <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
       Sync
     </button>
-    <button class="settings-btn" onclick="openSettings()" title="Settings">
+    <button class="settings-btn" onclick="openSettings()" title="Settings" aria-label="Settings">
       <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
     </button>
   </div>
@@ -1308,7 +1316,7 @@
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-logo">
     <img src="/daily-ops-webapp/icons/locad-logo.png" alt="LOCAD" height="22" style="display:block" />
-    <button class="hamburger" onclick="minimizeSidebar()" title="Minimize sidebar" style="margin-left:auto;color:var(--muted)">
+    <button class="hamburger" onclick="minimizeSidebar()" title="Minimize sidebar" aria-label="Minimize sidebar" style="margin-left:auto;color:var(--muted)">
       <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
     </button>
   </div>
@@ -2035,6 +2043,7 @@
       </div>
     </div>
     <div class="grid-stack" id="dashGrid"></div>
+    <div id="dashSkeleton" class="kpi-skeleton-row" aria-hidden="true"><div class="kpi-skeleton"></div><div class="kpi-skeleton"></div><div class="kpi-skeleton"></div><div class="kpi-skeleton"></div></div>
   </div>
 
   <!-- ── B2C DASHBOARD VIEW ── -->
@@ -3137,6 +3146,7 @@
             day: 'numeric', month: 'short', year: 'numeric',
             hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
           });
+          if (window.markLastSync) window.markLastSync(new Date(latest.updated_at).getTime());
         }
         if (modeEl) { modeEl.textContent = 'Supabase ●'; modeEl.style.color = 'var(--success)'; }
       } else {
@@ -3348,6 +3358,12 @@
     syncLogiwaB2BAndRefresh(null);
     syncLogiwaAndRefresh(btn);
   }
+
+  // Global "last synced" indicator next to the top-bar Sync button, driven by the
+  // most recent data updated_at seen from Supabase.
+  function markLastSync(ts){ const el=document.getElementById('lastSyncLabel'); if(!el||!ts) return; if(ts>(+el.dataset.ts||0)) el.dataset.ts=ts; fmtLastSync(); }
+  function fmtLastSync(){ const el=document.getElementById('lastSyncLabel'); if(!el) return; const ts=+el.dataset.ts||0; if(!ts){ el.textContent=''; return; } const m=Math.floor((Date.now()-ts)/60000); el.textContent = m<1 ? 'synced just now' : ('synced '+(m<60?m+'m':(Math.floor(m/60)+'h '+(m%60)+'m'))+' ago'); }
+  setInterval(fmtLastSync, 30000);
 
   // Fetch on load, then auto-refresh every 5 min
   // Wait for b2cData (used to match the WMS scan's warehouse hint) before applying a pending scan.
@@ -3926,7 +3942,7 @@
       { label: 'Picked Today',     n: sumField(todayPerf, 'picked_orders'), sub: 'orders', color: '#86efac', view: 'productivity' },
       { label: 'Packed Today',     n: sumField(todayPerf, 'packed_orders'), sub: 'orders', color: '#5eead4', view: 'productivity' },
     ];
-    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
+    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(143px,1fr));gap:12px">
       ${cards.map(c => `
         <div class="card kpi-link" onclick="showView('${c.view}')" style="padding:18px;cursor:pointer">
           <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${c.color};margin-bottom:8px">${c.label}</div>
@@ -5156,6 +5172,15 @@
   function toggleNavGroup(headerEl) {
     headerEl.closest('.snav-group')?.classList.toggle('collapsed');
   }
+  // Keyboard shortcuts: Alt+1..9 jump between tabs (skipped while typing).
+  document.addEventListener('keydown', e => {
+    if (!e.altKey || e.ctrlKey || e.metaKey) return;
+    const t = e.target || {}, tag = t.tagName || '';
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || t.isContentEditable) return;
+    const map = { '1':'overview','2':'b2c','3':'b2b','4':'shortage','5':'productivity','6':'jobs','7':'dash','8':'tools','9':'help' };
+    const v = map[e.key];
+    if (v && document.getElementById('view-' + v)) { e.preventDefault(); showView(v); }
+  });
 
   // ── Code.gs template & rendering ──────────────────────────────────────
   const CODE_TEMPLATE = `// ─────────────────────────────────────────────────────────────────────────────
@@ -6331,7 +6356,7 @@ function fail(error) {
       {key:'ready_ship',label:'Ready to Ship',count:tot.ready_ship,color:'#5eead4'},
       {key:'total',label:'Total Orders',count:total,color:'var(--text)'},
     ];
-    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">${st.map(s=>{
+    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(133px,1fr));gap:12px">${st.map(s=>{
       const isTot=s.key==='total', ex=!isTot&&excl.has(s.key);
       const url=wmsStatusUrl('B2B',isTot?WMS_ALL_STATUS:[WMS_STATUS_ID[s.label]],isTot?'All':s.label);
       const sub=isTot?'across all statuses':(ex?'Excluded from total':pct(s.count,total)+' of total');
@@ -6343,7 +6368,7 @@ function fail(error) {
     const t = f.reduce((a,r)=>({a13:a.a13+(r.age_1_3||0),a47:a.a47+(r.age_4_7||0),a7:a.a7+(r.age_7_plus||0)}),{a13:0,a47:0,a7:0});
     const total=t.a13+t.a47+t.a7, pct=(n,d)=>d?(n/d*100).toFixed(1)+'%':'—', base=wmsStatusUrl(null,[2],'Shortage');
     const st=[{label:'1-3 Days',count:t.a13,color:'#86efac',age:[1,3]},{label:'4-7 Days',count:t.a47,color:'#fcd34d',age:[4,7]},{label:'7+ Days',count:t.a7,color:'#f87171',age:[8,9999]},{label:'Total Orders',count:total,color:'var(--text)',age:null}];
-    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">${st.map(s=>{
+    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(133px,1fr));gap:12px">${st.map(s=>{
       const url=base+(s.age?'&soag='+encodeURIComponent(encodeURIComponent(s.age[0]+','+s.age[1]))+'&soagqt=rng':'');
       return `<a class="card kpi-link" href="${url}" target="_blank" title="Open in WMS" style="padding:16px 18px;text-decoration:none;color:inherit;display:block"><div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px">${s.label}</div><div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${_dfmt(s.count)}</div><div style="font-size:.72rem;color:var(--muted);margin-top:5px">${s.label==='Total Orders'?'across all ages':pct(s.count,total)+' of total'}</div></a>`;
     }).join('')}</div>`;
@@ -6352,7 +6377,7 @@ function fail(error) {
     const f = (jobData || []).filter(r => !selWh || r.wh === selWh);
     const K=['total','high','medium','low','no_priority'], tot={}; K.forEach(k=>tot[k]=f.reduce((a,r)=>a+(r[k]||0),0));
     const cards=[{label:'Total Jobs',key:'total',color:'var(--text)',link:true},{label:'High',key:'high',color:'#f87171'},{label:'Medium',key:'medium',color:'#fcd34d'},{label:'Low',key:'low',color:'#86efac'},{label:'No Priority',key:'no_priority',color:'var(--muted)'}];
-    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">${cards.map(s=>{
+    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(133px,1fr));gap:12px">${cards.map(s=>{
       const n=tot[s.key], sub=s.link?'pending jobs':(tot.total?(n/tot.total*100).toFixed(1)+'% of total':'—');
       return `<div class="card" style="padding:16px 18px"><div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px">${s.label}</div>${s.link?`<a class="mp-link" href="${wmsJobUrl()}" target="_blank" style="display:inline-block;text-decoration:none;color:var(--text);font-size:2rem;font-weight:700;line-height:1">${_dfmt(n)}</a>`:`<div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${_dfmt(n)}</div>`}<div style="font-size:.72rem;color:var(--muted);margin-top:5px">${sub}</div></div>`;
     }).join('')}</div>`;
@@ -6365,7 +6390,7 @@ function fail(error) {
     let rows=selWh?(userPerf||[]).filter(r=>r.warehouse_code===selWh):(userPerf||[]);
     const today=localDateStr(), todayRows=rows.filter(r=>r.activity_date===today);
     const kpis=[{label:ml+' Today · Orders',count:sum(todayRows,oK)},{label:ml+' Today · Items',count:sum(todayRows,iK)},{label:ml+' 30d · Orders',count:sum(rows,oK)},{label:ml+' 30d · Items',count:sum(rows,iK)}];
-    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">${kpis.map(s=>`<div class="card" style="padding:16px 18px"><div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${mc};margin-bottom:8px">${s.label}</div><div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${_dfmt(s.count)}</div></div>`).join('')}</div>`;
+    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(133px,1fr));gap:12px">${kpis.map(s=>`<div class="card" style="padding:16px 18px"><div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${mc};margin-bottom:8px">${s.label}</div><div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${_dfmt(s.count)}</div></div>`).join('')}</div>`;
   }
 
   // ── Table builders (flat, filterable, with a column spec for show/hide) ──
@@ -6496,7 +6521,7 @@ function fail(error) {
   // code that first calls renderDashboard(), so an inline `= {}` here would run
   // LATER and clobber state the init already populated. dashEnsureGrid() seeds
   // these on first run instead.
-  var _dashGrid, _dashInst, _dashSeq, _dashRT, _dashBusy;
+  var _dashGrid, _dashInst, _dashSeq, _dashRT, _dashBusy, _dashBusyT;
   // Lock layout: freezes drag/resize and stops the periodic refresh from
   // reflowing, so the dashboard stays put. Persisted in dashboardLocked.
   function dashLocked(){ return localStorage.getItem('dashboardLocked')==='1'; }
@@ -6509,7 +6534,7 @@ function fail(error) {
   function dashEffWh(inst){ return inst.wh===undefined?dashDashboardWh():inst.wh; }
   function dashDefaultLayout(){ return [ {key:'b2c',x:0,y:0,w:12,h:4}, {key:'overview',x:0,y:4,w:12,h:3} ]; }
   function dashLoadLayout(){ try{const a=JSON.parse(localStorage.getItem('dashboardLayout')); if(Array.isArray(a)&&a.length) return a;}catch(e){} return dashDefaultLayout(); }
-  function dashSaveLayout(){ if(!_dashGrid) return; const out=_dashGrid.engine.nodes.slice().sort((a,b)=>(a.y-b.y)||(a.x-b.x)).map(n=>{const inst=_dashInst[n.id]; if(!inst) return null; const o={key:inst.key,x:n.x,y:n.y,w:n.w,h:n.h}; if(inst.wh!==undefined)o.wh=inst.wh; if(inst.hidden&&inst.hidden.length)o.hidden=inst.hidden; return o;}).filter(Boolean); try{localStorage.setItem('dashboardLayout',JSON.stringify(out));}catch(e){} }
+  function dashSaveLayout(){ if(!_dashGrid) return; const out=_dashGrid.engine.nodes.slice().sort((a,b)=>(a.y-b.y)||(a.x-b.x)).map(n=>{const inst=_dashInst[n.id]; if(!inst) return null; const o={key:inst.key,x:n.x,y:n.y,w:n.w,h:n.h}; if(inst.wh!==undefined)o.wh=inst.wh; if(inst.hidden&&inst.hidden.length)o.hidden=inst.hidden; const def=dashDef(inst.key); if(inst.title && (!def||inst.title!==def.title)) o.title=inst.title; return o;}).filter(Boolean); try{localStorage.setItem('dashboardLayout',JSON.stringify(out));}catch(e){} }
 
   function dashInjectStyles(){ if(document.getElementById('dash-w-styles')) return; document.head.insertAdjacentHTML('beforeend',`<style id="dash-w-styles">
     #dashGrid .grid-stack-item-content{overflow:hidden;background:transparent;border:0;}
@@ -6525,6 +6550,12 @@ function fail(error) {
     .dash-menu-item.danger{color:#f87171;}
     .dash-menu-sep{height:1px;background:var(--border);margin:4px 6px;}
     #dashGrid .grid-stack-item-content>.ui-resizable-handle{z-index:5;}
+    /* Visible resize grip on the widget's side edges (shown on hover) */
+    #dashGrid .grid-stack-item>.ui-resizable-e,#dashGrid .grid-stack-item>.ui-resizable-w{width:14px;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .12s;}
+    #dashGrid .grid-stack-item:hover>.ui-resizable-e,#dashGrid .grid-stack-item:hover>.ui-resizable-w{opacity:1;}
+    #dashGrid .grid-stack-item>.ui-resizable-e::after,#dashGrid .grid-stack-item>.ui-resizable-w::after{content:"";width:3px;height:30px;max-height:60%;border-radius:3px;background:var(--muted);opacity:.7;}
+    .dash-empty{border:1px dashed var(--border);border-radius:12px;padding:34px 20px;text-align:center;color:var(--muted);}
+    .dash-empty b{color:var(--text);}
   </style>`); }
 
   // ── Grid build / mount / render ──
@@ -6542,22 +6573,40 @@ function fail(error) {
     // doing so corrupts Gridstack's state so the mouse never releases the widget.
     // Auto-fit (incl. the width ResizeObserver) is suppressed via _dashBusy until
     // the interaction ends, then we refit once.
-    _dashGrid.on('resizestart',()=>{_dashBusy=true;}); _dashGrid.on('dragstart',()=>{_dashBusy=true;});
-    _dashGrid.on('dragstop',()=>{_dashBusy=false;});
-    _dashGrid.on('resizestop',(e,el)=>{ _dashBusy=false; const inst=el&&el.gridstackNode&&_dashInst[el.gridstackNode.id]; if(inst) requestAnimationFrame(()=>dashAutosize(inst)); });
+    // Safety: clear _dashBusy after 4s in case a stop event never fires (e.g. the
+    // mouse is released outside the window), which would otherwise disable auto-fit.
+    const busyOn=()=>{ _dashBusy=true; clearTimeout(_dashBusyT); _dashBusyT=setTimeout(()=>{_dashBusy=false;},4000); };
+    const busyOff=()=>{ clearTimeout(_dashBusyT); _dashBusy=false; };
+    _dashGrid.on('resizestart',busyOn); _dashGrid.on('dragstart',busyOn);
+    _dashGrid.on('dragstop',busyOff);
+    _dashGrid.on('resizestop',(e,el)=>{ busyOff(); const inst=el&&el.gridstackNode&&_dashInst[el.gridstackNode.id]; if(inst) requestAnimationFrame(()=>dashAutosize(inst)); });
     window.addEventListener('resize', dashOnResize);
     dashLoadLayout().forEach(item=>dashMountWidget(item,false));
+    document.getElementById('dashSkeleton')?.remove();
     if(dashLocked()) _dashGrid.setStatic(true);
     dashUpdateLockBtn();
+    dashUpdateEmptyState();
+    // One-time tip that boxes/tables on other tabs can be added here.
+    try { if(!localStorage.getItem('dashHintSeen') && typeof showToast==='function'){ localStorage.setItem('dashHintSeen','1'); setTimeout(()=>showToast('Tip: long-press or right-click any box or table (on any tab) to add it to the dashboard.', true), 1200); } } catch(e){}
+  }
+  function dashUpdateEmptyState(){
+    const host=document.getElementById('dashGrid'); if(!host) return;
+    const empty=Object.keys(_dashInst||{}).length===0;
+    let el=document.getElementById('dashEmpty');
+    if(empty && !el){
+      el=document.createElement('div'); el.id='dashEmpty'; el.className='dash-empty';
+      el.innerHTML='<div style="font-size:1.8rem;opacity:.4;margin-bottom:6px">▦</div><div style="font-weight:600;color:var(--text)">Your dashboard is empty</div><div style="font-size:.82rem;margin-top:3px">Click <b>+ Add widget</b> to build it — or long-press a box or table on any tab to add it here.</div>';
+      host.parentElement.insertBefore(el, host.nextSibling);
+    } else if(!empty && el){ el.remove(); }
   }
   function dashOnResize(){ clearTimeout(_dashRT); _dashRT=setTimeout(()=>{ if(!_dashGrid) return; _dashGrid.column(window.innerWidth<=768?1:12,'moveScale'); if(!dashLocked()) requestAnimationFrame(()=>Object.values(_dashInst).forEach(dashAutosize)); },160); }
   function dashInstEl(inst){ return document.querySelector('.grid-stack-item[gs-id="'+inst.id+'"]'); }
   function dashMountWidget(item, save){
     const def=dashDef(item.key); if(!def||!_dashGrid) return;
     const id='dw'+(++_dashSeq);
-    const inst={id,key:item.key,title:def.title,kind:def.kind,wh:item.wh,hidden:(item.hidden||[]).slice()};
+    const inst={id,key:item.key,title:item.title||def.title,kind:def.kind,wh:item.wh,hidden:(item.hidden||[]).slice()};
     _dashInst[id]=inst;
-    const content=`<div class="dash-widget" data-inst="${id}"><div class="dash-widget-head"><span class="dash-widget-title">${escHtml(def.title)}</span><button class="dash-widget-menu" data-inst="${id}" title="Options">⋯</button></div><div class="dash-widget-body"></div></div>`;
+    const content=`<div class="dash-widget" data-inst="${id}"><div class="dash-widget-head"><span class="dash-widget-title">${escHtml(inst.title)}</span><button class="dash-widget-menu" data-inst="${id}" title="Options" aria-label="Widget options">⋯</button></div><div class="dash-widget-body"></div></div>`;
     _dashGrid.addWidget({x:item.x,y:item.y,w:item.w||def.w,h:item.h||def.h,minW:def.minW||2,id,content});
     dashRenderInst(inst);
     // Refit height whenever the widget's WIDTH settles/changes (initial layout,
@@ -6566,6 +6615,7 @@ function fail(error) {
     const el=dashInstEl(inst), cont=el&&el.querySelector('.grid-stack-item-content');
     if(cont&&window.ResizeObserver){ let lw=-1; inst._ro=new ResizeObserver(es=>{ const w=es[0].contentRect.width; if(Math.abs(w-lw)>1){ lw=w; if(!dashLocked()) dashAutosize(inst); } }); inst._ro.observe(cont); }
     if(save) dashSaveLayout();
+    dashUpdateEmptyState();
   }
   function dashRenderInst(inst, autosize){
     const body=document.querySelector('.dash-widget[data-inst="'+inst.id+'"] .dash-widget-body'); if(!body) return;
@@ -6624,6 +6674,7 @@ function fail(error) {
         {label:'Small',onClick:()=>dashResizeInst(inst,4)},{label:'Medium',onClick:()=>dashResizeInst(inst,6)},
         {label:'Large',onClick:()=>dashResizeInst(inst,8)},{label:'Full width',onClick:()=>dashResizeInst(inst,12)} ])},
       {label:'Set warehouse…', arrow:true, onClick:()=>dashWhMenu(inst)},
+      {label:'Rename…', onClick:()=>dashRenameInst(inst)},
       {label:'Duplicate', onClick:()=>dashDuplicateInst(inst)},
     ];
     if(def.kind==='table') items.push({label:'Show / hide columns…', arrow:true, onClick:()=>dashColMenu(inst)});
@@ -6647,8 +6698,9 @@ function fail(error) {
   function dashResizeInst(inst,w){ const el=dashInstEl(inst); if(el&&_dashGrid){_dashGrid.update(el,{w}); dashAutosize(inst); dashSaveLayout();} dashCloseMenu(); }
   function dashSetWh(inst,wh){ inst.wh=wh; dashRenderInst(inst); dashSaveLayout(); dashCloseMenu(); }
   function dashToggleCol(inst,key){ const i=inst.hidden.indexOf(key); if(i>=0)inst.hidden.splice(i,1); else inst.hidden.push(key); dashRenderInst(inst); dashSaveLayout(); dashColMenu(inst); }
-  function dashRemoveInst(inst){ if(inst._ro)inst._ro.disconnect(); const el=dashInstEl(inst); if(el&&_dashGrid)_dashGrid.removeWidget(el); delete _dashInst[inst.id]; dashSaveLayout(); dashCloseMenu(); }
-  function dashDuplicateInst(inst){ const el=dashInstEl(inst), n=el&&el.gridstackNode; dashMountWidget({key:inst.key,w:n?n.w:undefined,h:n?n.h:undefined,wh:inst.wh,hidden:inst.hidden.slice()},true); dashCloseMenu(); }
+  function dashRemoveInst(inst){ if(inst._ro)inst._ro.disconnect(); const el=dashInstEl(inst); if(el&&_dashGrid)_dashGrid.removeWidget(el); delete _dashInst[inst.id]; dashSaveLayout(); dashUpdateEmptyState(); dashCloseMenu(); }
+  function dashDuplicateInst(inst){ const el=dashInstEl(inst), n=el&&el.gridstackNode; dashMountWidget({key:inst.key,title:inst.title,w:n?n.w:undefined,h:n?n.h:undefined,wh:inst.wh,hidden:inst.hidden.slice()},true); dashCloseMenu(); }
+  function dashRenameInst(inst){ dashCloseMenu(); const def=dashDef(inst.key); let name; try{ name=window.prompt('Widget name:', inst.title||(def&&def.title)||''); }catch(e){ name=null; } if(name==null) return; inst.title=(name.trim())||(def&&def.title)||'Widget'; const span=dashInstEl(inst)?.querySelector('.dash-widget-title'); if(span) span.textContent=inst.title; dashSaveLayout(); }
 
   // ── Add-widget button + reset ──
   var _dashAddAnchor;
@@ -6803,12 +6855,12 @@ function fail(error) {
 
   <!-- ── Barcode Scanner Overlay ── -->
   <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/daily-ops-webapp/sw.js')
-          .then(r => console.log('SW registered:', r.scope))
-          .catch(e => console.warn('SW registration failed:', e));
-      });
+    // No service worker (the old sw.js 404'd). Proactively unregister any stale
+    // registration so a cached SW can't keep serving an old version of the app.
+    if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
+      navigator.serviceWorker.getRegistrations()
+        .then(rs => rs.forEach(r => r.unregister()))
+        .catch(() => {});
     }
   </script>
 
