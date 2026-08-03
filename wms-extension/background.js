@@ -107,21 +107,53 @@ async function performSync(isB2B) {
     if (!tokenResp || !tokenResp.token) throw new Error('Reload the wms.golocad.com tab and try again.');
     const token = tokenResp.token;
 
-    // 3. Fetch all unshipped orders from Logiwa
+    // 3. Fetch orders + user-performance + jobs from Logiwa concurrently, and
+    // each list's pages in parallel batches (instead of one page at a time).
+    // Orders are the critical path (awaited first so B2C is reported early);
+    // perf/jobs failures degrade to null without failing the sync.
     const LG_API = 'https://mywmsquery.logiwa.com';
-    let all = [], page = 0, total = 1;
-    while (all.length < total) {
-      const r = await fetch(`${LG_API}/api/shipmentorder/list/unshipped/i/${page}/s/1000`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-        body: '{}'
-      });
-      if (!r.ok) throw new Error('Logiwa API error ' + r.status);
-      const d = await r.json();
-      all   = all.concat(d.data || []);
-      total = d.totalCount || 0;
-      page++;
-    }
+    const fetchAllPages = async (makeUrl, body, concurrency = 4, pageSize = 1000) => {
+      const headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+      const getPage = async (p) => {
+        const r = await fetch(makeUrl(p), { method: 'POST', headers, body });
+        if (!r.ok) throw new Error('Logiwa API error ' + r.status);
+        return r.json();
+      };
+      const first = await getPage(0);
+      let out = first.data || [];
+      const total = first.totalCount || out.length;
+      const pages = Math.max(1, Math.ceil(total / pageSize));
+      for (let s = 1; s < pages; s += concurrency) {
+        const batch = [];
+        for (let p = s; p < Math.min(s + concurrency, pages); p++) batch.push(getPage(p));
+        for (const d of await Promise.all(batch)) out = out.concat(d.data || []);
+      }
+      return out;
+    };
+
+    // Bodies hoisted so all three lists can fire at once.
+    const perfStart = new Date(Date.now() - 29 * 24 * 60 * 60 * 1000); perfStart.setUTCHours(0, 0, 0, 0);
+    const perfEnd   = new Date(); perfEnd.setUTCHours(23, 59, 59, 999);
+    const perfBody = JSON.stringify({
+      queries: [{ field: 'ActivityDate', uniqueFieldName: 'ActivityDate.exd', keyword: 'exd',
+                  label: 'Activity Date', value: `${perfStart.toISOString()},${perfEnd.toISOString()}`,
+                  comparator: 'range', type: 'date', uiType: 'datetime' }],
+      sorts: []
+    });
+    const jobBody = JSON.stringify({
+      queries: [{ field: 'WarehouseJobStatusId', uniqueFieldName: 'WarehouseJobStatusId.wjst', keyword: 'wjst',
+                  label: 'Job Status', value: '[1]', summaryValue: 'Pending',
+                  comparator: 'in', comparatorLabel: 'in', type: 'numeric0', uiType: 'dropdown' }],
+      sorts: []
+    });
+
+    const ordersP = fetchAllPages(p => `${LG_API}/api/shipmentorder/list/unshipped/i/${p}/s/1000`, '{}');
+    const perfP   = fetchAllPages(p => `${LG_API}/api/warehousetask/userperformance/last/30/i/${p}/s/1000`, perfBody)
+                      .catch(e => { console.error('[WMS bg] userperformance fetch:', e.message); return null; });
+    const jobsP   = fetchAllPages(p => `${LG_API}/api/warehousejob/list/i/${p}/s/1000`, jobBody)
+                      .catch(e => { console.error('[WMS bg] warehousejob fetch:', e.message); return null; });
+
+    const all = await ordersP;  // critical path — a failure here fails the sync
 
     // 3b. Cut-off config → today/tomorrow split. Orders that dropped after their
     // cut-off (Priority-MP vs Non-MP) are tomorrow's dispatch; we count them
@@ -280,11 +312,13 @@ async function performSync(isB2B) {
       });
       if (!r.ok) throw new Error(`Supabase ${table} error ${r.status}: ${await r.text()}`);
     };
-    await sbUpsert('b2c_data',        b2cRows,        'wh');
-    await sbUpsert('b2b_data',        b2bRows,        'wh');
-    await sbUpsert('b2b_orders',      b2bOrders,      'order_id');
-    await sbUpsert('shortage_data',   shortageRows,   'wh');
-    await sbUpsert('shortage_orders', shortageOrders, 'order_id');
+    await Promise.all([
+      sbUpsert('b2c_data',        b2cRows,        'wh'),
+      sbUpsert('b2b_data',        b2bRows,        'wh'),
+      sbUpsert('b2b_orders',      b2bOrders,      'order_id'),
+      sbUpsert('shortage_data',   shortageRows,   'wh'),
+      sbUpsert('shortage_orders', shortageOrders, 'order_id'),
+    ]);
 
     // 5b. B2C flow snapshot (feature 2): per warehouse, the current Open count
     // and how many B2C orders were created in the last 60 min (inflow). Appended
@@ -318,31 +352,16 @@ async function performSync(isB2B) {
       console.error('[WMS bg] b2c flow snapshot error:', e.message);
     }
 
+    // Report success now — the critical order data is written. Productivity and
+    // jobs finish in the background so the UI isn't kept waiting on them.
+    const aggCount = (isB2B ? b2bRows : b2cRows).length;
+    await broadcast({ ok: true, count: aggCount, b2bCount: b2bOrders.length, shortageCount: shortageOrders.length });
+
     // 6. Productivity: Logiwa's authoritative user-performance report — per
     // user, per day, picked/packed order+item counts for the last 30 days.
     // Same host + token as the order fetch; failures here don't fail the sync.
     try {
-      const start = new Date(Date.now() - 29 * 24 * 60 * 60 * 1000); start.setUTCHours(0, 0, 0, 0);
-      const end   = new Date(); end.setUTCHours(23, 59, 59, 999);
-      const perfBody = JSON.stringify({
-        queries: [{ field: 'ActivityDate', uniqueFieldName: 'ActivityDate.exd', keyword: 'exd',
-                    label: 'Activity Date', value: `${start.toISOString()},${end.toISOString()}`,
-                    comparator: 'range', type: 'date', uiType: 'datetime' }],
-        sorts: []
-      });
-      let perfAll = [], pIdx = 0, pTotal = 1;
-      while (perfAll.length < pTotal) {
-        const pr = await fetch(`${LG_API}/api/warehousetask/userperformance/last/30/i/${pIdx}/s/1000`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: perfBody
-        });
-        if (!pr.ok) throw new Error('Logiwa userperformance ' + pr.status);
-        const pd = await pr.json();
-        const batch = pd.data || [];
-        perfAll = perfAll.concat(batch);
-        pTotal = pd.totalCount || 0;
-        pIdx++;
-        if (!batch.length) break;
-      }
+      const perfAll = (await perfP) || [];
       const perfRows = perfAll.map(u => ({
         warehouse_code:   u.warehouseCode,
         executed_by:      u.executedBy,
@@ -405,25 +424,7 @@ async function performSync(isB2B) {
     // request body (WarehouseJobStatusId in [1]) — the unfiltered list returns
     // every job ever (thousands of Completed), so filtering keeps this light.
     try {
-      const jobBody = JSON.stringify({
-        queries: [{ field: 'WarehouseJobStatusId', uniqueFieldName: 'WarehouseJobStatusId.wjst', keyword: 'wjst',
-                    label: 'Job Status', value: '[1]', summaryValue: 'Pending',
-                    comparator: 'in', comparatorLabel: 'in', type: 'numeric0', uiType: 'dropdown' }],
-        sorts: []
-      });
-      let jobsAll = [], jIdx = 0, jTotal = 1;
-      while (jobsAll.length < jTotal) {
-        const jr = await fetch(`${LG_API}/api/warehousejob/list/i/${jIdx}/s/1000`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: jobBody
-        });
-        if (!jr.ok) throw new Error('Logiwa warehousejob ' + jr.status);
-        const jd = await jr.json();
-        const batch = jd.data || [];
-        jobsAll = jobsAll.concat(batch);
-        jTotal = jd.totalCount || 0;
-        jIdx++;
-        if (!batch.length) break;
-      }
+      const jobsAll = (await jobsP) || [];
       // Zero-seed from the order-fetch warehouses so a Pending count dropping to
       // zero still gets written rather than keeping its last value.
       const jobWhs = {};
@@ -449,8 +450,6 @@ async function performSync(isB2B) {
       console.error('[WMS bg] warehousejob error:', e.message);
     }
 
-    const aggCount = (isB2B ? b2bRows : b2cRows).length;
-    await broadcast({ ok: true, count: aggCount, b2bCount: b2bOrders.length, shortageCount: shortageOrders.length });
   } catch (e) {
     console.error('[WMS bg] sync error:', e.message);
     await broadcast({ ok: false, error: e.message });
