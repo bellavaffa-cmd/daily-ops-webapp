@@ -2855,6 +2855,30 @@
     renderB2C(); renderB2B(); renderB2BOrders(); renderShortage(); renderShortageOrders();
     if (typeof renderJobs === 'function') renderJobs();
   }
+  // Warehouses were renamed in WMS to embed a country code in the name, e.g.
+  // "LOCAD DIP FC (AE-DIP)", "LOCAD Al Sulay FC (KSA-AL)". When the sync doesn't
+  // supply a country, derive it from that leading "(XX-…)" code so the warehouse
+  // still groups under its country instead of falling into "Other".
+  const WH_COUNTRY_BY_CODE = {
+    AE: 'United Arab Emirates', KSA: 'Saudi Arabia', SA: 'Saudi Arabia',
+    PH: 'Philippines', MY: 'Malaysia', SG: 'Singapore', ID: 'Indonesia',
+    TH: 'Thailand', AU: 'Australia', US: 'United States', MX: 'Mexico',
+    VN: 'Vietnam', IN: 'India',
+  };
+  function whCountryFromName(wh) {
+    if (!wh) return '';
+    // A name can carry more than one "(…)" group, e.g.
+    // "LOCAD Mesquite (TX-015) FC (US-MES)" — scan them all and return the first
+    // whose code is a known country, so a region tag like TX-015 is skipped.
+    const re = /\(([A-Za-z]{2,3})-[^)]*\)/g;
+    let m;
+    while ((m = re.exec(String(wh)))) {
+      const c = WH_COUNTRY_BY_CODE[m[1].toUpperCase()];
+      if (c) return c;
+    }
+    return '';
+  }
+
   // All warehouse codes grouped by country, from the b2c_data warehouse rows.
   function whGroups() {
     const whRows = b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh);
@@ -3125,7 +3149,7 @@
         b2cData = rows.map(r => ({
           wh:      r.wh,
           type:    r.type    || 'warehouse',
-          country: r.country || '',
+          country: r.country || whCountryFromName(r.wh),
           new:     r.new     || 0,
           rfp:     r.rfp     || 0,
           picking: r.picking || 0,
