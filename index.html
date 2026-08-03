@@ -2843,6 +2843,8 @@
   const WMS_TYPE_GUID  = { B2C: '2857373d-e9ed-41ac-aa11-1441b42b6152', B2B: '814c0655-e231-45a3-9f15-1154b844f69e' };
   const WMS_STATUS_ID  = { 'Open': 6, 'Ready to Pick': 8, 'Picking Started': 9, 'Ready to Pack': 12, 'Packing Started': 13, 'Ready to Ship': 16 };
   const WMS_ALL_STATUS = [6, 8, 9, 12, 13, 16];
+  // B2C boards don't track Ready to Ship (16), so B2C deep-links exclude it.
+  const WMS_B2C_ALL_STATUS = [6, 8, 9, 12, 13];
   function wmsStatusUrl(typeLbl, statusIds, statusLbl, opts) {
     opts = opts || {};
     const enc2  = v => encodeURIComponent(encodeURIComponent(JSON.stringify(v)));
@@ -3128,7 +3130,7 @@
       ${statuses.map(s => {
         const isTotal  = s.key === 'total';
         const excluded = !isTotal && b2cExcl.has(s.key);
-        const statusIds = isTotal ? WMS_ALL_STATUS : [WMS_STATUS_ID[s.label]];
+        const statusIds = isTotal ? WMS_B2C_ALL_STATUS : [WMS_STATUS_ID[s.label]];
         const statusLbl = isTotal ? 'All' : s.label;
         const url = wmsStatusUrl('B2C', statusIds, statusLbl, { ..._whOpts, ..._cdMp });
         const subtitle = isTotal
