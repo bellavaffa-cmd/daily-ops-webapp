@@ -271,3 +271,45 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   sendResponse({ token: localStorage.getItem('token') || null });
   return false;
 });
+
+// ── Capture the logged-in WMS user ────────────────────────────────────────────
+// So the dashboard can scope its saved layout to the PERSON (follows them across
+// computers) instead of the device. The Logiwa auth token in localStorage is a
+// JWT whose payload identifies the user (idtfr = user GUID, id = user id). We
+// store a stable id in chrome.storage.local — shared across the extension — for
+// closer.js to hand to the dashboard app.
+(function captureWmsUser(tries) {
+  function decodePayload(tok) {
+    try {
+      const seg = tok.split('.')[1];
+      if (!seg) return null;
+      let b64 = seg.replace(/-/g, '+').replace(/_/g, '/');
+      if (b64.length % 4) b64 += '='.repeat(4 - (b64.length % 4));
+      return JSON.parse(atob(b64));
+    } catch (e) { return null; }
+  }
+  // Readable display name lives in the Userpilot user object (customer.name).
+  // The key has an app-specific numeric suffix, so match by prefix.
+  function readDisplayName() {
+    try {
+      const key = Object.keys(localStorage).find(function (k) { return k.indexOf('userpilotUser') === 0; });
+      if (!key) return '';
+      const o = JSON.parse(localStorage.getItem(key));
+      const n = o && o.customer && o.customer.name;
+      return n ? String(n).trim() : '';
+    } catch (e) { return ''; }
+  }
+  try {
+    const tok = localStorage.getItem('token');
+    const p = tok && decodePayload(tok);
+    const uid = p && (p.idtfr || p.id);
+    const name = readDisplayName();
+    const upd = {};
+    if (uid)  upd.wmsUser = 'wms:' + uid;
+    if (name) upd.wmsUserLabel = name;
+    if (Object.keys(upd).length) chrome.storage.local.set(upd);
+    if (uid && name) return;                 // both captured — done
+  } catch (e) { /* ignore */ }
+  // Token / userpilot object may land just after login — retry a few times.
+  if (tries > 0) setTimeout(function () { captureWmsUser(tries - 1); }, 1000);
+})(5);

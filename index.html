@@ -6579,12 +6579,14 @@ function fail(error) {
   // partitioned localStorage — and postMessages it in here. Without the
   // extension we fall back to a per-browser localStorage id.
   var _dashDeviceId = null;
+  var _dashDeviceLabel = null;               // readable name for the layout row (e.g. WMS user)
   var _dashDeviceIdResolve;
   var _dashDeviceIdP = new Promise(function(res){ _dashDeviceIdResolve = res; });
   window.addEventListener('message', function(e){
     if(e.source!==window || !e.data || e.data.type!=='dash-device-id' || !e.data.id) return;
     if(_dashDeviceId) return;                 // keep the first id stable for the session
     _dashDeviceId = String(e.data.id);
+    if(e.data.label) _dashDeviceLabel = String(e.data.label);
     _dashDeviceIdResolve(_dashDeviceId);
   });
   async function dashGetDeviceId(){
@@ -6609,7 +6611,7 @@ function fail(error) {
         fetch(SB_URL + '/dashboard_layout?on_conflict=device', {
           method:'POST',
           headers:{ ...SB_HDR, Prefer:'resolution=merge-duplicates,return=minimal' },
-          body: JSON.stringify([{ device: dev, layout: JSON.parse(str), updated_at: new Date().toISOString() }])
+          body: JSON.stringify([{ device: dev, layout: JSON.parse(str), updated_at: new Date().toISOString(), ...(_dashDeviceLabel ? { label: _dashDeviceLabel } : {}) }])
         }).catch(()=>{});
       }catch(e){}
     }, 900);
