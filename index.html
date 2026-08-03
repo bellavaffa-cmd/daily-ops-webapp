@@ -144,6 +144,8 @@
     .snav-btn.active { background: var(--surface2); color: var(--primary); }
     .snav-btn svg, .snav-group-header svg { flex-shrink: 0; }
     .snav-sub { padding-left: 34px; font-size: .82rem; }
+    .snav-sub2 { padding-left: 50px; }
+    #snav-group-b2c { margin: 0; }
     .snav-group-header.has-active { color: var(--primary); }
     .snav-chevron { margin-left: auto; transition: transform .15s; }
     .snav-group.collapsed .snav-chevron { transform: rotate(-90deg); }
@@ -1335,14 +1337,24 @@
         <svg class="snav-chevron" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
       <div class="snav-group-body">
-        <button class="snav-btn snav-sub" id="snav-btn-b2c" onclick="showView('b2c')">
-          <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13l-1.4 7h12.8M7 13l-1-5m10 5l1-5M9 21a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z"/></svg>
-          B2C Dashboard
-        </button>
-        <button class="snav-btn snav-sub" id="snav-btn-tomorrow" onclick="showView('tomorrow')">
-          <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6" stroke-linecap="round"/><line x1="8" y1="2" x2="8" y2="6" stroke-linecap="round"/><line x1="3" y1="10" x2="21" y2="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 14l2 2 4-4"/></svg>
-          Tomorrow
-        </button>
+        <!-- B2C nested group: Today's Order + Tomorrow's Order -->
+        <div class="snav-group collapsed" id="snav-group-b2c">
+          <button class="snav-group-header snav-sub" onclick="openB2C()">
+            <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13l-1.4 7h12.8M7 13l-1-5m10 5l1-5M9 21a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z"/></svg>
+            <span style="flex:1;text-align:left">B2C</span>
+            <svg class="snav-chevron" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="snav-group-body">
+            <button class="snav-btn snav-sub snav-sub2" id="snav-btn-b2c" onclick="showView('b2c')">
+              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l2.5 2.5"/></svg>
+              Today's Order
+            </button>
+            <button class="snav-btn snav-sub snav-sub2" id="snav-btn-tomorrow" onclick="showView('tomorrow')">
+              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6" stroke-linecap="round"/><line x1="8" y1="2" x2="8" y2="6" stroke-linecap="round"/><line x1="3" y1="10" x2="21" y2="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 14l2 2 4-4"/></svg>
+              Tomorrow's Order
+            </button>
+          </div>
+        </div>
         <button class="snav-btn snav-sub" id="snav-btn-b2b" onclick="showView('b2b')">
           <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path stroke-linecap="round" d="M16 12h.01"/></svg>
           B2B Dashboard
@@ -1520,14 +1532,14 @@
                 </label>
               </div>
               <div class="theme-toggle-row">
-                <div style="font-size:.85rem;color:var(--text);font-weight:500">B2C Dashboard</div>
+                <div style="font-size:.85rem;color:var(--text);font-weight:500">Today's Order</div>
                 <label class="toggle-switch">
                   <input type="checkbox" id="tabToggleB2c" onchange="applyTabVisibility()" checked />
                   <span class="toggle-track"></span>
                 </label>
               </div>
               <div class="theme-toggle-row">
-                <div style="font-size:.85rem;color:var(--text);font-weight:500">Tomorrow</div>
+                <div style="font-size:.85rem;color:var(--text);font-weight:500">Tomorrow's Order</div>
                 <label class="toggle-switch">
                   <input type="checkbox" id="tabToggleTomorrow" onchange="applyTabVisibility()" checked />
                   <span class="toggle-track"></span>
@@ -2080,7 +2092,7 @@
     <!-- Header -->
     <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">B2C Fulfillment</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Today's Order</div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:2px">
           <span id="b2cDataMode">Snapshot</span> · <span id="b2cSyncTime">6 Jul 2026, 09:47 SGT</span>
         </div>
@@ -2158,7 +2170,7 @@
     <!-- Header -->
     <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Tomorrow's Dispatch</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Tomorrow's Order</div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:2px">
           B2C orders that dropped after cut-off (Priority-MP after <span id="tmrMpCut">16:15</span>, Non-MP after <span id="tmrNonmpCut">14:09</span>) — held for tomorrow
         </div>
@@ -5388,8 +5400,13 @@
     const navBtn = document.getElementById('snav-btn-' + v);
     if (navBtn) {
       navBtn.classList.add('active');
-      const grp = navBtn.closest('.snav-group');
-      if (grp) { grp.classList.remove('collapsed'); grp.querySelector('.snav-group-header')?.classList.add('has-active'); }
+      // Expand + mark every ancestor group (supports the nested B2C group).
+      let grp = navBtn.closest('.snav-group');
+      while (grp) {
+        grp.classList.remove('collapsed');
+        grp.querySelector(':scope > .snav-group-header')?.classList.add('has-active');
+        grp = grp.parentElement ? grp.parentElement.closest('.snav-group') : null;
+      }
     }
     // Toggle Report Error FAB (before renderTable so errors don't hide it)
     const fab = document.getElementById('fabReport');
@@ -5441,6 +5458,13 @@
   }
   function toggleNavGroup(headerEl) {
     headerEl.closest('.snav-group')?.classList.toggle('collapsed');
+  }
+  // B2C group header: collapsed → expand and open the default sub-tab (Today's
+  // Order); already expanded → collapse.
+  function openB2C() {
+    const g = document.getElementById('snav-group-b2c');
+    if (g && g.classList.contains('collapsed')) showView('b2c');
+    else if (g) g.classList.add('collapsed');
   }
   // Keyboard shortcuts: Alt+1..9 jump between tabs (skipped while typing).
   document.addEventListener('keydown', e => {
