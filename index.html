@@ -5088,7 +5088,9 @@
           notes:      r.notes       || '',
           status:     r.status      || 'Open',
           skus:       Array.isArray(r.skus) ? r.skus : safeParseJson(r.skus),
-          photos:     Array.isArray(r.photos) ? r.photos : []
+          photos:     Array.isArray(r.photos) ? r.photos : [],
+          reporterName: r.reported_by || '',
+          reporterId:   r.reporter_id || ''
         });
       });
       updateBadge();
@@ -5117,7 +5119,9 @@
           notes:       record.notes || '',
           status:      record.status || 'Open',
           skus:        JSON.stringify(record.skus || []),
-          photos:      record.photos || []
+          photos:      record.photos || [],
+          reported_by: record.reporterName || '',
+          reporter_id: record.reporterId || ''
         })
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -5624,13 +5628,19 @@ function fail(error) {
     const submitBtn = document.getElementById('errorSubmitBtn');
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Saving…'; }
 
+    // Stamp the report with who filed it, from the stored identity (WMS login →
+    // display name when available; otherwise the device/browser id).
+    const reporterId   = _dashDeviceId || (await dashGetDeviceId());
+    const reporterName = _dashDeviceLabel || '';
+
     const record = {
       id: uid(), timestamp: new Date(),
       warehouse, brand,
       orderId, toteNum, errorType,
       notes, skus,
       photos: [...photosBuffer],
-      status: 'Open'
+      status: 'Open',
+      reporterId, reporterName
     };
 
     // Optimistically add to local list
@@ -5927,6 +5937,7 @@ function fail(error) {
               <div class="detail-item"><span class="detail-label">Order ID</span><span class="detail-value" style="display:inline-flex;align-items:center;gap:8px"><span class="td-mono">${e.orderId||'—'}</span>${e.orderId ? `<button onclick="copyText('${e.orderId.replace(/'/g,"\\'")}',this)" title="Copy order ID" style="display:inline-flex;align-items:center;padding:3px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;cursor:pointer;color:var(--muted);transition:border-color .15s" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'"><svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>` : ''}</span></div>
               <div class="detail-item"><span class="detail-label">Tote Number</span><span class="detail-value" style="display:inline-flex;align-items:center;gap:8px"><span>${e.toteNum||'—'}</span>${e.toteNum ? `<button onclick="copyText('${e.toteNum.replace(/'/g,"\\'")}',this)" title="Copy tote number" style="display:inline-flex;align-items:center;padding:3px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;cursor:pointer;color:var(--muted);transition:border-color .15s" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'"><svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>` : ''}</span></div>
               <div class="detail-item"><span class="detail-label">Reported</span><span class="detail-value">${formatTime(e.timestamp)}</span></div>
+              <div class="detail-item"><span class="detail-label">Reported by</span><span class="detail-value">${(e.reporterName || '—').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</span></div>
               ${skuRows}
               ${notesRows}
               ${photosRow}
@@ -6225,6 +6236,7 @@ function fail(error) {
     table += `${pad('Error Type',  col1)}  ${errorEmoji} ${record.errorType}\n`;
     table += `${pad('Tote',        col1)}  ${record.toteNum   || '—'}\n`;
     table += `${pad('Reported',    col1)}  ${ts}\n`;
+    if (record.reporterName) table += `${pad('Reported by', col1)}  ${record.reporterName}\n`;
     table += '```';
 
     const blocks = [
