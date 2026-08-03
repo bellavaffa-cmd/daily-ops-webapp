@@ -3545,8 +3545,8 @@
       const timeout = setTimeout(() => {
         window.removeEventListener('message', onResult);
         setIdle();
-        showToast('Sync timed out — make sure wms.golocad.com is open in another tab.', false);
-      }, 30000);
+        showToast('Sync is taking a while (large order volume) — it may still finish in the background; check the sync time shortly.', false);
+      }, 120000);
 
       function onResult(e) {
         if (!e.data || e.data.type !== 'wms-sync-result') return;
@@ -3870,8 +3870,8 @@
       const timeout = setTimeout(() => {
         window.removeEventListener('message', onResult);
         setIdle();
-        showToast('B2B sync timed out — make sure wms.golocad.com is open.', false);
-      }, 30000);
+        showToast('B2B sync is taking a while (large order volume) — it may still finish in the background.', false);
+      }, 120000);
 
       function onResult(e) {
         if (!e.data || e.data.type !== 'wms-sync-b2b-result') return;
