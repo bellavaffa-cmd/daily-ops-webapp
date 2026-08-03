@@ -2071,6 +2071,9 @@
       </div>
     </div>
 
+    <!-- Past-cut-off at-risk banner -->
+    <div id="b2cRiskBanner"></div>
+
     <!-- KPI Cards -->
     <div id="b2cKpis" style="margin-bottom:16px"></div>
 
@@ -2806,6 +2809,7 @@
     { wh: 'LOCAD Umm Ramool FC',                new: 2,   rfp: 1,    picking: 0,  picked: 0    },
   ];
 
+  let opsConfig = { operating_start: '09:00', operating_end: '18:00', mp_cutoff: '16:15', nonmp_cutoff: '14:09' };
   let b2cFlow = [];       // b2c_flow_snapshot rows — B2C new-orders inflow (inflow_1h)
   let b2cPackSnaps = [];  // productivity_snapshot rows — cumulative packed_orders for the hourly packing rate
 
@@ -3066,6 +3070,7 @@
     const total = incSum(tot);
     const fmt   = n => n.toLocaleString();
 
+    renderB2CRiskBanner(filtered);
     document.getElementById('b2cKpis').innerHTML = b2cKpiCardsHtml(filtered, { interactive: true });
 
     // Table helpers
@@ -3137,8 +3142,41 @@
   populateViewWarehouseSelects();
   renderB2C();
 
+  // ── Operations config (operating hours + cut-offs), from Supabase ─────────
+  // (opsConfig is declared with the other globals so load-time renders can read it.)
+  async function fetchOpsConfig() {
+    try {
+      const r = await fetch(SB_URL + '/ops_config?id=eq.1&select=*', { headers: SB_HDR });
+      if (r.ok) { const rows = await r.json(); if (rows && rows[0]) opsConfig = { ...opsConfig, ...rows[0] }; }
+    } catch (e) { /* keep defaults */ }
+  }
+  function hhmmToMins(hhmm) { const [h, m] = String(hhmm || '').split(':').map(Number); return (h || 0) * 60 + (m || 0); }
+  function nowMinsLocal() { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); }
+
+  // Red banner when a type's cut-off has passed and orders of that type are
+  // still open today. `filtered` = warehouse rows already in the current filter.
+  function renderB2CRiskBanner(filtered) {
+    const el = document.getElementById('b2cRiskBanner');
+    if (!el || !opsConfig) return;
+    const KEYS = ['new', 'rfp', 'picking', 'picked', 'packing'];
+    const sumType = suffix => (filtered || []).reduce((a, r) => a + KEYS.reduce((s, k) => s + (r[k + suffix] || 0), 0), 0);
+    const now = nowMinsLocal();
+    const risks = [];
+    if (opsConfig.nonmp_cutoff && now >= hhmmToMins(opsConfig.nonmp_cutoff)) {
+      const n = sumType('_nonmp'); if (n > 0) risks.push(`${n.toLocaleString()} Non-MP`);
+    }
+    if (opsConfig.mp_cutoff && now >= hhmmToMins(opsConfig.mp_cutoff)) {
+      const n = sumType('_prioritymp'); if (n > 0) risks.push(`${n.toLocaleString()} Priority-MP`);
+    }
+    el.innerHTML = risks.length
+      ? `<div style="display:flex;align-items:center;gap:8px;padding:9px 14px;margin-bottom:14px;border-radius:9px;background:rgba(224,82,82,.12);border:1px solid var(--danger,#e05252);color:var(--danger,#e05252);font-size:.82rem;font-weight:600">
+           <span style="font-size:1rem">⚠️</span> Past cut-off — ${risks.join(' and ')} order(s) still open today</div>`
+      : '';
+  }
+
   // ── B2C Live Data Fetch (reads from Supabase b2c_data table) ─────────────
   async function fetchB2CData() {
+    fetchOpsConfig();
     const modeEl = document.getElementById('b2cDataMode');
     if (modeEl) { modeEl.textContent = 'Loading…'; modeEl.style.color = 'var(--muted)'; }
     try {
@@ -3146,22 +3184,23 @@
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const rows = await res.json();
       if (rows && rows.length) {
-        b2cData = rows.map(r => ({
-          wh:      r.wh,
-          type:    r.type    || 'warehouse',
-          country: r.country || whCountryFromName(r.wh),
-          new:     r.new     || 0,
-          rfp:     r.rfp     || 0,
-          picking: r.picking || 0,
-          picked:  r.picked  || 0,
-          packing: r.packing || 0,
-          // Per-status MP-tag counts (feature 6).
-          new_nonmp:        r.new_nonmp        || 0, new_prioritymp:        r.new_prioritymp        || 0,
-          rfp_nonmp:        r.rfp_nonmp        || 0, rfp_prioritymp:        r.rfp_prioritymp        || 0,
-          picking_nonmp:    r.picking_nonmp    || 0, picking_prioritymp:    r.picking_prioritymp    || 0,
-          picked_nonmp:     r.picked_nonmp     || 0, picked_prioritymp:     r.picked_prioritymp     || 0,
-          packing_nonmp:    r.packing_nonmp    || 0, packing_prioritymp:    r.packing_prioritymp    || 0,
-        }));
+        // Split each status into TODAY (open − tomorrow) and TOMORROW (orders
+        // that dropped after their cut-off, computed by the sync). The primary
+        // status fields hold today's counts so every existing B2C view excludes
+        // post-cut-off arrivals automatically; the *_tomorrow fields feed the
+        // Tomorrow tab.
+        const B2C_STATS = ['new','rfp','picking','picked','packing'];
+        const B2C_VARIANTS = ['', '_nonmp', '_prioritymp'];
+        b2cData = rows.map(r => {
+          const o = { wh: r.wh, type: r.type || 'warehouse', country: r.country || whCountryFromName(r.wh) };
+          B2C_STATS.forEach(s => B2C_VARIANTS.forEach(v => {
+            const open = Number(r[s + v] || 0);
+            const tmr  = Number(r[s + '_tomorrow' + v] || 0);
+            o[s + v] = Math.max(0, open - tmr);   // today
+            o[s + '_tomorrow' + v] = tmr;          // tomorrow
+          }));
+          return o;
+        });
         populateViewWarehouseSelects(); // rebuild optgroups now that b2cData has real country info
         renderB2C();
         renderB2B();       // b2b_data has no country field of its own; re-group once b2cData's arrives

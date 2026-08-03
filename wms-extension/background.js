@@ -123,6 +123,33 @@ async function performSync(isB2B) {
       page++;
     }
 
+    // 3b. Cut-off config → today/tomorrow split. Orders that dropped after their
+    // cut-off (Priority-MP vs Non-MP) are tomorrow's dispatch; we count them
+    // separately so the app can exclude them from today and show a Tomorrow tab.
+    // Cut-offs are interpreted in the sync machine's local time (the operating
+    // region). Falls back to defaults if the config row can't be read.
+    let opsCfg = { mp_cutoff: '16:15', nonmp_cutoff: '14:09' };
+    try {
+      const cr = await fetch('https://hmpkjmnxoidesnnoecfm.supabase.co/rest/v1/ops_config?id=eq.1&select=mp_cutoff,nonmp_cutoff', {
+        headers: { apikey: 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP', Authorization: 'Bearer sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP' }
+      });
+      if (cr.ok) { const cd = await cr.json(); if (cd && cd[0]) opsCfg = cd[0]; }
+    } catch (e) { /* keep defaults */ }
+    const todayCutoffTs = hhmm => {
+      if (!hhmm) return null;
+      const [h, m] = String(hhmm).split(':').map(Number);
+      const d = new Date(); d.setHours(h || 0, m || 0, 0, 0);
+      return d.getTime();
+    };
+    const MP_CUT = todayCutoffTs(opsCfg.mp_cutoff);
+    const NONMP_CUT = todayCutoffTs(opsCfg.nonmp_cutoff);
+    // An order is "tomorrow" if it dropped after its type's cut-off today.
+    const isTomorrowOrder = (o, isMp) => {
+      const created = Date.parse(o.createdDateTime || o.shipmentOrderDate || '');
+      const cut = isMp ? MP_CUT : NONMP_CUT;
+      return !!(created && cut && created > cut);
+    };
+
     // 4. Pivot warehouseCode × status → counts. Compute BOTH the B2C and B2B
     // aggregates every sync — otherwise whichever aggregate this sync isn't
     // "for" goes stale (e.g. b2b_data.ready_ship stayed 0 after a B2C-context
@@ -143,7 +170,11 @@ async function performSync(isB2B) {
         whs[wh] = { wh };
         cols.forEach(c => {
           whs[wh][c] = 0;
-          if (countTags) { whs[wh][c + '_nonmp'] = 0; whs[wh][c + '_prioritymp'] = 0; }
+          if (countTags) {
+            whs[wh][c + '_nonmp'] = 0; whs[wh][c + '_prioritymp'] = 0;
+            whs[wh][c + '_tomorrow'] = 0;
+            whs[wh][c + '_tomorrow_nonmp'] = 0; whs[wh][c + '_tomorrow_prioritymp'] = 0;
+          }
         });
       };
       for (const o of all) {
@@ -157,8 +188,15 @@ async function performSync(isB2B) {
         if (!wh || !col) continue;
         whs[wh][col]++;
         if (countTags) {
-          if (orderHasTag(o, 'nonmp'))      whs[wh][col + '_nonmp']++;
-          if (orderHasTag(o, 'prioritymp')) whs[wh][col + '_prioritymp']++;
+          const isNon = orderHasTag(o, 'nonmp');
+          const isMp  = orderHasTag(o, 'prioritymp');
+          if (isNon) whs[wh][col + '_nonmp']++;
+          if (isMp)  whs[wh][col + '_prioritymp']++;
+          if (isTomorrowOrder(o, isMp)) {
+            whs[wh][col + '_tomorrow']++;
+            if (isNon) whs[wh][col + '_tomorrow_nonmp']++;
+            if (isMp)  whs[wh][col + '_tomorrow_prioritymp']++;
+          }
         }
       }
       return Object.values(whs).map(r => ({ ...r, updated_at: new Date().toISOString() }));
