@@ -150,6 +150,15 @@ async function performSync(isB2B) {
       return !!(created && cut && created > cut);
     };
 
+    // Warehouse code (name) → internal GUID, for the app's WMS deep-link
+    // warehouse filter (?wn=[guid]). Keyed live so warehouse renames stay correct.
+    const whGuid = {};
+    for (const o of all) {
+      if (o.warehouseCode && o.warehouseIdentifier && !whGuid[o.warehouseCode]) {
+        whGuid[o.warehouseCode] = o.warehouseIdentifier;
+      }
+    }
+
     // 4. Pivot warehouseCode × status → counts. Compute BOTH the B2C and B2B
     // aggregates every sync — otherwise whichever aggregate this sync isn't
     // "for" goes stale (e.g. b2b_data.ready_ship stayed 0 after a B2C-context
@@ -199,7 +208,7 @@ async function performSync(isB2B) {
           }
         }
       }
-      return Object.values(whs).map(r => ({ ...r, updated_at: new Date().toISOString() }));
+      return Object.values(whs).map(r => ({ ...r, ...(countTags && whGuid[r.wh] ? { wh_id: whGuid[r.wh] } : {}), updated_at: new Date().toISOString() }));
     };
     const B2C_SM_AGG = { 6:'new',  8:'rfp', 9:'picking', 12:'picked',     13:'packing' };
     const B2B_SM_AGG = { 6:'open', 8:'rfp', 9:'picking', 12:'pack_ready', 13:'packing', 16:'ready_ship' };
