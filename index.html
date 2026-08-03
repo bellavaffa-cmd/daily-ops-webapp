@@ -1339,6 +1339,10 @@
           <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13l-1.4 7h12.8M7 13l-1-5m10 5l1-5M9 21a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z"/></svg>
           B2C Dashboard
         </button>
+        <button class="snav-btn snav-sub" id="snav-btn-tomorrow" onclick="showView('tomorrow')">
+          <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6" stroke-linecap="round"/><line x1="8" y1="2" x2="8" y2="6" stroke-linecap="round"/><line x1="3" y1="10" x2="21" y2="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 14l2 2 4-4"/></svg>
+          Tomorrow
+        </button>
         <button class="snav-btn snav-sub" id="snav-btn-b2b" onclick="showView('b2b')">
           <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path stroke-linecap="round" d="M16 12h.01"/></svg>
           B2B Dashboard
@@ -1468,6 +1472,20 @@
               <option value="LOCAD Umm Ramool FC">LOCAD Umm Ramool FC</option>
             </select>
           </div>
+          <!-- Operating hours & cut-offs -->
+          <div class="theme-toggle-row" style="align-items:flex-start;flex-direction:column;gap:10px">
+            <div>
+              <div style="font-size:.85rem;color:var(--text);font-weight:500">Operating hours &amp; cut-offs</div>
+              <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Local time. Drives the Tomorrow split, at-risk flags, and Open/Closed status.</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;width:100%;max-width:360px">
+              <label style="font-size:.75rem;color:var(--muted);display:flex;flex-direction:column;gap:3px">Open<input type="time" id="cfgOpStart" onchange="saveOpsConfig()" style="font-size:.82rem;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></label>
+              <label style="font-size:.75rem;color:var(--muted);display:flex;flex-direction:column;gap:3px">Close<input type="time" id="cfgOpEnd" onchange="saveOpsConfig()" style="font-size:.82rem;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></label>
+              <label style="font-size:.75rem;color:var(--muted);display:flex;flex-direction:column;gap:3px">Priority-MP cut-off<input type="time" id="cfgMpCut" onchange="saveOpsConfig()" style="font-size:.82rem;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></label>
+              <label style="font-size:.75rem;color:var(--muted);display:flex;flex-direction:column;gap:3px">Non-MP cut-off<input type="time" id="cfgNonmpCut" onchange="saveOpsConfig()" style="font-size:.82rem;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></label>
+            </div>
+            <div id="cfgSaveMsg" style="font-size:.72rem;color:var(--muted);min-height:14px"></div>
+          </div>
           <!-- Carriers -->
           <div style="margin-top:16px">
             <div style="font-size:.72rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Carriers</div>
@@ -1505,6 +1523,13 @@
                 <div style="font-size:.85rem;color:var(--text);font-weight:500">B2C Dashboard</div>
                 <label class="toggle-switch">
                   <input type="checkbox" id="tabToggleB2c" onchange="applyTabVisibility()" checked />
+                  <span class="toggle-track"></span>
+                </label>
+              </div>
+              <div class="theme-toggle-row">
+                <div style="font-size:.85rem;color:var(--text);font-weight:500">Tomorrow</div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="tabToggleTomorrow" onchange="applyTabVisibility()" checked />
                   <span class="toggle-track"></span>
                 </label>
               </div>
@@ -2129,6 +2154,49 @@
   </div>
 
   <!-- ── B2B DASHBOARD VIEW ── -->
+  <div class="view" id="view-tomorrow">
+    <!-- Header -->
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Tomorrow's Dispatch</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">
+          B2C orders that dropped after cut-off (Priority-MP after <span id="tmrMpCut">16:15</span>, Non-MP after <span id="tmrNonmpCut">14:09</span>) — held for tomorrow
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;justify-content:flex-end">
+        <div class="wh-multi" style="flex:0 1 220px;min-width:150px;max-width:260px">
+          <button type="button" class="wh-multi-btn" onclick="toggleWhPanel('tomorrow',event)">
+            <span id="whBtnLabel-tomorrow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">All Warehouses</span>
+            <span style="color:var(--muted);flex:none">▾</span>
+          </button>
+          <div id="whPanel-tomorrow" class="wh-panel" style="display:none"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- KPI Cards (tomorrow counts) -->
+    <div id="tomorrowKpis" style="margin-bottom:16px"></div>
+
+    <!-- Warehouse Breakdown -->
+    <div class="card" style="overflow-x:auto">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Warehouse Breakdown — Tomorrow</div>
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr style="background:var(--surface2)">
+            <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Warehouse</th>
+            <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">New</th>
+            <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">RFP</th>
+            <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Picking</th>
+            <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Picked</th>
+            <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Packing</th>
+            <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Total</th>
+          </tr>
+        </thead>
+        <tbody id="tomorrowWHTable"></tbody>
+      </table>
+    </div>
+  </div>
+
   <div class="view fill" id="view-b2b">
 
     <!-- Header -->
@@ -2718,6 +2786,7 @@
   const TAB_KEYS = [
     { key: 'packingErrorTabOverview',     navId: 'snav-btn-overview',     view: 'overview',     toggleId: 'tabToggleOverview'     },
     { key: 'packingErrorTabB2c',      navId: 'snav-btn-b2c',      view: 'b2c',      toggleId: 'tabToggleB2c'      },
+    { key: 'packingErrorTabTomorrow', navId: 'snav-btn-tomorrow', view: 'tomorrow', toggleId: 'tabToggleTomorrow' },
     { key: 'packingErrorTabB2b',      navId: 'snav-btn-b2b',      view: 'b2b',      toggleId: 'tabToggleB2b'      },
     { key: 'packingErrorTabShortage', navId: 'snav-btn-shortage', view: 'shortage', toggleId: 'tabToggleShortage' },
     { key: 'packingErrorTabProductivity', navId: 'snav-btn-productivity', view: 'productivity', toggleId: 'tabToggleProductivity' },
@@ -2942,7 +3011,7 @@
   function renderWarehouseFilters() {
     const label = warehouseBtnLabel();
     const panel = whPanelHTML();
-    ['b2c', 'b2b', 'shortage', 'jobs'].forEach(tab => {
+    ['b2c', 'tomorrow', 'b2b', 'shortage', 'jobs'].forEach(tab => {
       const lbl = document.getElementById('whBtnLabel-' + tab);
       if (lbl) lbl.textContent = label;
       const p = document.getElementById('whPanel-' + tab);
@@ -3136,6 +3205,51 @@
     document.getElementById('b2cWHTable').innerHTML = html;
     renderB2CFlow();
   }
+
+  // ── Tomorrow tab: B2C orders that dropped after their cut-off ─────────────
+  // Reuses the *_tomorrow counts the sync writes; same builders as the B2C tab.
+  function tomorrowRows() {
+    const S = ['new', 'rfp', 'picking', 'picked', 'packing'], V = ['', '_nonmp', '_prioritymp'];
+    return b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh).map(r => {
+      const o = { wh: r.wh, country: r.country, type: 'warehouse' };
+      S.forEach(s => V.forEach(v => { o[s + v] = Number(r[s + '_tomorrow' + v] || 0); }));
+      return o;
+    });
+  }
+  function renderTomorrow() {
+    const kEl = document.getElementById('tomorrowKpis'); if (!kEl) return;
+    const mp = document.getElementById('tmrMpCut'); if (mp) mp.textContent = opsConfig.mp_cutoff || '16:15';
+    const nm = document.getElementById('tmrNonmpCut'); if (nm) nm.textContent = opsConfig.nonmp_cutoff || '14:09';
+    const sel = getSelectedWhs();
+    const filtered = tomorrowRows().filter(r => inWhFilter(r.wh));
+    kEl.innerHTML = b2cKpiCardsHtml(filtered, { interactive: false });
+
+    const fmt = n => n.toLocaleString();
+    const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color || 'var(--text)'};font-size:.82rem">${fmt(n || 0)}</td>`;
+    const rowTot = r => (r.new || 0) + (r.rfp || 0) + (r.picking || 0) + (r.picked || 0) + (r.packing || 0);
+    const sumRow = arr => arr.reduce((a, r) => ({ new: a.new + (r.new || 0), rfp: a.rfp + (r.rfp || 0), picking: a.picking + (r.picking || 0), picked: a.picked + (r.picked || 0), packing: a.packing + (r.packing || 0) }), { new: 0, rfp: 0, picking: 0, picked: 0, packing: 0 });
+    const whRow = (r, indent) => `<tr style="border-top:1px solid var(--border)"><td style="padding:${indent ? '9px 18px 9px 28px' : '10px 18px'};color:var(--text);white-space:nowrap;font-size:.82rem">${r.wh}</td>${tdN(r.new, '#fb923c')}${tdN(r.rfp, '#fcd34d')}${tdN(r.picking, '#93c5fd')}${tdN(r.picked, '#86efac')}${tdN(r.packing, '#c4b5fd')}${tdN(rowTot(r), 'var(--text)')}</tr>`;
+    const totRow = (label, t) => `<tr style="border-top:2px solid var(--border);background:var(--surface2)"><td style="padding:10px 18px;color:var(--text);font-weight:700;font-size:.82rem">${label}</td>${tdN(t.new, '#fb923c')}${tdN(t.rfp, '#fcd34d')}${tdN(t.picking, '#93c5fd')}${tdN(t.picked, '#86efac')}${tdN(t.packing, '#c4b5fd')}${tdN(t.new + t.rfp + t.picking + t.picked + t.packing, 'var(--text)')}</tr>`;
+
+    let html = '';
+    const countries = [...new Set(filtered.map(r => r.country).filter(Boolean))].sort();
+    if (countries.length && sel.length !== 1) {
+      for (const c of countries) {
+        const whs = filtered.filter(r => r.country === c);
+        html += totRow(c, sumRow(whs));
+        html += whs.map(r => whRow(r, true)).join('');
+      }
+      html += filtered.filter(r => !r.country).map(r => whRow(r, false)).join('');
+    } else {
+      html += filtered.map(r => whRow(r, false)).join('');
+      if (filtered.length > 1) html += totRow('Total', sumRow(filtered));
+    }
+    const grand = sumRow(filtered);
+    if (!filtered.length || rowTot(grand) === 0) {
+      html = `<tr><td colspan="7" style="padding:22px;text-align:center;color:var(--muted);font-size:.85rem">No orders held for tomorrow — nothing has dropped after cut-off yet.</td></tr>`;
+    }
+    document.getElementById('tomorrowWHTable').innerHTML = html;
+  }
   // (Warehouse-filter UI + logic now lives in the multi-select helpers above:
   //  renderWarehouseFilters / populateViewWarehouseSelects / setSelectedWhs.)
 
@@ -3149,9 +3263,48 @@
       const r = await fetch(SB_URL + '/ops_config?id=eq.1&select=*', { headers: SB_HDR });
       if (r.ok) { const rows = await r.json(); if (rows && rows[0]) opsConfig = { ...opsConfig, ...rows[0] }; }
     } catch (e) { /* keep defaults */ }
+    loadOpsConfigInputs();
+  }
+  function loadOpsConfigInputs() {
+    const set = (id, v) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = v || ''; };
+    set('cfgOpStart', opsConfig.operating_start); set('cfgOpEnd', opsConfig.operating_end);
+    set('cfgMpCut', opsConfig.mp_cutoff); set('cfgNonmpCut', opsConfig.nonmp_cutoff);
+  }
+  async function saveOpsConfig() {
+    const cfg = {
+      id: 1,
+      operating_start: document.getElementById('cfgOpStart').value || '09:00',
+      operating_end:   document.getElementById('cfgOpEnd').value || '18:00',
+      mp_cutoff:       document.getElementById('cfgMpCut').value || '16:15',
+      nonmp_cutoff:    document.getElementById('cfgNonmpCut').value || '14:09',
+      updated_at: new Date().toISOString(),
+    };
+    opsConfig = { ...opsConfig, ...cfg };
+    const msg = document.getElementById('cfgSaveMsg');
+    if (msg) { msg.textContent = 'Saving…'; msg.style.color = 'var(--muted)'; }
+    try {
+      const r = await fetch(SB_URL + '/ops_config?on_conflict=id', {
+        method: 'POST',
+        headers: { ...SB_HDR, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify([cfg]),
+      });
+      if (msg) {
+        const ok = r.ok;
+        msg.textContent = ok ? 'Saved ✓ — applies on the next sync' : 'Save failed';
+        msg.style.color = ok ? '#86efac' : 'var(--danger,#e05252)';
+        setTimeout(() => { if (msg) msg.textContent = ''; }, 3000);
+      }
+    } catch (e) { if (msg) { msg.textContent = 'Save failed'; msg.style.color = 'var(--danger,#e05252)'; } }
+    try { renderB2C(); renderTomorrow(); } catch (e) {}
   }
   function hhmmToMins(hhmm) { const [h, m] = String(hhmm || '').split(':').map(Number); return (h || 0) * 60 + (m || 0); }
   function nowMinsLocal() { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); }
+  function opsIsOpen() { const n = nowMinsLocal(); return n >= hhmmToMins(opsConfig.operating_start) && n < hhmmToMins(opsConfig.operating_end); }
+  function opsStatusLabel() {
+    return opsIsOpen()
+      ? `🟢 Open · ${opsConfig.operating_start}–${opsConfig.operating_end}`
+      : `🔴 Closed · opens ${opsConfig.operating_start}`;
+  }
 
   // Red banner when a type's cut-off has passed and orders of that type are
   // still open today. `filtered` = warehouse rows already in the current filter.
@@ -3203,6 +3356,7 @@
         });
         populateViewWarehouseSelects(); // rebuild optgroups now that b2cData has real country info
         renderB2C();
+        try { renderTomorrow(); } catch (e) {}
         renderB2B();       // b2b_data has no country field of its own; re-group once b2cData's arrives
         renderShortage();  // same — shortage_data has no country field either
         if (localStorage.getItem('b2cWarehousePicked') === null) showWarehousePicker();
@@ -3317,14 +3471,14 @@
           netEl.style.color = net > 0 ? '#86efac' : (net < 0 ? '#f87171' : 'var(--text)');
         } else { netEl.textContent = '—'; netEl.style.color = 'var(--text)'; }
       }
-      wEl.textContent = `${tStr(prev.t)} → ${tStr(latest.t)} · picking & packing count all order types`;
+      wEl.textContent = `${opsStatusLabel()} · ${tStr(prev.t)} → ${tStr(latest.t)} · picking & packing count all order types`;
     } else {
       if (pkEl) pkEl.textContent = '—';
       clEl.textContent = '—';
       if (netEl) { netEl.textContent = '—'; netEl.style.color = 'var(--text)'; }
-      wEl.textContent = latest
+      wEl.textContent = opsStatusLabel() + ' · ' + (latest
         ? `Collecting… need ~1h of picking/packing history (last sync ${tStr(latest.t)})`
-        : (inflowArr[0] ? 'New orders shown; picking/packing needs the productivity sync' : 'Collecting data… (waiting for the first hourly sync)');
+        : (inflowArr[0] ? 'New orders shown; picking/packing needs the productivity sync' : 'Collecting data… (waiting for the first hourly sync)'));
     }
   }
 
@@ -4284,13 +4438,13 @@
     if (latest && prev) {
       pEl.textContent = fmt(Math.max(0, latest.picked - prev.picked));
       kEl.textContent = fmt(Math.max(0, latest.packed - prev.packed));
-      wEl.textContent = `${timeStr(prev.t)} → ${timeStr(latest.t)} · updates each sync`;
+      wEl.textContent = `${opsStatusLabel()} · ${timeStr(prev.t)} → ${timeStr(latest.t)} · updates each sync`;
     } else {
       pEl.textContent = '—';
       kEl.textContent = '—';
-      wEl.textContent = latest
+      wEl.textContent = opsStatusLabel() + ' · ' + (latest
         ? `Collecting… need ~1h of history (last sync ${timeStr(latest.t)})`
-        : 'Collecting data… (waiting for the first hourly sync)';
+        : 'Collecting data… (waiting for the first hourly sync)');
     }
   }
 
@@ -5179,7 +5333,7 @@
   }
 
   // ── View switching ─────────────────────────────────────────────────────
-  const VIEW_ORDER = ['overview', 'b2c', 'b2b', 'shortage', 'productivity', 'jobs', 'dash', 'help'];
+  const VIEW_ORDER = ['overview', 'b2c', 'tomorrow', 'b2b', 'shortage', 'productivity', 'jobs', 'dash', 'help'];
   let _lastJobsSync = 0;
   function showView(v) {
     if (!document.getElementById('view-' + v)) return;
@@ -5198,6 +5352,7 @@
     const fab = document.getElementById('fabReport');
     if (fab) fab.classList.toggle('visible', v === 'b2c');
     if (v === 'overview') { try { renderDashboard(); } catch(e){} }
+    if (v === 'tomorrow') { try { renderTomorrow(); } catch(e){} }
     if (v === 'dash') { try { renderStats(); } catch(e){} try { initWarehouseFilter(); renderTable(); } catch(e){} }
     if (v === 'jobs') {
       try { renderJobs(); } catch(e){}
