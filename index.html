@@ -2889,9 +2889,9 @@
     'Priority MP': '928bd9c0-c608-4bb4-808b-0b175d5ea9da',
     'Non-MP':      '1fac14b3-ef6a-484f-ab6a-683b9748c34e',
   };
-  function wmsTagUrl(typeLbl, statusIds, statusLbl, tagLbl) {
+  function wmsTagUrl(typeLbl, statusIds, statusLbl, tagLbl, opts) {
     const enc2 = v => encodeURIComponent(encodeURIComponent(JSON.stringify(v)));
-    let url = wmsStatusUrl(typeLbl, statusIds, statusLbl);
+    let url = wmsStatusUrl(typeLbl, statusIds, statusLbl, opts);
     const id = WMS_TAG_ID[tagLbl];
     if (id) url += '&tag=' + enc2([id]) + '&tagqt=in&taglbl=' + encodeURIComponent(tagLbl);
     return url;
