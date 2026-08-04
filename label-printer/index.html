@@ -622,6 +622,33 @@
     .pdf-page-hidden { display: flex !important; }
   }
 </style>
+
+<!-- ── Match the Daily Ops host app design (dark, mint accent, Space Grotesk) ── -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style id="daily-ops-theme">
+  /* Force the host app's palette regardless of the generator's own theme state
+     or the OS prefers-color-scheme (high specificity beats the dark media query). */
+  :root:root:root {
+    --bg: #0a0d0a;
+    --panel: #14170f;
+    --border: #2a2f27;
+    --text: #ffffff;
+    --muted: #8a9088;
+    --accent: #94ffa1;
+    --accent-hover: #b6ffbe;
+    --input-bg: #1b1f17;
+    --button-bg: #1b1f17;
+    --button-hover: #232820;
+    --shadow: rgba(0,0,0,0.5);
+    color-scheme: dark;
+  }
+  body { font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  /* Mint accent is light → primary buttons need dark text for contrast. */
+  button.primary, button.primary:hover { color: #06210b; }
+</style>
+<script>try { document.documentElement.setAttribute('data-theme', 'dark'); } catch (e) {}</script>
 </head>
 <body>
 <button type="button" id="panelToggleBtn" title="Show or hide the input panel">Hide</button>
