@@ -2486,8 +2486,26 @@
   <div class="view" id="view-labels">
     <div style="margin-bottom:16px">
       <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Label Printer</div>
-      <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Generate &amp; print QR labels</div>
+      <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Generate &amp; print QR labels · shared PDF documents</div>
     </div>
+
+    <!-- Shared PDF document storage (available on every device) -->
+    <div class="card" style="padding:14px 16px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:8px;font-size:.9rem;font-weight:600;color:var(--text)">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path stroke-linecap="round" stroke-linejoin="round" d="M14 2v6h6"/></svg>
+          Shared PDFs
+          <span style="font-size:.72rem;font-weight:500;color:var(--muted)">· available on every device</span>
+        </div>
+        <label style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:var(--primary);color:#fff;border-radius:8px;font-size:.8rem;font-weight:600;cursor:pointer">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Upload PDF
+          <input type="file" accept="application/pdf,.pdf" multiple onchange="docUpload(this)" style="display:none">
+        </label>
+      </div>
+      <div id="docList" style="font-size:.82rem;color:var(--muted)">Loading…</div>
+    </div>
+
     <div class="card" style="padding:0;overflow:hidden">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 16px;border-bottom:1px solid var(--border)">
         <div style="display:flex;align-items:center;gap:8px;font-size:.9rem;font-weight:600;color:var(--text)">
@@ -5409,6 +5427,61 @@
   }
 
   // ── View switching ─────────────────────────────────────────────────────
+  // ── Shared PDF document storage (Supabase Storage, available on every device) ──
+  const DOC_BUCKET = 'documents';
+  const DOC_BASE = 'https://hmpkjmnxoidesnnoecfm.supabase.co/storage/v1';
+  const _docHdr = extra => Object.assign({ apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY }, extra || {});
+  const docPublicUrl = name => DOC_BASE + '/object/public/' + DOC_BUCKET + '/' + encodeURIComponent(name);
+  const _docEsc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  async function docRefresh() {
+    const el = document.getElementById('docList'); if (!el) return;
+    try {
+      const r = await fetch(DOC_BASE + '/object/list/' + DOC_BUCKET, {
+        method: 'POST', headers: _docHdr({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ prefix: '', limit: 200, sortBy: { column: 'created_at', order: 'desc' } })
+      });
+      const rows = r.ok ? await r.json() : [];
+      const files = (rows || []).filter(f => f && f.name && f.id);   // folders have null id
+      if (!files.length) { el.innerHTML = '<div style="padding:6px 0;color:var(--muted)">No PDFs yet — upload one to share it with every device.</div>'; return; }
+      const fmtSize = b => b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+      el.innerHTML = files.map(f => {
+        const size = f.metadata && f.metadata.size ? fmtSize(f.metadata.size) : '';
+        const when = f.created_at ? new Date(f.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '';
+        const nameArg = encodeURIComponent(f.name);
+        return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border)">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#f87171" stroke-width="2" style="flex:none"><path stroke-linecap="round" stroke-linejoin="round" d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path stroke-linecap="round" stroke-linejoin="round" d="M14 2v6h6"/></svg>
+          <a href="${docPublicUrl(f.name)}" target="_blank" rel="noopener" title="${_docEsc(f.name)}" style="flex:1;min-width:0;color:var(--text);text-decoration:none;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_docEsc(f.name)}</a>
+          <span style="color:var(--muted);font-size:.75rem;white-space:nowrap;flex:none">${size}${size && when ? ' · ' : ''}${when}</span>
+          <button onclick="docDelete('${nameArg}')" title="Delete for everyone" style="flex:none;background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;display:inline-flex" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='var(--muted)'"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg></button>
+        </div>`;
+      }).join('');
+    } catch (e) { el.innerHTML = '<div style="color:var(--danger,#e05252);padding:6px 0">Couldn\'t load documents.</div>'; }
+  }
+  async function docUpload(input) {
+    const files = Array.from(input.files || []); input.value = '';
+    for (const file of files) {
+      if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) { showToast('Only PDF files are allowed.', false); continue; }
+      try {
+        const r = await fetch(DOC_BASE + '/object/' + DOC_BUCKET + '/' + encodeURIComponent(file.name), {
+          method: 'POST', headers: _docHdr({ 'Content-Type': 'application/pdf', 'x-upsert': 'true' }), body: file
+        });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        showToast('Uploaded ' + file.name + ' ✓', true);
+      } catch (e) { showToast('Upload failed: ' + file.name, false); }
+    }
+    docRefresh();
+  }
+  async function docDelete(nameArg) {
+    const name = decodeURIComponent(nameArg);
+    if (!confirm('Delete "' + name + '" for everyone?')) return;
+    try {
+      const r = await fetch(DOC_BASE + '/object/' + DOC_BUCKET + '/' + encodeURIComponent(name), { method: 'DELETE', headers: _docHdr() });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      showToast('Deleted ✓', true);
+    } catch (e) { showToast('Delete failed', false); }
+    docRefresh();
+  }
+
   const VIEW_ORDER = ['overview', 'b2c', 'tomorrow', 'b2b', 'shortage', 'productivity', 'jobs', 'dash', 'help'];
   let _lastJobsSync = 0;
   function showView(v) {
@@ -5434,7 +5507,7 @@
     if (fab) fab.classList.toggle('visible', v === 'b2c');
     if (v === 'overview') { try { renderDashboard(); } catch(e){} }
     if (v === 'tomorrow') { try { renderTomorrow(); } catch(e){} }
-    if (v === 'labels') { const f = document.getElementById('toolsLabelFrame'); if (f && f.dataset.src && f.src !== f.dataset.src) f.src = f.dataset.src; }
+    if (v === 'labels') { const f = document.getElementById('toolsLabelFrame'); if (f && f.dataset.src && f.src !== f.dataset.src) f.src = f.dataset.src; try { docRefresh(); } catch(e){} }
     if (v === 'dash') { try { renderStats(); } catch(e){} try { initWarehouseFilter(); renderTable(); } catch(e){} }
     if (v === 'jobs') {
       try { renderJobs(); } catch(e){}
