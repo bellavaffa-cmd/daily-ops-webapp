@@ -1,0 +1,2198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QR Label Generator</title>
+<meta name="description" content="Generate a QR code and print it on a 100 x 150 mm label.">
+<meta name="theme-color" content="#2563eb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="QR Label">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<script src="vendor/qrcode.min.js"></script>
+<script src="vendor/zxing.min.js"></script>
+<script src="vendor/pdf.min.js"></script>
+<style id="pageSizeStyle">@page { size: 100mm 150mm; margin: 0; }</style>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --panel: #ffffff;
+    --border: #d8dbe0;
+    --text: #1f2328;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --input-bg: #ffffff;
+    --button-bg: #ffffff;
+    --button-hover: #f0f1f3;
+    --shadow: rgba(0,0,0,0.12);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17181c;
+      --panel: #1f2126;
+      --border: #34363c;
+      --text: #e7e8ea;
+      --muted: #9aa0a8;
+      --accent: #4f8cff;
+      --accent-hover: #6d9fff;
+      --input-bg: #26282e;
+      --button-bg: #26282e;
+      --button-hover: #2e3138;
+      --shadow: rgba(0,0,0,0.4);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17181c;
+    --panel: #1f2126;
+    --border: #34363c;
+    --text: #e7e8ea;
+    --muted: #9aa0a8;
+    --accent: #4f8cff;
+    --accent-hover: #6d9fff;
+    --input-bg: #26282e;
+    --button-bg: #26282e;
+    --button-hover: #2e3138;
+    --shadow: rgba(0,0,0,0.4);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  .app {
+    display: flex;
+    min-height: 100vh;
+  }
+  .panel {
+    width: 360px;
+    flex-shrink: 0;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    padding: 24px;
+    overflow-y: auto;
+  }
+  .panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .panel h1 {
+    font-size: 18px;
+    margin: 0 0 44px;
+  }
+  #settingsBtn {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    font-size: 16px;
+    line-height: 1;
+  }
+  .panel-head-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .settings-dropdown {
+    position: absolute;
+    top: 44px;
+    right: 0;
+    z-index: 50;
+    min-width: 200px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    box-shadow: 0 4px 16px var(--shadow);
+  }
+  .settings-dropdown[hidden] { display: none; }
+  .settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .settings-row #themeToggle {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    font-size: 16px;
+    line-height: 1;
+  }
+  .settings-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 12px 0;
+  }
+  .settings-section-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .settings-qr {
+    width: 100px;
+    height: 100px;
+    margin: 0 auto 8px;
+    padding: 6px;
+    background: #fff;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .settings-qr img, .settings-qr canvas {
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+  }
+  .settings-url {
+    font-size: 11px;
+    color: var(--muted);
+    text-align: center;
+    word-break: break-all;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+  }
+  /* Fixed (not a panel descendant) so it stays visible/clickable even when the panel is hidden.
+     Positioned in place of the old subtitle text, directly under the "QR Label Generator" title
+     (panel padding is 24px, matching the title's left edge), then jumps to the top-left corner
+     once the panel is hidden and that spot no longer exists. */
+  #panelToggleBtn {
+    position: fixed;
+    top: 56px;
+    left: 24px;
+    z-index: 1000;
+    background: var(--panel);
+    box-shadow: 0 2px 10px var(--shadow);
+  }
+  body.preview-mode #panelToggleBtn {
+    top: 16px;
+    left: 16px;
+  }
+  body.preview-mode .panel { display: none; }
+  .tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 18px 0 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab-btn {
+    border: none;
+    background: none;
+    padding: 8px 4px 10px;
+    margin-right: 16px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+  }
+  .tab-btn:hover { background: none; color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-panel[hidden] { display: none; }
+
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    margin: 16px 0 6px;
+  }
+  label:first-of-type { margin-top: 0; }
+  input[type="text"], input[type="number"], textarea, select {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+    background: var(--input-bg);
+    color: var(--text);
+  }
+  textarea { resize: vertical; min-height: 60px; }
+  .row { display: flex; gap: 10px; }
+  .row > div { flex: 1; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  #orientationToggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  #orientationToggle .orient-icon {
+    width: 16px;
+    height: 16px;
+    border: 2px solid currentColor;
+    border-radius: 2px;
+    flex-shrink: 0;
+    transition: width 0.15s, height 0.15s;
+  }
+  #orientationToggle.is-landscape .orient-icon {
+    width: 20px;
+    height: 13px;
+  }
+  #orientationToggle:not(.is-landscape) .orient-icon {
+    width: 13px;
+    height: 20px;
+  }
+  .actions {
+    margin-top: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  button {
+    padding: 10px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--button-bg);
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  button.primary:hover { background: var(--accent-hover); }
+  button:hover { background: var(--button-hover); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button:disabled:hover { background: var(--button-bg); }
+
+  #pdfPageNav { align-items: center; }
+  .pdf-page-indicator { flex: 1; text-align: center; font-size: 13px; color: var(--muted); }
+
+  .pdf-dropzone {
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    padding: 20px 12px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--muted);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+  }
+  .pdf-dropzone:hover, .pdf-dropzone:focus-visible {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+  .pdf-dropzone.dragover {
+    border-color: var(--accent);
+    background: rgba(37, 99, 235, 0.08);
+    color: var(--text);
+  }
+  .pdf-dropzone input[type="file"] { display: none; }
+
+  .stage {
+    flex: 1;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 40px;
+    overflow: auto;
+  }
+
+  /* Label is rendered at real physical size using mm units, its width/height/--label-min set via JS
+     from the selected paper size and orientation. It always stays white/black in both themes, since
+     it's a preview of a physical printed label. */
+  .label-wrap {
+    background: #fff;
+    box-shadow: 0 2px 10px var(--shadow);
+  }
+  .label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(3mm, calc(var(--label-min, 100mm) * 0.08), 14mm);
+    text-align: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #fff;
+    color: #000;
+  }
+  .label .title {
+    font-size: clamp(3mm, calc(var(--label-min, 100mm) * 0.09), 14mm);
+    font-weight: 700;
+    margin-bottom: 4mm;
+    word-break: break-word;
+  }
+  .label .qr-canvas {
+    position: relative;
+    flex: 1;
+    width: 100%;
+    min-height: 10mm;
+  }
+  /* Shown only while actively dragging/resizing something inside — a lightweight alignment
+     guide. Drawn coarser (5mm) than the actual snap increment (GRID_MM in the script, 1mm) so
+     it stays a clean visual reference instead of a dense mesh of lines. */
+  .snap-grid-active {
+    background-image:
+      linear-gradient(to right, rgba(37, 99, 235, 0.3) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(37, 99, 235, 0.3) 1px, transparent 1px);
+    background-size: 5mm 5mm;
+  }
+  .label .qr-box {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: move;
+    touch-action: none;
+    user-select: none;
+  }
+  .label.editing .qr-box {
+    outline: 1px dashed rgba(37, 99, 235, 0.6);
+    outline-offset: 3px;
+  }
+  .label .qr-box.dragging { cursor: grabbing; }
+  .label .qr-content {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .label .qr-content img, .label .qr-content canvas {
+    image-rendering: pixelated;
+  }
+  .qr-resize-handle {
+    position: absolute;
+    right: -6px;
+    bottom: -6px;
+    width: 14px;
+    height: 14px;
+    background: var(--accent);
+    border: 2px solid #fff;
+    border-radius: 50%;
+    cursor: nwse-resize;
+    touch-action: none;
+    display: none;
+  }
+  .label.editing .qr-resize-handle { display: block; }
+
+  .label .subtitle-box {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: move;
+    touch-action: none;
+    user-select: none;
+  }
+  .label.editing .subtitle-box {
+    outline: 1px dashed rgba(37, 99, 235, 0.6);
+    outline-offset: 3px;
+  }
+  .label .subtitle-box.dragging { cursor: grabbing; }
+  .label .subtitle {
+    color: #333;
+    word-break: break-word;
+    white-space: nowrap;
+    padding: 2px 4px;
+  }
+  .subtitle-resize-handle {
+    position: absolute;
+    right: -6px;
+    bottom: -6px;
+    width: 14px;
+    height: 14px;
+    background: var(--accent);
+    border: 2px solid #fff;
+    border-radius: 50%;
+    cursor: nwse-resize;
+    touch-action: none;
+    display: none;
+  }
+  .label.editing .subtitle-resize-handle { display: block; }
+  .label .code-text {
+    font-size: clamp(2mm, calc(var(--label-min, 100mm) * 0.045), 6mm);
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    color: #555;
+    margin-top: 2mm;
+    word-break: break-all;
+  }
+
+  /* Each uploaded PDF page gets its own div sized to the chosen paper dims, always white/black
+     regardless of theme (it's a print preview). Only the current page shows on screen; print
+     CSS below un-hides all of them with a page break between each. */
+  .pdf-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+    color: #000;
+    overflow: hidden;
+  }
+  .pdf-page canvas { image-rendering: pixelated; }
+  .pdf-page-hidden { display: none; }
+
+  .scan-video-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-top: 8px;
+  }
+  .scan-video-wrap video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .saved-list { display: flex; flex-direction: column; gap: 10px; }
+  .saved-empty { font-size: 13px; color: var(--muted); }
+  .saved-item {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .saved-item-info { min-width: 0; }
+  .saved-item-title {
+    font-size: 13px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .saved-item-content {
+    font-size: 12px;
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-top: 2px;
+  }
+  .saved-item-meta {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .saved-item-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .saved-item-actions button {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  /* A collage sheet is a grid of identically-sized label cells (e.g. many small labels tiled
+     onto one A4 page). --cell-min (the smaller of the cell's own width/height) drives the same
+     kind of proportional font-size clamp() used on the main label, inherited down to every cell. */
+  .collage-sheet {
+    background: #fff;
+    color: #000;
+    display: grid;
+    justify-content: center;
+    align-content: center;
+    box-sizing: border-box;
+  }
+  .collage-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    overflow: hidden;
+    min-width: 0;
+    min-height: 0;
+    padding: clamp(1mm, calc(var(--cell-min, 50mm) * 0.06), 4mm);
+    box-sizing: border-box;
+  }
+  .collage-cell.bordered {
+    border: 0.3mm dashed #999;
+  }
+  .collage-cell-title {
+    font-weight: 700;
+    line-height: 1.15;
+    word-break: break-word;
+    font-size: clamp(2mm, calc(var(--cell-min, 50mm) * 0.09), 8mm);
+    margin-bottom: 0.4em;
+    flex-shrink: 0;
+  }
+  /* Hosts the draggable QR boxes for this cell — position:relative makes it their drag/resize
+     boundary, the same role qr-canvas plays for the main label's QR code. */
+  .collage-cell-qr-canvas {
+    position: relative;
+    flex: 1;
+    width: 100%;
+    min-height: 5mm;
+  }
+  .collage-cell-qr {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: move;
+    touch-action: none;
+    user-select: none;
+  }
+  body:not(.preview-mode) .collage-cell-qr {
+    outline: 1px dashed rgba(37, 99, 235, 0.6);
+    outline-offset: 2px;
+  }
+  .collage-cell-qr.dragging { cursor: grabbing; }
+  .collage-cell-qr-content {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .collage-cell-qr-content img, .collage-cell-qr-content canvas {
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+  }
+  .collage-qr-resize-handle {
+    position: absolute;
+    right: -5px;
+    bottom: -5px;
+    width: 12px;
+    height: 12px;
+    background: var(--accent);
+    border: 2px solid #fff;
+    border-radius: 50%;
+    cursor: nwse-resize;
+    touch-action: none;
+    display: none;
+  }
+  body:not(.preview-mode) .collage-qr-resize-handle { display: block; }
+  .collage-cell-subtitle {
+    color: #333;
+    line-height: 1.15;
+    word-break: break-word;
+    font-size: clamp(1.8mm, calc(var(--cell-min, 50mm) * 0.065), 6mm);
+    margin-top: 0.4em;
+    flex-shrink: 0;
+  }
+  .collage-cell-codes {
+    flex-shrink: 0;
+    margin-top: 0.2em;
+  }
+  .collage-cell-code {
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    color: #555;
+    line-height: 1.15;
+    word-break: break-all;
+    font-size: clamp(1.5mm, calc(var(--cell-min, 50mm) * 0.045), 4mm);
+  }
+
+  @media print {
+    body, html { margin: 0; padding: 0; background: #fff; }
+    .panel, .stage-toolbar, #panelToggleBtn { display: none !important; }
+    .stage { padding: 0; display: block; }
+    .label-wrap { box-shadow: none; }
+    .label, .pdf-page, .collage-sheet { page-break-after: always; }
+    .qr-resize-handle, .subtitle-resize-handle, .collage-qr-resize-handle { display: none !important; }
+    .collage-cell-qr { outline: none !important; }
+    .snap-grid-active { background-image: none !important; }
+    .pdf-page-hidden { display: flex !important; }
+  }
+</style>
+</head>
+<body>
+<button type="button" id="panelToggleBtn" title="Show or hide the input panel">Hide</button>
+<div class="app">
+  <div class="panel">
+    <div class="panel-head">
+      <div>
+        <h1>QR Label Generator</h1>
+      </div>
+      <div class="panel-head-actions">
+        <button type="button" id="settingsBtn" title="Settings" aria-label="Settings">⚙️</button>
+        <div id="settingsPanel" class="settings-dropdown" hidden>
+          <div class="settings-row">
+            <span>Appearance</span>
+            <button type="button" id="themeToggle" title="Toggle dark mode" aria-label="Toggle dark mode">🌙</button>
+          </div>
+          <div class="settings-divider"></div>
+          <div class="settings-section-label">Share this app</div>
+          <div id="settingsQr" class="settings-qr"></div>
+          <div class="settings-url" id="settingsUrlText"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button type="button" class="tab-btn active" data-tab="create">Create</button>
+      <button type="button" class="tab-btn" data-tab="scan">Scan</button>
+      <button type="button" class="tab-btn" data-tab="pdf">Print PDF</button>
+      <button type="button" class="tab-btn" data-tab="collage">Collage</button>
+      <button type="button" class="tab-btn" data-tab="saved">Saved</button>
+    </div>
+
+    <div id="createTab" class="tab-panel">
+      <label for="data">QR content (URL, text, ID&hellip;)</label>
+      <textarea id="data" placeholder="https://example.com/item/12345">https://example.com</textarea>
+
+      <label for="title">Label title (optional)</label>
+      <input type="text" id="title" placeholder="e.g. Product name" value="">
+
+      <label for="subtitle">Subtitle (optional)</label>
+      <input type="text" id="subtitle" placeholder="e.g. Batch / location" value="">
+
+      <label>
+        <input type="checkbox" id="showCode" checked style="width:auto; display:inline; vertical-align:middle; margin-right:6px;">
+        Show content as text under QR code
+      </label>
+
+      <label for="paperSize">Paper / label size</label>
+      <select id="paperSize">
+        <option value="100x150" selected>100 &times; 150 mm (4&times;6&Prime; shipping label)</option>
+        <option value="100x100">100 &times; 100 mm (square label)</option>
+        <option value="62x100">62 &times; 100 mm (thermal label)</option>
+        <option value="50x25">50 &times; 25 mm (small label)</option>
+        <option value="creditcard">Credit card (85.6 &times; 53.98 mm)</option>
+        <option value="a4">A4 (210 &times; 297 mm)</option>
+        <option value="a5">A5 (148 &times; 210 mm)</option>
+        <option value="a6">A6 (105 &times; 148 mm)</option>
+        <option value="letter">Letter (215.9 &times; 279.4 mm)</option>
+        <option value="custom">Custom size&hellip;</option>
+      </select>
+
+      <div class="row" id="customSizeRow" style="display:none;">
+        <div>
+          <label for="customWidth">Width (mm)</label>
+          <input type="number" id="customWidth" min="10" max="1000" step="0.1" value="100">
+        </div>
+        <div>
+          <label for="customHeight">Height (mm)</label>
+          <input type="number" id="customHeight" min="10" max="1000" step="0.1" value="150">
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Orientation</label>
+          <button type="button" id="orientationToggle"><span class="orient-icon"></span><span id="orientationLabel">Portrait</span></button>
+        </div>
+        <div>
+          <label for="ecLevel">Error correction</label>
+          <select id="ecLevel">
+            <option value="L">Low (L)</option>
+            <option value="M" selected>Medium (M)</option>
+            <option value="Q">Quartile (Q)</option>
+            <option value="H">High (H)</option>
+          </select>
+        </div>
+      </div>
+
+      <label for="qrSize">QR size: <span id="qrSizeLabel">70</span> mm</label>
+      <input type="range" id="qrSize" min="30" max="90" value="70" step="1" style="width:100%;">
+
+      <div class="actions">
+        <button id="saveBtn">Save for later</button>
+        <button class="primary" id="printBtn">Print label</button>
+        <button id="downloadBtn">Download as PNG</button>
+      </div>
+      <p class="hint" id="printHint">Print dialog: set paper size to 100&times;150&nbsp;mm (or your label stock), scale 100%, margins none.</p>
+    </div>
+
+    <div id="scanTab" class="tab-panel" hidden>
+      <label for="scanCameraSelect">Camera</label>
+      <select id="scanCameraSelect"></select>
+
+      <div class="scan-video-wrap">
+        <video id="scanVideo" playsinline muted></video>
+      </div>
+
+      <div class="actions">
+        <button class="primary" id="scanStartBtn">Start scanning</button>
+        <button id="scanStopBtn" hidden>Stop scanning</button>
+      </div>
+      <p class="hint" id="scanStatus">Camera is off.</p>
+
+      <label>Scanned codes</label>
+      <div id="scanResults" class="saved-list"></div>
+    </div>
+
+    <div id="pdfTab" class="tab-panel" hidden>
+      <label for="pdfFile">Upload PDF</label>
+      <div id="pdfDropZone" class="pdf-dropzone" tabindex="0" role="button" aria-label="Upload a PDF: click to browse or drag and drop a file here">
+        <span id="pdfDropZoneText">Drag &amp; drop a PDF here, or click to browse</span>
+        <input type="file" id="pdfFile" accept="application/pdf">
+      </div>
+
+      <label for="pdfPaperSize">Paper size</label>
+      <select id="pdfPaperSize">
+        <option value="100x150">100 &times; 150 mm (4&times;6&Prime; shipping label)</option>
+        <option value="100x100">100 &times; 100 mm (square label)</option>
+        <option value="62x100">62 &times; 100 mm (thermal label)</option>
+        <option value="50x25">50 &times; 25 mm (small label)</option>
+        <option value="creditcard">Credit card (85.6 &times; 53.98 mm)</option>
+        <option value="a4" selected>A4 (210 &times; 297 mm)</option>
+        <option value="a5">A5 (148 &times; 210 mm)</option>
+        <option value="a6">A6 (105 &times; 148 mm)</option>
+        <option value="letter">Letter (215.9 &times; 279.4 mm)</option>
+        <option value="custom">Custom size&hellip;</option>
+      </select>
+
+      <div class="row" id="pdfCustomSizeRow" style="display:none;">
+        <div>
+          <label for="pdfCustomWidth">Width (mm)</label>
+          <input type="number" id="pdfCustomWidth" min="10" max="1000" step="0.1" value="210">
+        </div>
+        <div>
+          <label for="pdfCustomHeight">Height (mm)</label>
+          <input type="number" id="pdfCustomHeight" min="10" max="1000" step="0.1" value="297">
+        </div>
+      </div>
+
+      <label>Orientation</label>
+      <button type="button" id="pdfOrientationToggle"><span class="orient-icon"></span><span id="pdfOrientationLabel">Portrait</span></button>
+
+      <div class="row" id="pdfPageNav" style="display:none;">
+        <button type="button" id="pdfPrevPage">&lsaquo; Prev</button>
+        <span id="pdfPageIndicator" class="pdf-page-indicator">Page 1 of 1</span>
+        <button type="button" id="pdfNextPage">Next &rsaquo;</button>
+      </div>
+
+      <div class="actions">
+        <button class="primary" id="pdfPrintBtn" disabled>Print PDF</button>
+      </div>
+      <p class="hint" id="pdfHint">Upload a PDF, then choose a size to preview and print it.</p>
+    </div>
+
+    <div id="collageTab" class="tab-panel" hidden>
+      <label for="collageEntries">Labels (one per line: content | title | subtitle)</label>
+      <textarea id="collageEntries" placeholder="https://example.com/1|Item 1|Batch A&#10;https://example.com/2|Item 2|Batch A&#10;https://example.com/3"></textarea>
+      <p class="hint">For more than one QR code on a label, separate their contents with a semicolon, e.g. <code>https://a.example;https://b.example|Item 1</code></p>
+
+      <label for="collageCellSize">Label size</label>
+      <select id="collageCellSize">
+        <option value="100x150">100 &times; 150 mm (4&times;6&Prime; shipping label)</option>
+        <option value="100x100">100 &times; 100 mm (square label)</option>
+        <option value="62x100">62 &times; 100 mm (thermal label)</option>
+        <option value="50x25" selected>50 &times; 25 mm (small label)</option>
+        <option value="creditcard">Credit card (85.6 &times; 53.98 mm)</option>
+        <option value="a4">A4 (210 &times; 297 mm)</option>
+        <option value="a5">A5 (148 &times; 210 mm)</option>
+        <option value="a6">A6 (105 &times; 148 mm)</option>
+        <option value="letter">Letter (215.9 &times; 279.4 mm)</option>
+        <option value="custom">Custom size&hellip;</option>
+      </select>
+
+      <div class="row" id="collageCellCustomRow" style="display:none;">
+        <div>
+          <label for="collageCellCustomWidth">Width (mm)</label>
+          <input type="number" id="collageCellCustomWidth" min="5" max="500" step="0.1" value="50">
+        </div>
+        <div>
+          <label for="collageCellCustomHeight">Height (mm)</label>
+          <input type="number" id="collageCellCustomHeight" min="5" max="500" step="0.1" value="25">
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Label orientation</label>
+          <button type="button" id="collageCellOrientationToggle"><span class="orient-icon"></span><span id="collageCellOrientationLabel">Portrait</span></button>
+        </div>
+        <div>
+          <label>Sheet orientation</label>
+          <button type="button" id="collageSheetOrientationToggle"><span class="orient-icon"></span><span id="collageSheetOrientationLabel">Portrait</span></button>
+        </div>
+      </div>
+
+      <label for="collageSheetSize">Sheet size</label>
+      <select id="collageSheetSize">
+        <option value="100x150">100 &times; 150 mm (4&times;6&Prime; shipping label)</option>
+        <option value="100x100">100 &times; 100 mm (square label)</option>
+        <option value="62x100">62 &times; 100 mm (thermal label)</option>
+        <option value="50x25">50 &times; 25 mm (small label)</option>
+        <option value="creditcard">Credit card (85.6 &times; 53.98 mm)</option>
+        <option value="a4" selected>A4 (210 &times; 297 mm)</option>
+        <option value="a5">A5 (148 &times; 210 mm)</option>
+        <option value="a6">A6 (105 &times; 148 mm)</option>
+        <option value="letter">Letter (215.9 &times; 279.4 mm)</option>
+        <option value="custom">Custom size&hellip;</option>
+      </select>
+
+      <div class="row" id="collageSheetCustomRow" style="display:none;">
+        <div>
+          <label for="collageSheetCustomWidth">Width (mm)</label>
+          <input type="number" id="collageSheetCustomWidth" min="10" max="1000" step="0.1" value="210">
+        </div>
+        <div>
+          <label for="collageSheetCustomHeight">Height (mm)</label>
+          <input type="number" id="collageSheetCustomHeight" min="10" max="1000" step="0.1" value="297">
+        </div>
+      </div>
+
+      <label for="collageGap">Gap between labels: <span id="collageGapLabel">2</span> mm</label>
+      <input type="range" id="collageGap" min="0" max="10" step="0.5" value="2" style="width:100%;">
+
+      <label>
+        <input type="checkbox" id="collageShowCode" style="width:auto; display:inline; vertical-align:middle; margin-right:6px;">
+        Show content as text under each QR code
+      </label>
+
+      <label>
+        <input type="checkbox" id="collageShowBorders" checked style="width:auto; display:inline; vertical-align:middle; margin-right:6px;">
+        Show label borders (helpful for cutting)
+      </label>
+
+      <div class="actions">
+        <button class="primary" id="collagePrintBtn" disabled>Print collage</button>
+      </div>
+      <p class="hint" id="collageHint">Enter at least one label above to build the collage.</p>
+    </div>
+
+    <div id="savedTab" class="tab-panel" hidden>
+      <div id="savedList" class="saved-list"></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="label-wrap" id="labelStage">
+      <div class="label" id="label">
+        <div class="title" id="titleOut"></div>
+        <div class="qr-canvas" id="qrCanvas">
+          <div class="qr-box" id="qrBox">
+            <div class="qr-content" id="qrContent"></div>
+            <div class="qr-resize-handle" id="qrResizeHandle" title="Drag to resize"></div>
+          </div>
+          <div class="subtitle-box" id="subtitleBox">
+            <div class="subtitle" id="subtitleOut"></div>
+            <div class="subtitle-resize-handle" id="subtitleResizeHandle" title="Drag to resize"></div>
+          </div>
+        </div>
+        <div class="code-text" id="codeOut"></div>
+      </div>
+    </div>
+    <div class="label-wrap" id="pdfStage" hidden>
+      <div id="pdfPagesContainer"></div>
+    </div>
+    <div class="label-wrap" id="collageStage" hidden>
+      <div id="collageSheetsContainer"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Theme: respects saved preference, otherwise follows the OS via prefers-color-scheme (CSS handles that part).
+  const themeToggle = document.getElementById('themeToggle');
+  const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+  const THEME_KEY = 'qr-label-app-theme';
+
+  function applyTheme(theme) {
+    if (theme === 'dark' || theme === 'light') {
+      document.documentElement.setAttribute('data-theme', theme);
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+    const isDark = theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    themeToggle.textContent = isDark ? '☀️' : '🌙';
+    themeColorMeta.setAttribute('content', isDark ? '#17181c' : '#2563eb');
+  }
+
+  applyTheme(localStorage.getItem(THEME_KEY));
+
+  themeToggle.addEventListener('click', () => {
+    const current = localStorage.getItem(THEME_KEY) ||
+      (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    const next = current === 'dark' ? 'light' : 'dark';
+    localStorage.setItem(THEME_KEY, next);
+    applyTheme(next);
+  });
+
+  const PAPER_SIZES = {
+    '100x150': { label: '100 × 150 mm', w: 100, h: 150 },
+    '100x100': { label: '100 × 100 mm', w: 100, h: 100 },
+    '62x100':  { label: '62 × 100 mm', w: 62, h: 100 },
+    '50x25':   { label: '50 × 25 mm', w: 50, h: 25 },
+    'creditcard': { label: 'Credit card', w: 85.6, h: 53.98 },
+    'a4':      { label: 'A4', w: 210, h: 297 },
+    'a5':      { label: 'A5', w: 148, h: 210 },
+    'a6':      { label: 'A6', w: 105, h: 148 },
+    'letter':  { label: 'Letter', w: 215.9, h: 279.4 }
+  };
+
+  const dataEl = document.getElementById('data');
+  const titleEl = document.getElementById('title');
+  const subtitleEl = document.getElementById('subtitle');
+  const showCodeEl = document.getElementById('showCode');
+  const paperSizeEl = document.getElementById('paperSize');
+  const customSizeRow = document.getElementById('customSizeRow');
+  const customWidthEl = document.getElementById('customWidth');
+  const customHeightEl = document.getElementById('customHeight');
+  const orientationToggle = document.getElementById('orientationToggle');
+  const orientationLabel = document.getElementById('orientationLabel');
+  const ecLevelEl = document.getElementById('ecLevel');
+  const qrSizeEl = document.getElementById('qrSize');
+  const qrSizeLabel = document.getElementById('qrSizeLabel');
+  const printHint = document.getElementById('printHint');
+  const pageSizeStyle = document.getElementById('pageSizeStyle');
+
+  const labelEl = document.getElementById('label');
+  const titleOut = document.getElementById('titleOut');
+  const subtitleOut = document.getElementById('subtitleOut');
+  const codeOut = document.getElementById('codeOut');
+  const qrCanvas = document.getElementById('qrCanvas');
+  const qrBox = document.getElementById('qrBox');
+  const qrContent = document.getElementById('qrContent');
+  const qrResizeHandle = document.getElementById('qrResizeHandle');
+  const subtitleBox = document.getElementById('subtitleBox');
+  const subtitleResizeHandle = document.getElementById('subtitleResizeHandle');
+
+  let orientation = 'portrait';
+  // Offset of each box's center from the qr-canvas center, in mm. (0,0) = centered.
+  const qrOffset = { x: 0, y: 0 };
+  // Starts pinned toward the bottom of the canvas (a large y clamps down to the max on first render).
+  const subtitleOffset = { x: 0, y: 9999 };
+  let subtitleSizeMm = null; // lazily defaulted on first render based on label size
+
+  // mm -> px conversion for the qrcode.js canvas (it renders in CSS px, we size the box in mm via CSS)
+  const MM_TO_PX = 96 / 25.4; // assume 96dpi CSS reference; actual print uses the mm box size regardless of px used for rendering resolution
+  let qrInstance = null;
+
+  function getBaseDims() {
+    let a, b;
+    if (paperSizeEl.value === 'custom') {
+      a = parseFloat(customWidthEl.value) || 100;
+      b = parseFloat(customHeightEl.value) || 150;
+    } else {
+      const p = PAPER_SIZES[paperSizeEl.value] || PAPER_SIZES['100x150'];
+      a = p.w;
+      b = p.h;
+    }
+    // Normalize to portrait canonical (w <= h); orientation swaps it back if needed.
+    return { w: Math.min(a, b), h: Math.max(a, b) };
+  }
+
+  function getDisplayDims() {
+    const { w, h } = getBaseDims();
+    return orientation === 'landscape' ? { w: h, h: w } : { w, h };
+  }
+
+  function updateOrientationUi() {
+    orientationToggle.classList.toggle('is-landscape', orientation === 'landscape');
+    orientationLabel.textContent = orientation === 'landscape' ? 'Landscape' : 'Portrait';
+  }
+
+  function render() {
+    const text = dataEl.value.trim() || ' ';
+
+    customSizeRow.style.display = paperSizeEl.value === 'custom' ? 'flex' : 'none';
+
+    const { w: widthMm, h: heightMm } = getDisplayDims();
+    const minDim = Math.min(widthMm, heightMm);
+
+    labelEl.style.width = widthMm + 'mm';
+    labelEl.style.height = heightMm + 'mm';
+    labelEl.style.setProperty('--label-min', minDim + 'mm');
+
+    pageSizeStyle.textContent = `@page { size: ${widthMm}mm ${heightMm}mm; margin: 0; }`;
+    printHint.innerHTML = `Print dialog: set paper size to ${widthMm}&times;${heightMm}&nbsp;mm (or your label stock), scale 100%, margins none.`;
+
+    // Keep the QR code within a sensible range of the smaller label dimension.
+    const maxQrMm = Math.max(10, Math.floor(minDim * 0.85));
+    qrSizeEl.max = maxQrMm;
+    qrSizeEl.min = Math.min(10, maxQrMm);
+    if (parseFloat(qrSizeEl.value) > maxQrMm) qrSizeEl.value = maxQrMm;
+
+    const sizeMm = parseInt(qrSizeEl.value, 10);
+    qrSizeLabel.textContent = sizeMm;
+    const sizePx = Math.round(sizeMm * MM_TO_PX * 3); // render at higher pixel density for crisp printing, displayed at mm size via CSS
+
+    titleOut.textContent = titleEl.value.trim();
+    titleOut.style.display = titleEl.value.trim() ? '' : 'none';
+
+    const hasSubtitle = !!subtitleEl.value.trim();
+    subtitleOut.textContent = subtitleEl.value.trim();
+    subtitleBox.style.display = hasSubtitle ? '' : 'none';
+    if (subtitleSizeMm === null) subtitleSizeMm = clamp(minDim * 0.065, 2.4, 9);
+    subtitleOut.style.fontSize = subtitleSizeMm + 'mm';
+
+    codeOut.textContent = showCodeEl.checked ? text : '';
+    codeOut.style.display = showCodeEl.checked ? '' : 'none';
+
+    qrBox.style.width = sizeMm + 'mm';
+    qrBox.style.height = sizeMm + 'mm';
+    positionBox(qrBox, qrCanvas, qrOffset, { w: sizeMm, h: sizeMm });
+    if (hasSubtitle) positionBox(subtitleBox, qrCanvas, subtitleOffset);
+
+    qrContent.innerHTML = '';
+    const correctLevel = QRCode.CorrectLevel[ecLevelEl.value] ?? QRCode.CorrectLevel.M;
+
+    qrInstance = new QRCode(qrContent, {
+      text: text,
+      width: sizePx,
+      height: sizePx,
+      colorDark: '#000000',
+      colorLight: '#ffffff',
+      correctLevel: correctLevel
+    });
+
+    // qrcode.js renders a hidden <canvas> plus a visible <img>; size both so
+    // whichever is shown fills the mm-sized box regardless of native pixel size.
+    requestAnimationFrame(() => {
+      qrContent.querySelectorAll('canvas, img').forEach(el => {
+        el.style.width = '100%';
+        el.style.height = '100%';
+      });
+    });
+  }
+
+  function clamp(v, min, max) {
+    return Math.min(Math.max(v, min), max);
+  }
+
+  // Grid guide shown while dragging/resizing a QR (or the subtitle), and the increment
+  // everything snaps to — both position and size — for easier, more consistent alignment.
+  const GRID_MM = 1;
+  function snapToGrid(v) {
+    return Math.round(v / GRID_MM) * GRID_MM;
+  }
+
+  // Positions a draggable box within a canvas container, honoring offset.x/offset.y (in mm, from
+  // canvas center) while clamping in place so the box never leaves the canvas bounds. Mutates
+  // `offset` with the clamped value so it becomes the new baseline for the next drag/render.
+  // sizeOverride: {w,h} in mm for boxes with a known fixed size (the QR); omitted for boxes that
+  // should just be measured as rendered (free-sized text like the subtitle).
+  function positionBox(box, canvasEl, offset, sizeOverride) {
+    const canvasRect = canvasEl.getBoundingClientRect();
+    if (!canvasRect.width || !canvasRect.height) return;
+    const canvasWmm = canvasRect.width / MM_TO_PX;
+    const canvasHmm = canvasRect.height / MM_TO_PX;
+
+    let wMm, hMm;
+    if (sizeOverride) {
+      wMm = sizeOverride.w;
+      hMm = sizeOverride.h;
+    } else {
+      const boxRect = box.getBoundingClientRect();
+      wMm = boxRect.width / MM_TO_PX;
+      hMm = boxRect.height / MM_TO_PX;
+    }
+
+    const maxOffsetX = Math.max(0, (canvasWmm - wMm) / 2);
+    const maxOffsetY = Math.max(0, (canvasHmm - hMm) / 2);
+    offset.x = clamp(offset.x, -maxOffsetX, maxOffsetX);
+    offset.y = clamp(offset.y, -maxOffsetY, maxOffsetY);
+    const leftMm = (canvasWmm - wMm) / 2 + offset.x;
+    const topMm = (canvasHmm - hMm) / 2 + offset.y;
+    box.style.left = leftMm + 'mm';
+    box.style.top = topMm + 'mm';
+  }
+
+  [dataEl, titleEl, subtitleEl, showCodeEl, paperSizeEl, customWidthEl, customHeightEl, ecLevelEl, qrSizeEl].forEach(el => {
+    el.addEventListener('input', render);
+    el.addEventListener('change', render);
+  });
+
+  orientationToggle.addEventListener('click', () => {
+    orientation = orientation === 'landscape' ? 'portrait' : 'landscape';
+    updateOrientationUi();
+    render();
+  });
+  updateOrientationUi();
+
+  document.getElementById('printBtn').addEventListener('click', () => window.print());
+
+  document.getElementById('downloadBtn').addEventListener('click', () => {
+    const canvas = qrContent.querySelector('canvas');
+    if (!canvas) return;
+    const link = document.createElement('a');
+    link.download = 'qr-code.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  });
+
+  // --- Preview mode: hides the input panel so the label can be viewed unobstructed.
+  // Single button, fixed top-right so it stays put whether the panel is shown or hidden;
+  // its label always reflects what clicking it will do next.
+  const panelToggleBtn = document.getElementById('panelToggleBtn');
+
+  function setPreviewMode(on) {
+    document.body.classList.toggle('preview-mode', on);
+    labelEl.classList.toggle('editing', !on);
+    panelToggleBtn.textContent = on ? 'Show' : 'Hide';
+    if (on) stopScan(); // the panel (and its camera preview) becomes invisible; release the camera too
+  }
+
+  panelToggleBtn.addEventListener('click', () => {
+    setPreviewMode(!document.body.classList.contains('preview-mode'));
+  });
+  setPreviewMode(false);
+
+  // --- Settings dropdown (appearance toggle + a QR code linking back to this webapp) ---
+  const settingsBtn = document.getElementById('settingsBtn');
+  const settingsPanel = document.getElementById('settingsPanel');
+  const settingsQr = document.getElementById('settingsQr');
+  const settingsUrlText = document.getElementById('settingsUrlText');
+
+  // The app's own URL, without query string or hash, so it always encodes a clean link
+  // regardless of what the user was doing when they opened Settings.
+  const appUrl = window.location.origin + window.location.pathname;
+  settingsUrlText.textContent = appUrl;
+  new QRCode(settingsQr, {
+    text: appUrl,
+    width: 300,
+    height: 300,
+    colorDark: '#000000',
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M
+  });
+  requestAnimationFrame(() => {
+    settingsQr.querySelectorAll('canvas, img').forEach(el => {
+      el.style.width = '100%';
+      el.style.height = '100%';
+    });
+  });
+
+  settingsBtn.addEventListener('click', (e) => {
+    settingsPanel.hidden = !settingsPanel.hidden;
+    e.stopPropagation();
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!settingsPanel.hidden && !settingsPanel.contains(e.target) && e.target !== settingsBtn) {
+      settingsPanel.hidden = true;
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !settingsPanel.hidden) settingsPanel.hidden = true;
+  });
+
+  // --- Move & resize the QR code and subtitle directly on the label ---
+  let dragState = null;
+
+  qrBox.addEventListener('pointerdown', (e) => {
+    if (e.target === qrResizeHandle || !labelEl.classList.contains('editing')) return;
+    dragState = { mode: 'move', target: 'qr', startX: e.clientX, startY: e.clientY, startOffsetX: qrOffset.x, startOffsetY: qrOffset.y };
+    qrBox.setPointerCapture(e.pointerId);
+    qrBox.classList.add('dragging');
+    qrCanvas.classList.add('snap-grid-active');
+    e.preventDefault();
+  });
+
+  qrResizeHandle.addEventListener('pointerdown', (e) => {
+    if (!labelEl.classList.contains('editing')) return;
+    dragState = { mode: 'resize', target: 'qr', startX: e.clientX, startY: e.clientY, startSizeMm: parseFloat(qrSizeEl.value) };
+    qrResizeHandle.setPointerCapture(e.pointerId);
+    qrCanvas.classList.add('snap-grid-active');
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  qrBox.addEventListener('dblclick', () => {
+    if (!labelEl.classList.contains('editing')) return;
+    qrOffset.x = 0;
+    qrOffset.y = 0;
+    render();
+  });
+
+  subtitleBox.addEventListener('pointerdown', (e) => {
+    if (e.target === subtitleResizeHandle || !labelEl.classList.contains('editing')) return;
+    dragState = { mode: 'move', target: 'subtitle', startX: e.clientX, startY: e.clientY, startOffsetX: subtitleOffset.x, startOffsetY: subtitleOffset.y };
+    subtitleBox.setPointerCapture(e.pointerId);
+    subtitleBox.classList.add('dragging');
+    qrCanvas.classList.add('snap-grid-active');
+    e.preventDefault();
+  });
+
+  subtitleResizeHandle.addEventListener('pointerdown', (e) => {
+    if (!labelEl.classList.contains('editing')) return;
+    dragState = { mode: 'resize', target: 'subtitle', startX: e.clientX, startY: e.clientY, startSizeMm: subtitleSizeMm };
+    subtitleResizeHandle.setPointerCapture(e.pointerId);
+    qrCanvas.classList.add('snap-grid-active');
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  subtitleBox.addEventListener('dblclick', () => {
+    if (!labelEl.classList.contains('editing')) return;
+    subtitleOffset.x = 0;
+    subtitleOffset.y = 0;
+    render();
+  });
+
+  window.addEventListener('pointermove', (e) => {
+    if (!dragState) return;
+    const dxMm = (e.clientX - dragState.startX) / MM_TO_PX;
+    const dyMm = (e.clientY - dragState.startY) / MM_TO_PX;
+
+    if (dragState.mode === 'move' && dragState.target === 'qr') {
+      qrOffset.x = snapToGrid(dragState.startOffsetX + dxMm);
+      qrOffset.y = snapToGrid(dragState.startOffsetY + dyMm);
+      positionBox(qrBox, qrCanvas, qrOffset, { w: parseFloat(qrSizeEl.value), h: parseFloat(qrSizeEl.value) });
+    } else if (dragState.mode === 'resize' && dragState.target === 'qr') {
+      const maxQrMm = parseFloat(qrSizeEl.max);
+      const minQrMm = parseFloat(qrSizeEl.min);
+      const newSizeMm = snapToGrid(clamp(dragState.startSizeMm + (dxMm + dyMm) / 2, minQrMm, maxQrMm));
+      qrSizeEl.value = newSizeMm.toFixed(1);
+      qrSizeLabel.textContent = Math.round(newSizeMm);
+      qrBox.style.width = newSizeMm + 'mm';
+      qrBox.style.height = newSizeMm + 'mm';
+      positionBox(qrBox, qrCanvas, qrOffset, { w: newSizeMm, h: newSizeMm });
+    } else if (dragState.mode === 'move' && dragState.target === 'subtitle') {
+      subtitleOffset.x = snapToGrid(dragState.startOffsetX + dxMm);
+      subtitleOffset.y = snapToGrid(dragState.startOffsetY + dyMm);
+      positionBox(subtitleBox, qrCanvas, subtitleOffset);
+    } else if (dragState.mode === 'resize' && dragState.target === 'subtitle') {
+      subtitleSizeMm = snapToGrid(clamp(dragState.startSizeMm + (dxMm + dyMm) / 2, 2, 40));
+      subtitleOut.style.fontSize = subtitleSizeMm + 'mm';
+      positionBox(subtitleBox, qrCanvas, subtitleOffset);
+    }
+  });
+
+  window.addEventListener('pointerup', () => {
+    if (!dragState) return;
+    const wasQrResize = dragState.mode === 'resize' && dragState.target === 'qr';
+    dragState = null;
+    qrBox.classList.remove('dragging');
+    subtitleBox.classList.remove('dragging');
+    qrCanvas.classList.remove('snap-grid-active');
+    if (wasQrResize) render(); // regenerate the QR at the correct pixel density for the final size
+  });
+
+  // --- Tabs ---
+  const labelStage = document.getElementById('labelStage');
+  const pdfStage = document.getElementById('pdfStage');
+  const collageStage = document.getElementById('collageStage');
+
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
+      document.getElementById('createTab').hidden = tab !== 'create';
+      document.getElementById('scanTab').hidden = tab !== 'scan';
+      document.getElementById('pdfTab').hidden = tab !== 'pdf';
+      document.getElementById('collageTab').hidden = tab !== 'collage';
+      document.getElementById('savedTab').hidden = tab !== 'saved';
+      if (tab === 'saved') renderSavedList();
+      if (tab !== 'scan') stopScan(); // release the camera once the user leaves the tab
+
+      // The big preview area (and what @page prints) follows whichever of these tabs is active.
+      // Create/Scan/Saved all share the same live label preview underneath.
+      labelStage.hidden = tab === 'pdf' || tab === 'collage';
+      pdfStage.hidden = tab !== 'pdf';
+      collageStage.hidden = tab !== 'collage';
+      if (tab === 'pdf') syncPdfPageSize();
+      else if (tab === 'collage') updateCollage();
+      else render();
+    });
+  });
+
+  // --- Scan barcodes/QR codes with the device camera ---
+  const scanVideo = document.getElementById('scanVideo');
+  const scanCameraSelect = document.getElementById('scanCameraSelect');
+  const scanStartBtn = document.getElementById('scanStartBtn');
+  const scanStopBtn = document.getElementById('scanStopBtn');
+  const scanStatus = document.getElementById('scanStatus');
+  const scanResultsEl = document.getElementById('scanResults');
+
+  let codeReader = null;
+  let scanHistory = [];
+
+  function decodeCallback(result, err) {
+    if (result) {
+      addScanResult(result.getText(), ZXing.BarcodeFormat[result.getBarcodeFormat()]);
+    } else if (err && !(err instanceof ZXing.NotFoundException)) {
+      console.warn('Scan error:', err);
+    }
+  }
+
+  function friendlyCameraError(err) {
+    switch (err.name) {
+      case 'NotAllowedError':
+      case 'PermissionDeniedError':
+        return 'Camera permission was denied. Allow camera access for this site in your browser settings and try again.';
+      case 'NotFoundError':
+      case 'DevicesNotFoundError':
+        return 'No camera found on this device.';
+      case 'NotReadableError':
+      case 'TrackStartError':
+        return 'The camera is already in use by another app.';
+      default:
+        return 'Camera error: ' + err.message;
+    }
+  }
+
+  // Populates the camera dropdown for manual switching. Only call this AFTER permission has
+  // been granted once — most mobile browsers (notably iOS Safari) return no usable device
+  // labels/ids from enumerateDevices() beforehand, so relying on it up front leaves phones
+  // stuck reporting "no camera found" without ever prompting for permission.
+  async function populateCameraList() {
+    try {
+      const devices = await codeReader.listVideoInputDevices();
+      const current = scanCameraSelect.value;
+      scanCameraSelect.innerHTML = '';
+      devices.forEach((d, i) => {
+        const opt = document.createElement('option');
+        opt.value = d.deviceId;
+        opt.textContent = d.label || `Camera ${i + 1}`;
+        scanCameraSelect.appendChild(opt);
+      });
+      if (devices.some((d) => d.deviceId === current)) scanCameraSelect.value = current;
+    } catch (err) {
+      console.warn('Could not list cameras:', err);
+    }
+  }
+
+  // Starts decoding using either a specific camera (deviceId, e.g. from the dropdown) or,
+  // for the first run, a facingMode constraint preferring the rear camera — this triggers
+  // the permission prompt directly instead of depending on a pre-permission device list.
+  async function startDecoding(deviceIdOrConstraints) {
+    scanStartBtn.hidden = true;
+    scanStopBtn.hidden = false;
+    scanStatus.textContent = 'Scanning… point the camera at a barcode or QR code.';
+    if (typeof deviceIdOrConstraints === 'string') {
+      await codeReader.decodeFromVideoDevice(deviceIdOrConstraints, scanVideo, decodeCallback);
+    } else {
+      await codeReader.decodeFromConstraints({ video: deviceIdOrConstraints }, scanVideo, decodeCallback);
+    }
+    populateCameraList(); // now that permission is granted, labels/ids are available for the dropdown
+  }
+
+  async function startScan() {
+    if (!window.ZXing) {
+      scanStatus.textContent = 'Barcode scanner failed to load.';
+      return;
+    }
+    if (!codeReader) codeReader = new ZXing.BrowserMultiFormatReader();
+    scanStatus.textContent = 'Requesting camera access…';
+    try {
+      if (scanCameraSelect.value) {
+        await startDecoding(scanCameraSelect.value);
+      } else {
+        await startDecoding({ facingMode: { ideal: 'environment' } });
+      }
+    } catch (err) {
+      if (codeReader) codeReader.reset();
+      scanStartBtn.hidden = false;
+      scanStopBtn.hidden = true;
+      scanStatus.textContent = friendlyCameraError(err);
+    }
+  }
+
+  function stopScan(message) {
+    if (codeReader) codeReader.reset();
+    scanStartBtn.hidden = false;
+    scanStopBtn.hidden = true;
+    scanStatus.textContent = message || 'Camera is off.';
+  }
+
+  scanStartBtn.addEventListener('click', startScan);
+  scanStopBtn.addEventListener('click', stopScan);
+  scanCameraSelect.addEventListener('change', () => {
+    if (!scanStopBtn.hidden) { stopScan(); startScan(); } // restart decoding on the newly picked camera
+  });
+
+  function addScanResult(text, format) {
+    // The same code sits in view across many frames while decoding continues; only record it once.
+    if (scanHistory[0] && scanHistory[0].text === text) return;
+    scanHistory.unshift({ id: Date.now() + '-' + Math.random().toString(36).slice(2, 8), text, format, at: Date.now() });
+    scanHistory = scanHistory.slice(0, 20);
+    renderScanResults();
+  }
+
+  function renderScanResults() {
+    if (!scanHistory.length) {
+      scanResultsEl.innerHTML = '<p class="saved-empty">Scanned codes will appear here.</p>';
+      return;
+    }
+    scanResultsEl.innerHTML = '';
+    scanHistory.forEach((entry) => {
+      const row = document.createElement('div');
+      row.className = 'saved-item';
+
+      const info = document.createElement('div');
+      info.className = 'saved-item-info';
+
+      const title = document.createElement('div');
+      title.className = 'saved-item-title';
+      title.textContent = entry.format;
+      info.appendChild(title);
+
+      const content = document.createElement('div');
+      content.className = 'saved-item-content';
+      content.textContent = entry.text;
+      info.appendChild(content);
+
+      const meta = document.createElement('div');
+      meta.className = 'saved-item-meta';
+      meta.textContent = new Date(entry.at).toLocaleTimeString();
+      info.appendChild(meta);
+
+      const actions = document.createElement('div');
+      actions.className = 'saved-item-actions';
+
+      const useBtn = document.createElement('button');
+      useBtn.textContent = 'Use';
+      useBtn.addEventListener('click', () => {
+        dataEl.value = entry.text;
+        dataEl.dispatchEvent(new Event('input', { bubbles: true }));
+        document.querySelector('.tab-btn[data-tab="create"]').click();
+      });
+
+      actions.appendChild(useBtn);
+      row.appendChild(info);
+      row.appendChild(actions);
+      scanResultsEl.appendChild(row);
+    });
+  }
+
+  renderScanResults();
+
+  // --- Print PDF: upload a PDF, preview it, print it at any of the available paper sizes ---
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
+  }
+
+  const pdfFileEl = document.getElementById('pdfFile');
+  const pdfDropZone = document.getElementById('pdfDropZone');
+  const pdfDropZoneText = document.getElementById('pdfDropZoneText');
+  const pdfPaperSizeEl = document.getElementById('pdfPaperSize');
+  const pdfCustomSizeRow = document.getElementById('pdfCustomSizeRow');
+  const pdfCustomWidthEl = document.getElementById('pdfCustomWidth');
+  const pdfCustomHeightEl = document.getElementById('pdfCustomHeight');
+  const pdfOrientationToggle = document.getElementById('pdfOrientationToggle');
+  const pdfOrientationLabelEl = document.getElementById('pdfOrientationLabel');
+  const pdfPageNav = document.getElementById('pdfPageNav');
+  const pdfPrevPageBtn = document.getElementById('pdfPrevPage');
+  const pdfNextPageBtn = document.getElementById('pdfNextPage');
+  const pdfPageIndicator = document.getElementById('pdfPageIndicator');
+  const pdfPrintBtn = document.getElementById('pdfPrintBtn');
+  const pdfHint = document.getElementById('pdfHint');
+  const pdfPagesContainer = document.getElementById('pdfPagesContainer');
+
+  let pdfOrientation = 'portrait';
+  let pdfDoc = null;
+  let pdfPageEls = []; // one {wrap, canvas, rendered} entry per PDF page, in document order
+  let pdfCurrentPage = 0; // 0-based index into pdfPageEls
+
+  function getPdfBaseDims() {
+    let a, b;
+    if (pdfPaperSizeEl.value === 'custom') {
+      a = parseFloat(pdfCustomWidthEl.value) || 210;
+      b = parseFloat(pdfCustomHeightEl.value) || 297;
+    } else {
+      const p = PAPER_SIZES[pdfPaperSizeEl.value] || PAPER_SIZES['a4'];
+      a = p.w;
+      b = p.h;
+    }
+    return { w: Math.min(a, b), h: Math.max(a, b) };
+  }
+
+  function getPdfDisplayDims() {
+    const { w, h } = getPdfBaseDims();
+    return pdfOrientation === 'landscape' ? { w: h, h: w } : { w, h };
+  }
+
+  function updatePdfOrientationUi() {
+    pdfOrientationToggle.classList.toggle('is-landscape', pdfOrientation === 'landscape');
+    pdfOrientationLabelEl.textContent = pdfOrientation === 'landscape' ? 'Landscape' : 'Portrait';
+  }
+
+  // Re-applies the current size/orientation to the @page rule, the hint text, and every page div,
+  // then re-renders the current page at the new dimensions. Called on any size/orientation change
+  // and whenever the Print PDF tab becomes active, so @page always matches whichever tab is showing.
+  function syncPdfPageSize() {
+    const { w, h } = getPdfDisplayDims();
+    pageSizeStyle.textContent = `@page { size: ${w}mm ${h}mm; margin: 0; }`;
+    pdfHint.textContent = pdfDoc
+      ? `Print dialog: set paper size to ${w}×${h} mm, scale 100%, margins none. All ${pdfDoc.numPages} page(s) will print.`
+      : 'Upload a PDF, then choose a size to preview and print it.';
+    pdfPageEls.forEach((p) => {
+      p.wrap.style.width = w + 'mm';
+      p.wrap.style.height = h + 'mm';
+      p.rendered = false; // dimensions changed, so any previously rendered canvas is now the wrong size
+    });
+    if (pdfDoc) renderPdfPage(pdfCurrentPage);
+  }
+
+  function buildPdfPageEls() {
+    pdfPagesContainer.innerHTML = '';
+    pdfPageEls = [];
+    for (let i = 0; i < pdfDoc.numPages; i++) {
+      const wrap = document.createElement('div');
+      wrap.className = 'pdf-page pdf-page-hidden';
+      const canvas = document.createElement('canvas');
+      wrap.appendChild(canvas);
+      pdfPagesContainer.appendChild(wrap);
+      pdfPageEls.push({ wrap, canvas, rendered: false });
+    }
+    showOnlyPdfPage(0);
+  }
+
+  function showOnlyPdfPage(index) {
+    pdfPageEls.forEach((p, i) => p.wrap.classList.toggle('pdf-page-hidden', i !== index));
+  }
+
+  // Renders one PDF page into its canvas, scaled to fit within the target size (preserving the
+  // page's own aspect ratio, centered) at a pixel density high enough for crisp printing.
+  async function renderPdfPage(index) {
+    const entry = pdfPageEls[index];
+    if (!entry || entry.rendered) return;
+    const page = await pdfDoc.getPage(index + 1);
+    const { w: targetWmm, h: targetHmm } = getPdfDisplayDims();
+    const base = page.getViewport({ scale: 1 }); // pdf.js scale:1 viewport units are CSS px at 96dpi
+    const pdfWmm = base.width / MM_TO_PX;
+    const pdfHmm = base.height / MM_TO_PX;
+    const fitScale = Math.min(targetWmm / pdfWmm, targetHmm / pdfHmm);
+    const renderWmm = pdfWmm * fitScale;
+    const renderHmm = pdfHmm * fitScale;
+    const PRINT_PX_PER_MM = 11.8; // ~300dpi, matches the crisp-print approach used for the QR code
+    const pdfRenderScale = (renderWmm * PRINT_PX_PER_MM) / base.width;
+    const viewport = page.getViewport({ scale: pdfRenderScale });
+    entry.canvas.width = Math.round(viewport.width);
+    entry.canvas.height = Math.round(viewport.height);
+    entry.canvas.style.width = renderWmm + 'mm';
+    entry.canvas.style.height = renderHmm + 'mm';
+    await page.render({ canvasContext: entry.canvas.getContext('2d'), viewport }).promise;
+    entry.rendered = true;
+  }
+
+  async function goToPdfPage(index) {
+    if (!pdfDoc || index < 0 || index >= pdfDoc.numPages) return;
+    pdfCurrentPage = index;
+    showOnlyPdfPage(index);
+    updatePdfPageIndicator();
+    await renderPdfPage(index);
+  }
+
+  function updatePdfPageIndicator() {
+    if (!pdfDoc) return;
+    pdfPageIndicator.textContent = `Page ${pdfCurrentPage + 1} of ${pdfDoc.numPages}`;
+    pdfPrevPageBtn.disabled = pdfCurrentPage === 0;
+    pdfNextPageBtn.disabled = pdfCurrentPage === pdfDoc.numPages - 1;
+  }
+
+  async function loadPdfFile(file) {
+    pdfHint.textContent = 'Loading PDF…';
+    pdfPrintBtn.disabled = true;
+    try {
+      const buf = await file.arrayBuffer();
+      pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
+      pdfCurrentPage = 0;
+      buildPdfPageEls();
+      pdfPageNav.style.display = pdfDoc.numPages > 1 ? 'flex' : 'none';
+      pdfPrintBtn.disabled = false;
+      pdfDropZoneText.textContent = file.name;
+      updatePdfPageIndicator();
+      syncPdfPageSize();
+    } catch (err) {
+      console.warn('Failed to load PDF:', err);
+      pdfDoc = null;
+      pdfPrintBtn.disabled = true;
+      pdfDropZoneText.textContent = 'Drag & drop a PDF here, or click to browse';
+      pdfHint.textContent = 'Could not load that file. Make sure it is a valid PDF.';
+    }
+  }
+
+  function isPdfFile(file) {
+    return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  }
+
+  pdfFileEl.addEventListener('change', () => {
+    const file = pdfFileEl.files[0];
+    if (file) loadPdfFile(file);
+  });
+
+  // Click (or Enter/Space, since the zone is a role="button") opens the native file picker.
+  pdfDropZone.addEventListener('click', () => pdfFileEl.click());
+  pdfDropZone.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pdfFileEl.click(); }
+  });
+
+  ['dragenter', 'dragover'].forEach((evt) => {
+    pdfDropZone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      pdfDropZone.classList.add('dragover');
+    });
+  });
+  ['dragleave', 'dragend'].forEach((evt) => {
+    pdfDropZone.addEventListener(evt, () => pdfDropZone.classList.remove('dragover'));
+  });
+  pdfDropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    pdfDropZone.classList.remove('dragover');
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!file) return;
+    if (!isPdfFile(file)) {
+      pdfHint.textContent = 'That file does not look like a PDF.';
+      return;
+    }
+    loadPdfFile(file);
+  });
+
+  // Safety net: dropping a file anywhere else on the page would otherwise make the browser
+  // navigate away to display it raw, losing all app state. Only the drop zone above should react.
+  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('drop', (e) => e.preventDefault());
+
+  function onPdfSizeControlChange() {
+    pdfCustomSizeRow.style.display = pdfPaperSizeEl.value === 'custom' ? 'flex' : 'none';
+    syncPdfPageSize();
+  }
+  [pdfPaperSizeEl, pdfCustomWidthEl, pdfCustomHeightEl].forEach((el) => {
+    el.addEventListener('input', onPdfSizeControlChange);
+    el.addEventListener('change', onPdfSizeControlChange);
+  });
+
+  pdfOrientationToggle.addEventListener('click', () => {
+    pdfOrientation = pdfOrientation === 'landscape' ? 'portrait' : 'landscape';
+    updatePdfOrientationUi();
+    syncPdfPageSize();
+  });
+  updatePdfOrientationUi();
+
+  pdfPrevPageBtn.addEventListener('click', () => goToPdfPage(pdfCurrentPage - 1));
+  pdfNextPageBtn.addEventListener('click', () => goToPdfPage(pdfCurrentPage + 1));
+
+  pdfPrintBtn.addEventListener('click', async () => {
+    if (!pdfDoc) return;
+    pdfPrintBtn.disabled = true;
+    const originalHint = pdfHint.textContent;
+    pdfHint.textContent = 'Preparing pages for print…';
+    await Promise.all(pdfPageEls.map((_, i) => renderPdfPage(i)));
+    pdfPrintBtn.disabled = false;
+    pdfHint.textContent = originalHint;
+    syncPdfPageSize(); // re-confirm @page right before printing in case anything else changed it
+    window.print();
+  });
+
+  // --- Collage: tile many small labels (each its own QR + optional title/subtitle) onto one sheet ---
+  const collageEntriesEl = document.getElementById('collageEntries');
+  const collageCellSizeEl = document.getElementById('collageCellSize');
+  const collageCellCustomRow = document.getElementById('collageCellCustomRow');
+  const collageCellCustomWidthEl = document.getElementById('collageCellCustomWidth');
+  const collageCellCustomHeightEl = document.getElementById('collageCellCustomHeight');
+  const collageCellOrientationToggle = document.getElementById('collageCellOrientationToggle');
+  const collageCellOrientationLabelEl = document.getElementById('collageCellOrientationLabel');
+  const collageSheetSizeEl = document.getElementById('collageSheetSize');
+  const collageSheetCustomRow = document.getElementById('collageSheetCustomRow');
+  const collageSheetCustomWidthEl = document.getElementById('collageSheetCustomWidth');
+  const collageSheetCustomHeightEl = document.getElementById('collageSheetCustomHeight');
+  const collageSheetOrientationToggle = document.getElementById('collageSheetOrientationToggle');
+  const collageSheetOrientationLabelEl = document.getElementById('collageSheetOrientationLabel');
+  const collageGapEl = document.getElementById('collageGap');
+  const collageGapLabelEl = document.getElementById('collageGapLabel');
+  const collageShowCodeEl = document.getElementById('collageShowCode');
+  const collageShowBordersEl = document.getElementById('collageShowBorders');
+  const collagePrintBtn = document.getElementById('collagePrintBtn');
+  const collageHint = document.getElementById('collageHint');
+  const collageSheetsContainer = document.getElementById('collageSheetsContainer');
+
+  let collageCellOrientation = 'portrait';
+  let collageSheetOrientation = 'portrait';
+
+  function getCollageCellBaseDims() {
+    let a, b;
+    if (collageCellSizeEl.value === 'custom') {
+      a = parseFloat(collageCellCustomWidthEl.value) || 50;
+      b = parseFloat(collageCellCustomHeightEl.value) || 25;
+    } else {
+      const p = PAPER_SIZES[collageCellSizeEl.value] || PAPER_SIZES['50x25'];
+      a = p.w;
+      b = p.h;
+    }
+    return { w: Math.min(a, b), h: Math.max(a, b) };
+  }
+
+  function getCollageCellDisplayDims() {
+    const { w, h } = getCollageCellBaseDims();
+    return collageCellOrientation === 'landscape' ? { w: h, h: w } : { w, h };
+  }
+
+  function getCollageSheetBaseDims() {
+    let a, b;
+    if (collageSheetSizeEl.value === 'custom') {
+      a = parseFloat(collageSheetCustomWidthEl.value) || 210;
+      b = parseFloat(collageSheetCustomHeightEl.value) || 297;
+    } else {
+      const p = PAPER_SIZES[collageSheetSizeEl.value] || PAPER_SIZES['a4'];
+      a = p.w;
+      b = p.h;
+    }
+    return { w: Math.min(a, b), h: Math.max(a, b) };
+  }
+
+  function getCollageSheetDisplayDims() {
+    const { w, h } = getCollageSheetBaseDims();
+    return collageSheetOrientation === 'landscape' ? { w: h, h: w } : { w, h };
+  }
+
+  function updateCollageCellOrientationUi() {
+    collageCellOrientationToggle.classList.toggle('is-landscape', collageCellOrientation === 'landscape');
+    collageCellOrientationLabelEl.textContent = collageCellOrientation === 'landscape' ? 'Landscape' : 'Portrait';
+  }
+
+  function updateCollageSheetOrientationUi() {
+    collageSheetOrientationToggle.classList.toggle('is-landscape', collageSheetOrientation === 'landscape');
+    collageSheetOrientationLabelEl.textContent = collageSheetOrientation === 'landscape' ? 'Landscape' : 'Portrait';
+  }
+
+  // Each line is "content|title|subtitle" — title and subtitle are optional trailing parts.
+  // The content field itself may hold more than one QR code, separated by semicolons, so one
+  // label can carry multiple codes (e.g. a product page plus a separate warranty link).
+  // Lines with no content at all (blank lines, or a line that's just "|something") are skipped.
+  function parseCollageEntries() {
+    return collageEntriesEl.value
+      .split('\n')
+      .map((line) => {
+        const [contentField, title, subtitle] = line.split('|').map((s) => (s || '').trim());
+        const contents = (contentField || '').split(';').map((s) => s.trim()).filter(Boolean);
+        return { contents, title: title || '', subtitle: subtitle || '' };
+      })
+      .filter((e) => e.contents.length);
+  }
+
+  function computeCollageGrid(sheetWmm, sheetHmm, cellWmm, cellHmm, gapMm) {
+    const cols = Math.max(1, Math.floor((sheetWmm + gapMm) / (cellWmm + gapMm)));
+    const rows = Math.max(1, Math.floor((sheetHmm + gapMm) / (cellHmm + gapMm)));
+    return { cols, rows, perSheet: cols * rows };
+  }
+
+  // Persists each QR's manually-dragged/resized position & size across rebuilds, keyed by
+  // "entryIndex:qrIndexWithinEntry" (i.e. by line position in the textarea, not by content —
+  // reordering lines carries the position/size of whatever now occupies that slot). Values are
+  // {x, y, sizeMm}, matching the shape positionBox() expects for its `offset` argument.
+  const collageQrState = {};
+  let collageQrDragState = null;
+  let pendingCollagePositions = [];
+
+  // The default layout the first time a given QR is seen: with N codes on one label, each gets
+  // an equal slice of the cell's width, arranged in a centered row. Sized against the cell's
+  // *available* area (mirroring the .collage-cell padding formula) rather than its raw
+  // dimensions, and with real headroom below that so there's always some room left to drag —
+  // otherwise a QR that exactly fills its canvas can't move at all in one or both directions.
+  // userSized/userPositioned start false and flip to true only once the user actually drags —
+  // an untouched QR keeps re-fitting itself if the cell size changes later; a touched one won't.
+  function collageDefaultQrLayout(i, n, cellWmm, cellHmm) {
+    const cellMinMm = Math.min(cellWmm, cellHmm);
+    const paddingMm = clamp(cellMinMm * 0.06, 1, 4); // mirrors .collage-cell's CSS padding
+    const availableWmm = cellWmm - paddingMm * 2;
+    const availableHmm = cellHmm - paddingMm * 2;
+    const qrGapMm = 1.5;
+    const maxByWidth = ((availableWmm - qrGapMm * (n - 1)) / n) * 0.8;
+    const maxByHeight = availableHmm * 0.5;
+    const sizeMm = Math.max(4, Math.min(maxByWidth, maxByHeight));
+    return { x: (i - (n - 1) / 2) * (sizeMm + qrGapMm), y: 0, sizeMm, userSized: false, userPositioned: false };
+  }
+
+  function renderCollageQrContent(qrContentEl, content, sizeMm) {
+    qrContentEl.innerHTML = '';
+    const sizePx = Math.round(sizeMm * MM_TO_PX * 3); // higher pixel density for crisp printing
+    new QRCode(qrContentEl, {
+      text: content,
+      width: sizePx,
+      height: sizePx,
+      colorDark: '#000000',
+      colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M
+    });
+    requestAnimationFrame(() => {
+      qrContentEl.querySelectorAll('canvas, img').forEach((el) => {
+        el.style.width = '100%';
+        el.style.height = '100%';
+      });
+    });
+  }
+
+  function buildCollageCell(entry, entryIndex, cellWmm, cellHmm) {
+    const cell = document.createElement('div');
+    cell.className = 'collage-cell' + (collageShowBordersEl.checked ? ' bordered' : '');
+
+    if (entry.title) {
+      const t = document.createElement('div');
+      t.className = 'collage-cell-title';
+      t.textContent = entry.title;
+      cell.appendChild(t);
+    }
+
+    const canvasEl = document.createElement('div');
+    canvasEl.className = 'collage-cell-qr-canvas';
+    cell.appendChild(canvasEl);
+
+    // Lazily created on the first QR that needs it, so it lands right after the qr-canvas
+    // and before the subtitle regardless of which content index triggers it.
+    let codesEl = null;
+
+    const n = entry.contents.length;
+    entry.contents.forEach((content, i) => {
+      const key = entryIndex + ':' + i;
+      if (!collageQrState[key]) {
+        collageQrState[key] = collageDefaultQrLayout(i, n, cellWmm, cellHmm);
+      } else {
+        // Keep re-fitting whichever of size/position the user hasn't manually touched, so it
+        // tracks the current cell dimensions instead of carrying over a stale value from
+        // whatever size/orientation was in effect the first time this slot was built.
+        const existing = collageQrState[key];
+        const fresh = collageDefaultQrLayout(i, n, cellWmm, cellHmm);
+        if (!existing.userSized) existing.sizeMm = fresh.sizeMm;
+        if (!existing.userPositioned) { existing.x = fresh.x; existing.y = fresh.y; }
+      }
+      const state = collageQrState[key];
+
+      const qrBox = document.createElement('div');
+      qrBox.className = 'collage-cell-qr';
+      qrBox.style.width = state.sizeMm + 'mm';
+      qrBox.style.height = state.sizeMm + 'mm';
+
+      const qrContentEl = document.createElement('div');
+      qrContentEl.className = 'collage-cell-qr-content';
+      qrBox.appendChild(qrContentEl);
+      renderCollageQrContent(qrContentEl, content, state.sizeMm);
+
+      const handle = document.createElement('div');
+      handle.className = 'collage-qr-resize-handle';
+      qrBox.appendChild(handle);
+
+      canvasEl.appendChild(qrBox);
+      // Can't position yet: canvasEl isn't attached to the live document until the whole sheet
+      // is (buildCollageSheets appends sheets only after every cell in them is built), and
+      // getBoundingClientRect() on a detached element always reports zero size. Queue it and
+      // position everything in one pass once the sheets are actually in the DOM.
+      pendingCollagePositions.push({ qrBox, canvasEl, state });
+
+      qrBox.addEventListener('pointerdown', (e) => {
+        if (e.target === handle || document.body.classList.contains('preview-mode')) return;
+        state.userPositioned = true; // stop auto-refitting its position once the user has placed it themselves
+        collageQrDragState = { mode: 'move', canvasEl, state, qrBox, startX: e.clientX, startY: e.clientY, startOffsetX: state.x, startOffsetY: state.y };
+        qrBox.setPointerCapture(e.pointerId);
+        qrBox.classList.add('dragging');
+        canvasEl.classList.add('snap-grid-active');
+        e.preventDefault();
+      });
+
+      handle.addEventListener('pointerdown', (e) => {
+        if (document.body.classList.contains('preview-mode')) return;
+        state.userSized = true; // stop auto-refitting its size once the user has resized it themselves
+        collageQrDragState = { mode: 'resize', canvasEl, state, qrBox, qrContentEl, content, startX: e.clientX, startY: e.clientY, startSizeMm: state.sizeMm };
+        handle.setPointerCapture(e.pointerId);
+        canvasEl.classList.add('snap-grid-active');
+        e.preventDefault();
+        e.stopPropagation();
+      });
+
+      qrBox.addEventListener('dblclick', () => {
+        if (document.body.classList.contains('preview-mode')) return;
+        Object.assign(state, collageDefaultQrLayout(i, n, cellWmm, cellHmm));
+        qrBox.style.width = state.sizeMm + 'mm';
+        qrBox.style.height = state.sizeMm + 'mm';
+        renderCollageQrContent(qrContentEl, content, state.sizeMm);
+        positionBox(qrBox, canvasEl, state, { w: state.sizeMm, h: state.sizeMm });
+      });
+
+      if (collageShowCodeEl.checked) {
+        if (!codesEl) {
+          codesEl = document.createElement('div');
+          codesEl.className = 'collage-cell-codes';
+          cell.appendChild(codesEl);
+        }
+        const c = document.createElement('div');
+        c.className = 'collage-cell-code';
+        c.textContent = content;
+        codesEl.appendChild(c);
+      }
+    });
+
+    if (entry.subtitle) {
+      const s = document.createElement('div');
+      s.className = 'collage-cell-subtitle';
+      s.textContent = entry.subtitle;
+      cell.appendChild(s);
+    }
+
+    return cell;
+  }
+
+  window.addEventListener('pointermove', (e) => {
+    if (!collageQrDragState) return;
+    const dxMm = (e.clientX - collageQrDragState.startX) / MM_TO_PX;
+    const dyMm = (e.clientY - collageQrDragState.startY) / MM_TO_PX;
+
+    if (collageQrDragState.mode === 'move') {
+      const { canvasEl, state, qrBox } = collageQrDragState;
+      state.x = snapToGrid(collageQrDragState.startOffsetX + dxMm);
+      state.y = snapToGrid(collageQrDragState.startOffsetY + dyMm);
+      positionBox(qrBox, canvasEl, state, { w: state.sizeMm, h: state.sizeMm });
+    } else if (collageQrDragState.mode === 'resize') {
+      const { canvasEl, state, qrBox } = collageQrDragState;
+      const maxSizeMm = Math.max(4, Math.min(
+        canvasEl.getBoundingClientRect().width / MM_TO_PX,
+        canvasEl.getBoundingClientRect().height / MM_TO_PX
+      ));
+      state.sizeMm = snapToGrid(clamp(collageQrDragState.startSizeMm + (dxMm + dyMm) / 2, 4, maxSizeMm));
+      qrBox.style.width = state.sizeMm + 'mm';
+      qrBox.style.height = state.sizeMm + 'mm';
+      positionBox(qrBox, canvasEl, state, { w: state.sizeMm, h: state.sizeMm });
+    }
+  });
+
+  window.addEventListener('pointerup', () => {
+    if (!collageQrDragState) return;
+    if (collageQrDragState.mode === 'resize') {
+      const { qrContentEl, content, state } = collageQrDragState;
+      renderCollageQrContent(qrContentEl, content, state.sizeMm); // regenerate crisply at the final size
+    }
+    collageQrDragState.canvasEl.classList.remove('snap-grid-active');
+    document.querySelectorAll('.collage-cell-qr.dragging').forEach((el) => el.classList.remove('dragging'));
+    collageQrDragState = null;
+  });
+
+  function buildCollageSheets() {
+    collageSheetsContainer.innerHTML = '';
+    pendingCollagePositions = [];
+    const entries = parseCollageEntries();
+
+    if (!entries.length) {
+      collagePrintBtn.disabled = true;
+      collageHint.textContent = 'Enter at least one label above to build the collage.';
+      return;
+    }
+
+    // Drop any per-QR drag/resize state left over from lines that no longer exist.
+    const validKeys = new Set();
+    entries.forEach((e, ei) => e.contents.forEach((_, ci) => validKeys.add(ei + ':' + ci)));
+    Object.keys(collageQrState).forEach((k) => { if (!validKeys.has(k)) delete collageQrState[k]; });
+
+    const { w: sheetWmm, h: sheetHmm } = getCollageSheetDisplayDims();
+    const { w: cellWmm, h: cellHmm } = getCollageCellDisplayDims();
+    const gapMm = parseFloat(collageGapEl.value) || 0;
+    const { cols, rows, perSheet } = computeCollageGrid(sheetWmm, sheetHmm, cellWmm, cellHmm, gapMm);
+
+    if (cellWmm > sheetWmm || cellHmm > sheetHmm) {
+      collagePrintBtn.disabled = true;
+      collageHint.textContent = 'The label size is larger than the sheet size — choose a smaller label or a bigger sheet.';
+      return;
+    }
+
+    const sheetCount = Math.ceil(entries.length / perSheet);
+    for (let s = 0; s < sheetCount; s++) {
+      const sheetEl = document.createElement('div');
+      sheetEl.className = 'collage-sheet';
+      sheetEl.style.width = sheetWmm + 'mm';
+      sheetEl.style.height = sheetHmm + 'mm';
+      sheetEl.style.gridTemplateColumns = `repeat(${cols}, ${cellWmm}mm)`;
+      sheetEl.style.gridTemplateRows = `repeat(${rows}, ${cellHmm}mm)`;
+      sheetEl.style.gap = gapMm + 'mm';
+      sheetEl.style.setProperty('--cell-min', Math.min(cellWmm, cellHmm) + 'mm');
+
+      entries.slice(s * perSheet, (s + 1) * perSheet).forEach((entry, localIndex) => {
+        const entryIndex = s * perSheet + localIndex;
+        sheetEl.appendChild(buildCollageCell(entry, entryIndex, cellWmm, cellHmm));
+      });
+      collageSheetsContainer.appendChild(sheetEl);
+    }
+
+    // Only now is every sheet actually attached to the document and laid out, so this is the
+    // first point at which measuring each QR's canvas (inside positionBox) gives real numbers.
+    pendingCollagePositions.forEach(({ qrBox, canvasEl, state }) => {
+      positionBox(qrBox, canvasEl, state, { w: state.sizeMm, h: state.sizeMm });
+    });
+    pendingCollagePositions = [];
+
+    collagePrintBtn.disabled = false;
+    collageHint.textContent = `${cols}×${rows} = ${perSheet} label(s) per sheet. ${entries.length} label(s) will use ${sheetCount} sheet(s).`;
+  }
+
+  // Re-applies size/orientation to the @page rule and rebuilds every sheet from scratch — cheap
+  // enough for a reasonable number of labels, and avoids partial-update bugs. Called on any
+  // control change and whenever the Collage tab becomes active.
+  function updateCollage() {
+    collageCellCustomRow.style.display = collageCellSizeEl.value === 'custom' ? 'flex' : 'none';
+    collageSheetCustomRow.style.display = collageSheetSizeEl.value === 'custom' ? 'flex' : 'none';
+    const { w, h } = getCollageSheetDisplayDims();
+    pageSizeStyle.textContent = `@page { size: ${w}mm ${h}mm; margin: 0; }`;
+    buildCollageSheets();
+  }
+
+  [collageEntriesEl, collageCellSizeEl, collageCellCustomWidthEl, collageCellCustomHeightEl,
+   collageSheetSizeEl, collageSheetCustomWidthEl, collageSheetCustomHeightEl,
+   collageGapEl, collageShowCodeEl, collageShowBordersEl].forEach((el) => {
+    el.addEventListener('input', updateCollage);
+    el.addEventListener('change', updateCollage);
+  });
+
+  collageGapEl.addEventListener('input', () => {
+    collageGapLabelEl.textContent = collageGapEl.value;
+  });
+
+  collageCellOrientationToggle.addEventListener('click', () => {
+    collageCellOrientation = collageCellOrientation === 'landscape' ? 'portrait' : 'landscape';
+    updateCollageCellOrientationUi();
+    updateCollage();
+  });
+  updateCollageCellOrientationUi();
+
+  collageSheetOrientationToggle.addEventListener('click', () => {
+    collageSheetOrientation = collageSheetOrientation === 'landscape' ? 'portrait' : 'landscape';
+    updateCollageSheetOrientationUi();
+    updateCollage();
+  });
+  updateCollageSheetOrientationUi();
+
+  collagePrintBtn.addEventListener('click', () => {
+    updateCollage(); // re-confirm @page and sheet contents right before printing
+    window.print();
+  });
+
+  // --- Save for later ---
+  const SAVED_KEY = 'qr-label-app-saved-items';
+  const saveBtn = document.getElementById('saveBtn');
+  const savedList = document.getElementById('savedList');
+
+  function loadSavedItems() {
+    try {
+      return JSON.parse(localStorage.getItem(SAVED_KEY)) || [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function persistSavedItems(items) {
+    localStorage.setItem(SAVED_KEY, JSON.stringify(items));
+  }
+
+  function currentFormState() {
+    return {
+      id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+      content: dataEl.value,
+      title: titleEl.value,
+      subtitle: subtitleEl.value,
+      showCode: showCodeEl.checked,
+      paperSize: paperSizeEl.value,
+      customWidth: customWidthEl.value,
+      customHeight: customHeightEl.value,
+      orientation: orientation,
+      ecLevel: ecLevelEl.value,
+      qrSizeMm: qrSizeEl.value,
+      qrOffsetX: qrOffset.x,
+      qrOffsetY: qrOffset.y,
+      subtitleOffsetX: subtitleOffset.x,
+      subtitleOffsetY: subtitleOffset.y,
+      subtitleSizeMm: subtitleSizeMm,
+      savedAt: Date.now()
+    };
+  }
+
+  function applyFormState(item) {
+    dataEl.value = item.content || '';
+    titleEl.value = item.title || '';
+    subtitleEl.value = item.subtitle || '';
+    showCodeEl.checked = !!item.showCode;
+    paperSizeEl.value = PAPER_SIZES[item.paperSize] ? item.paperSize : (item.paperSize === 'custom' ? 'custom' : '100x150');
+    customWidthEl.value = item.customWidth || 100;
+    customHeightEl.value = item.customHeight || 150;
+    orientation = item.orientation === 'landscape' ? 'landscape' : 'portrait';
+    ecLevelEl.value = item.ecLevel || 'M';
+    qrSizeEl.value = item.qrSizeMm || 70;
+    qrOffset.x = typeof item.qrOffsetX === 'number' ? item.qrOffsetX : 0;
+    qrOffset.y = typeof item.qrOffsetY === 'number' ? item.qrOffsetY : 0;
+    subtitleOffset.x = typeof item.subtitleOffsetX === 'number' ? item.subtitleOffsetX : 0;
+    subtitleOffset.y = typeof item.subtitleOffsetY === 'number' ? item.subtitleOffsetY : 9999;
+    subtitleSizeMm = typeof item.subtitleSizeMm === 'number' ? item.subtitleSizeMm : null;
+    updateOrientationUi();
+    render();
+  }
+
+  function renderSavedList() {
+    const items = loadSavedItems();
+    if (!items.length) {
+      savedList.innerHTML = '<p class="saved-empty">No saved QR codes yet. Fill in the form on the Create tab and click "Save for later" to keep it here.</p>';
+      return;
+    }
+    savedList.innerHTML = '';
+    items.forEach((item) => {
+      const row = document.createElement('div');
+      row.className = 'saved-item';
+
+      const info = document.createElement('div');
+      info.className = 'saved-item-info';
+
+      const title = document.createElement('div');
+      title.className = 'saved-item-title';
+      title.textContent = item.title && item.title.trim() ? item.title.trim() : '(untitled)';
+      info.appendChild(title);
+
+      const content = document.createElement('div');
+      content.className = 'saved-item-content';
+      content.textContent = item.content || '';
+      info.appendChild(content);
+
+      const meta = document.createElement('div');
+      meta.className = 'saved-item-meta';
+      meta.textContent = new Date(item.savedAt).toLocaleString();
+      info.appendChild(meta);
+
+      const actions = document.createElement('div');
+      actions.className = 'saved-item-actions';
+
+      const useBtn = document.createElement('button');
+      useBtn.textContent = 'Use';
+      useBtn.addEventListener('click', () => {
+        applyFormState(item);
+        document.querySelector('.tab-btn[data-tab="create"]').click();
+      });
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.addEventListener('click', () => {
+        persistSavedItems(loadSavedItems().filter((i) => i.id !== item.id));
+        renderSavedList();
+      });
+
+      actions.appendChild(useBtn);
+      actions.appendChild(deleteBtn);
+
+      row.appendChild(info);
+      row.appendChild(actions);
+      savedList.appendChild(row);
+    });
+  }
+
+  saveBtn.addEventListener('click', () => {
+    const items = loadSavedItems();
+    items.unshift(currentFormState());
+    persistSavedItems(items);
+    const original = saveBtn.textContent;
+    saveBtn.textContent = 'Saved ✓';
+    setTimeout(() => { saveBtn.textContent = original; }, 1200);
+  });
+
+  render();
+
+  // Service worker disabled for the embedded copy inside daily-ops-webapp
+  // (the host app unregisters all service workers on this origin; the label
+  // printer is always used online here, so it isn't needed).
+</script>
+</body>
+</html>
