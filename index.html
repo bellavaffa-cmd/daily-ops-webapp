@@ -3342,20 +3342,30 @@
     loadOpsConfigInputs();
   }
 
-  // Reveal the Manager Console nav item only for Admin/Manager WMS logins.
+  // Apply the Manager-Console role config: reveal the console link for
+  // Admin/Manager, and for other roles hide any tabs role_tabs doesn't allow.
   async function checkManagerAccess() {
     try {
       const id = await dashGetDeviceId();
-      if (!id || id.indexOf('wms:') !== 0) return;
+      if (!id || id.indexOf('wms:') !== 0) return;   // only WMS-identified users
       const uid = id.slice(4);
-      const r = await fetch(SB_URL + '/user_roles?user_id=eq.' + encodeURIComponent(uid) + '&select=role', { headers: SB_HDR });
-      if (!r.ok) return;
-      const roles = await r.json();
-      if ((roles || []).some(x => x.role === 'Admin' || x.role === 'Manager')) {
-        const el = document.getElementById('snav-btn-manager');
-        if (el) el.style.display = '';
+      const roles = await fetch(SB_URL + '/user_roles?user_id=eq.' + encodeURIComponent(uid) + '&select=role,wh', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      if (!roles || !roles.length) return;           // no role assigned → no restriction
+      if (roles.some(x => x.role === 'Admin' || x.role === 'Manager')) {
+        const el = document.getElementById('snav-btn-manager'); if (el) el.style.display = '';
+        return;                                       // managers see everything
       }
-    } catch (e) { /* no access → stays hidden */ }
+      // Non-manager: restrict tabs to what their role can see (per warehouse, else the * default).
+      const roleRow = roles[0];
+      const rt = await fetch(SB_URL + '/role_tabs?role=eq.' + encodeURIComponent(roleRow.role) + '&or=(wh.eq.' + encodeURIComponent(roleRow.wh) + ',wh.eq.*)&select=wh,tabs', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      const cfg = rt.find(x => x.wh === roleRow.wh) || rt.find(x => x.wh === '*');
+      if (!cfg || !Array.isArray(cfg.tabs)) return;   // no tab config → no restriction
+      const allowed = new Set(cfg.tabs);
+      TAB_KEYS.forEach(t => { if (!allowed.has(t.view)) { const b = document.getElementById(t.navId); if (b) b.style.display = 'none'; } });
+      // If the current view just got hidden, jump to the first allowed one.
+      const active = document.querySelector('.view.active') && document.querySelector('.view.active').id.replace('view-', '');
+      if (active && !allowed.has(active)) { const first = TAB_KEYS.find(t => allowed.has(t.view)); if (first) showView(first.view); }
+    } catch (e) { /* leave everything visible on error */ }
   }
   checkManagerAccess();
 
@@ -6016,7 +6026,27 @@ function fail(error) {
     await saveToSupabase(record);
     await loadFromSupabase();
     sendSlackNotification(record);
+    fireWarehouseWebhooks(record);
   });
+
+  // Fire any per-warehouse webhooks configured (in the Manager Console) to
+  // notify on packing errors. Slack-compatible {text} payload + full detail.
+  async function fireWarehouseWebhooks(record) {
+    try {
+      const wh = record.warehouse; if (!wh) return;
+      const hooks = await fetch(SB_URL + '/warehouse_webhooks?wh=eq.' + encodeURIComponent(wh) + '&on_packing_error=is.true&active=is.true&select=url', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      if (!hooks || !hooks.length) return;
+      const text = '🚨 Packing error — ' + record.errorType + ' · ' + wh +
+        '\nOrder ' + (record.orderId || '—') + ' · Tote ' + (record.toteNum || '—') +
+        (record.reporterName ? ' · by ' + record.reporterName : '') +
+        (record.notes ? '\n' + record.notes : '');
+      const body = JSON.stringify({
+        text, warehouse: wh, error_type: record.errorType, order_id: record.orderId,
+        tote: record.toteNum, notes: record.notes || '', reported_by: record.reporterName || ''
+      });
+      hooks.forEach(h => { if (h.url) fetch(h.url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body }).catch(() => {}); });
+    } catch (e) { /* best-effort */ }
+  }
 
   function resetForm() {
     document.getElementById('errorForm').reset();
