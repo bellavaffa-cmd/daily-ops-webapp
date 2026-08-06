@@ -1395,6 +1395,11 @@
       <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17" stroke-linecap="round"/></svg>
       Help
     </button>
+    <button class="snav-btn" id="snav-btn-manager" onclick="window.open('manager/index.html','_blank','noopener')" style="display:none" title="Opens the Manager Console in a new tab">
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 2l7 4v6c0 4-3 7-7 8-4-1-7-4-7-8V6z"/><path stroke-linecap="round" stroke-linejoin="round" d="M9.5 12l1.8 1.8L15 10"/></svg>
+      Manager Console
+      <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:auto;opacity:.6"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><path d="M15 3h6v6M10 14L21 3"/></svg>
+    </button>
   </nav>
 </aside>
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
@@ -3336,6 +3341,24 @@
     } catch (e) { /* keep defaults */ }
     loadOpsConfigInputs();
   }
+
+  // Reveal the Manager Console nav item only for Admin/Manager WMS logins.
+  async function checkManagerAccess() {
+    try {
+      const id = await dashGetDeviceId();
+      if (!id || id.indexOf('wms:') !== 0) return;
+      const uid = id.slice(4);
+      const r = await fetch(SB_URL + '/user_roles?user_id=eq.' + encodeURIComponent(uid) + '&select=role', { headers: SB_HDR });
+      if (!r.ok) return;
+      const roles = await r.json();
+      if ((roles || []).some(x => x.role === 'Admin' || x.role === 'Manager')) {
+        const el = document.getElementById('snav-btn-manager');
+        if (el) el.style.display = '';
+      }
+    } catch (e) { /* no access → stays hidden */ }
+  }
+  checkManagerAccess();
+
   function loadOpsConfigInputs() {
     const set = (id, v) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = v || ''; };
     set('cfgOpStart', opsConfig.operating_start); set('cfgOpEnd', opsConfig.operating_end);
