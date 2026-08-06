@@ -3355,10 +3355,12 @@
 
   // Apply the Manager-Console role config: reveal the console link for
   // Admin/Manager, and for other roles hide any tabs role_tabs doesn't allow.
-  async function checkManagerAccess() {
+  let _managerWmsId = null;   // the WMS identity used for the console handoff
+  async function checkManagerAccess(overrideId) {
     try {
-      const id = await dashGetDeviceId();
+      const id = overrideId || await dashGetDeviceId();
       if (!id || id.indexOf('wms:') !== 0) return;   // only WMS-identified users
+      _managerWmsId = id;
       const uid = id.slice(4);
       const roles = await fetch(SB_URL + '/user_roles?user_id=eq.' + encodeURIComponent(uid) + '&select=role,wh', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
       if (!roles || !roles.length) return;           // no server role → keep the local self-select
@@ -3387,12 +3389,21 @@
   }
   checkManagerAccess();
   fetchWarehouseCarriers();
+  // Re-check when the WMS identity arrives from the extension bridge — it can land
+  // after dashGetDeviceId() already fell back to a local id, which would otherwise
+  // leave the console link hidden for an Admin.
+  window.addEventListener('message', function (e) {
+    if (e.source === window && e.data && e.data.type === 'dash-device-id' && e.data.id && String(e.data.id).indexOf('wms:') === 0) {
+      checkManagerAccess(String(e.data.id));
+    }
+  });
 
   // Open the console, handing it the WMS identity the app already detected so it
   // unlocks without re-detecting via its own bridge (it still re-checks the role).
   function openManagerConsole() {
+    const id = _managerWmsId || _dashDeviceId;
     let url = 'manager/index.html';
-    if (_dashDeviceId && _dashDeviceId.indexOf('wms:') === 0) url += '?as=' + encodeURIComponent(_dashDeviceId.slice(4));
+    if (id && id.indexOf('wms:') === 0) url += '?as=' + encodeURIComponent(id.slice(4));
     window.open(url, '_blank', 'noopener');
   }
 
