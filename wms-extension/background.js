@@ -158,14 +158,16 @@ async function performSync(isB2B) {
     // 3b. Cut-off config → today/tomorrow split. Orders that dropped after their
     // cut-off (Priority-MP vs Non-MP) are tomorrow's dispatch; we count them
     // separately so the app can exclude them from today and show a Tomorrow tab.
-    // Cut-offs are interpreted in the sync machine's local time (the operating
-    // region). Falls back to defaults if the config row can't be read.
-    let opsCfg = { mp_cutoff: '16:15', nonmp_cutoff: '14:09' };
+    // Cut-offs are PER WAREHOUSE (set in the Manager Console → warehouse_config),
+    // falling back to the '*' default row, then to hardcoded defaults. Interpreted
+    // in the sync machine's local time (the operating region).
+    let defCfg = { mp_cutoff: '16:15', nonmp_cutoff: '14:09' };
+    const whCfg = {};
     try {
-      const cr = await fetch('https://hmpkjmnxoidesnnoecfm.supabase.co/rest/v1/ops_config?id=eq.1&select=mp_cutoff,nonmp_cutoff', {
+      const cr = await fetch('https://hmpkjmnxoidesnnoecfm.supabase.co/rest/v1/warehouse_config?select=wh,mp_cutoff,nonmp_cutoff', {
         headers: { apikey: 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP', Authorization: 'Bearer sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP' }
       });
-      if (cr.ok) { const cd = await cr.json(); if (cd && cd[0]) opsCfg = cd[0]; }
+      if (cr.ok) { for (const r of (await cr.json()) || []) { if (r.wh === '*') defCfg = { mp_cutoff: r.mp_cutoff, nonmp_cutoff: r.nonmp_cutoff }; else whCfg[r.wh] = r; } }
     } catch (e) { /* keep defaults */ }
     const todayCutoffTs = hhmm => {
       if (!hhmm) return null;
@@ -173,13 +175,20 @@ async function performSync(isB2B) {
       const d = new Date(); d.setHours(h || 0, m || 0, 0, 0);
       return d.getTime();
     };
-    const MP_CUT = todayCutoffTs(opsCfg.mp_cutoff);
-    const NONMP_CUT = todayCutoffTs(opsCfg.nonmp_cutoff);
-    // An order is "tomorrow" if it dropped after its type's cut-off today.
+    const _cutCache = {};
+    const cutsFor = wh => {
+      if (_cutCache[wh]) return _cutCache[wh];
+      const c = whCfg[wh] || defCfg;
+      const v = { mp: todayCutoffTs(c.mp_cutoff || defCfg.mp_cutoff), nonmp: todayCutoffTs(c.nonmp_cutoff || defCfg.nonmp_cutoff) };
+      return (_cutCache[wh] = v);
+    };
+    // An order is "tomorrow" if it dropped after its warehouse's type cut-off today.
     const isTomorrowOrder = (o, isMp) => {
       const created = Date.parse(o.createdDateTime || o.shipmentOrderDate || '');
-      const cut = isMp ? MP_CUT : NONMP_CUT;
-      return !!(created && cut && created > cut);
+      if (!created) return false;
+      const c = cutsFor(o.warehouseCode);
+      const cut = isMp ? c.mp : c.nonmp;
+      return !!(cut && created > cut);
     };
 
     // Warehouse code (name) → internal GUID, for the app's WMS deep-link
