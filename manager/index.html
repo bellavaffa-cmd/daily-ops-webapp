@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manager Console — Daily Ops</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0d0a; --surface: #14170f; --surface2: #1b1f17; --border: #2a2f27;
+    --primary: #94ffa1; --danger: #f87171; --text: #ffffff; --muted: #8a9088; --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px; line-height: 1.4;
+  }
+  a { color: var(--primary); }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 22px 18px 60px; }
+  h1 { font-size: 1.35rem; margin: 0; }
+  .sub { color: var(--muted); font-size: .8rem; margin-top: 3px; }
+  .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  .who { text-align: right; font-size: .78rem; color: var(--muted); }
+  .who b { color: var(--text); display: block; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 16px; }
+  .card > h2 { font-size: .95rem; margin: 0 0 3px; display: flex; align-items: center; gap: 8px; }
+  .card .hint { color: var(--muted); font-size: .76rem; margin: 0 0 14px; }
+  label { display: block; font-size: .74rem; color: var(--muted); margin-bottom: 4px; font-weight: 500; }
+  input, select { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-family: inherit; font-size: .85rem; }
+  input[type=checkbox] { width: auto; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-family: inherit; font-weight: 600; font-size: .82rem; cursor: pointer; }
+  .btn:hover { border-color: var(--primary); }
+  .btn.primary { background: var(--primary); color: #06210b; border-color: var(--primary); }
+  .btn.sm { padding: 5px 10px; font-size: .76rem; }
+  .btn.icon { background: none; border: none; color: var(--muted); padding: 4px; }
+  .btn.icon:hover { color: var(--danger); }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 6px 8px; font-weight: 600; }
+  td { padding: 8px; border-top: 1px solid var(--border); font-size: .84rem; vertical-align: middle; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: .72rem; font-weight: 600; background: var(--surface2); border: 1px solid var(--border); }
+  .tabchecks { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+  .tabchecks label { display: flex; align-items: center; gap: 7px; color: var(--text); font-size: .82rem; margin: 0; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
+  .msg { font-size: .74rem; margin-top: 8px; min-height: 14px; }
+  .msg.ok { color: var(--primary); } .msg.err { color: var(--danger); }
+  .whbar { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 10px 0 12px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
+  .whbar select { max-width: 340px; }
+  #gate { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; z-index: 100; }
+  #gate .g { max-width: 400px; }
+  #gate h1 { margin-bottom: 8px; }
+  .spin { width: 22px; height: 22px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: sp 1s linear infinite; margin: 0 auto 14px; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  .hide { display: none !important; }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="g">
+    <div id="gateSpin" class="spin"></div>
+    <h1 id="gateTitle">Manager Console</h1>
+    <div class="sub" id="gateMsg">Checking your access&hellip;</div>
+    <div id="gateActions" class="hide" style="margin-top:16px">
+      <button class="btn" onclick="location.reload()">Retry</button>
+    </div>
+  </div>
+</div>
+
+<div id="app" class="wrap hide">
+  <div class="topbar">
+    <div>
+      <h1>Manager Console</h1>
+      <div class="sub">Per-warehouse operations settings for Daily Ops</div>
+    </div>
+    <div class="who"><b id="whoName">—</b><span id="whoRole">—</span></div>
+  </div>
+
+  <div class="whbar">
+    <label for="whSelect">Warehouse</label>
+    <select id="whSelect" onchange="onWhChange()"></select>
+  </div>
+
+  <!-- 1 + 3: Cut-offs & operating hours -->
+  <div class="card">
+    <h2>⏱️ Cut-offs &amp; operating hours</h2>
+    <p class="hint">Local times for the selected warehouse. Drives the today/tomorrow split, at-risk flags and Open/Closed status.</p>
+    <div class="grid">
+      <div><label>Priority-MP cut-off</label><input type="time" id="cfgMp"></div>
+      <div><label>Non-MP cut-off</label><input type="time" id="cfgNonmp"></div>
+      <div><label>Opens</label><input type="time" id="cfgOpen"></div>
+      <div><label>Closes</label><input type="time" id="cfgClose"></div>
+      <div><label>Timezone</label><input type="text" id="cfgTz" placeholder="Asia/Manila"></div>
+    </div>
+    <div class="row" style="margin-top:12px"><button class="btn primary" onclick="saveTiming()">Save</button><span class="msg" id="timingMsg"></span></div>
+  </div>
+
+  <!-- 4: Carriers -->
+  <div class="card">
+    <h2>🚚 Carriers</h2>
+    <p class="hint">Carriers available for this warehouse (used by the error-report form).</p>
+    <table><tbody id="carrierRows"></tbody></table>
+    <div class="row" style="margin-top:12px">
+      <div style="flex:1;min-width:180px"><label>Add carrier</label><input type="text" id="carrierInput" placeholder="e.g. Aramex" onkeydown="if(event.key==='Enter')addCarrier()"></div>
+      <button class="btn" onclick="addCarrier()">Add</button>
+    </div>
+  </div>
+
+  <!-- 5: Webhooks -->
+  <div class="card">
+    <h2>🔗 Webhooks</h2>
+    <p class="hint">HTTP endpoints (e.g. Slack incoming webhooks) notified for this warehouse.</p>
+    <table><thead><tr><th>Label</th><th>URL</th><th>Errors</th><th>Cut-off</th><th></th></tr></thead><tbody id="webhookRows"></tbody></table>
+    <div class="row" style="margin-top:12px">
+      <div style="flex:0 1 140px"><label>Label</label><input type="text" id="whLabel" placeholder="Slack #ops"></div>
+      <div style="flex:1;min-width:200px"><label>URL</label><input type="text" id="whUrl" placeholder="https://hooks.slack.com/…"></div>
+      <label style="display:flex;align-items:center;gap:5px;color:var(--text)"><input type="checkbox" id="whErr" checked> Errors</label>
+      <label style="display:flex;align-items:center;gap:5px;color:var(--text)"><input type="checkbox" id="whCut"> Cut-off</label>
+      <button class="btn" onclick="addWebhook()">Add</button>
+    </div>
+  </div>
+
+  <!-- 2: User roles -->
+  <div class="card">
+    <h2>👥 User roles</h2>
+    <p class="hint">Assign each user a role. Scope is per warehouse (or "All warehouses"). Admin/Manager can open this console.</p>
+    <table><thead><tr><th>User</th><th>Scope</th><th>Role</th><th></th></tr></thead><tbody id="roleRows"></tbody></table>
+    <div class="row" style="margin-top:12px">
+      <div style="flex:1;min-width:180px"><label>Add user (name or email)</label><input type="text" id="userName" placeholder="Name"></div>
+      <div style="flex:1;min-width:180px"><label>WMS user id</label><input type="text" id="userId" placeholder="idtfr GUID"></div>
+      <div><label>Role</label><select id="userRole"></select></div>
+      <button class="btn" onclick="addUserRole()">Add</button>
+    </div>
+    <span class="msg" id="roleMsg"></span>
+  </div>
+
+  <!-- 6: Tabs per role -->
+  <div class="card">
+    <h2>🗂️ Tabs each role can see</h2>
+    <p class="hint">For the selected warehouse and role, choose which tabs are visible. "All warehouses" applies as the default when a warehouse has no override.</p>
+    <div class="row" style="margin-bottom:12px"><div><label>Role</label><select id="tabRole" onchange="loadRoleTabs()"></select></div></div>
+    <div class="tabchecks" id="tabChecks"></div>
+    <div class="row" style="margin-top:12px"><button class="btn primary" onclick="saveRoleTabs()">Save</button><span class="msg" id="tabsMsg"></span></div>
+  </div>
+</div>
+
+<script>
+  const SB = 'https://hmpkjmnxoidesnnoecfm.supabase.co/rest/v1';
+  const KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
+  const HDR = { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' };
+  const ROLES = ['Admin', 'Manager', 'Supervisor', 'Packer', 'Viewer'];
+  const APP_TABS = [
+    ['overview', 'Dashboard'], ['b2c', 'B2C Today'], ['tomorrow', 'B2C Tomorrow'], ['b2b', 'B2B'],
+    ['shortage', 'Shortage'], ['productivity', 'Productivity'], ['jobs', 'Jobs'], ['dash', 'Error Dashboard'],
+    ['labels', 'Label Printer'], ['help', 'Help']
+  ];
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const flash = (id, msg, ok) => { const e = $(id); if (!e) return; e.textContent = msg; e.className = 'msg ' + (ok ? 'ok' : 'err'); setTimeout(() => { if (e.textContent === msg) e.textContent = ''; }, 3500); };
+
+  async function sbGet(path) { const r = await fetch(SB + path, { headers: HDR }); return r.ok ? r.json() : []; }
+  async function sbSend(method, path, body, prefer) {
+    const h = Object.assign({}, HDR, prefer ? { Prefer: prefer } : {});
+    const r = await fetch(SB + path, { method, headers: h, body: body ? JSON.stringify(body) : undefined });
+    if (!r.ok) throw new Error((await r.text()) || ('HTTP ' + r.status));
+    return r;
+  }
+
+  let CURRENT_WH = '*';
+  let ME = null;
+
+  // ── Identity + role gate ───────────────────────────────────────────────────
+  let _idResolved = false;
+  function gateFail(msg) { $('gateSpin').classList.add('hide'); $('gateTitle').textContent = 'No access'; $('gateMsg').textContent = msg; $('gateActions').classList.remove('hide'); }
+  async function checkRole(rawId, label) {
+    const uid = String(rawId || '').replace(/^wms:/, '');
+    if (!uid) return gateFail('Could not detect your WMS login.');
+    // Admin/Manager anywhere unlocks the console.
+    const roles = await sbGet('/user_roles?user_id=eq.' + encodeURIComponent(uid) + '&select=role,wh');
+    const top = roles.find(r => r.role === 'Admin') || roles.find(r => r.role === 'Manager');
+    if (!top) return gateFail('Your WMS login isn\'t a Manager or Admin. Ask an admin to grant you access.');
+    ME = { uid, role: top.role, name: label || uid };
+    // fill display name from registry if available
+    const reg = await sbGet('/wms_users?user_id=eq.' + encodeURIComponent(uid) + '&select=name,email');
+    if (reg[0] && reg[0].name) ME.name = reg[0].name;
+    $('whoName').textContent = ME.name; $('whoRole').textContent = ME.role;
+    $('gate').classList.add('hide'); $('app').classList.remove('hide');
+    boot();
+  }
+  window.addEventListener('message', e => {
+    if (e.source !== window || !e.data || e.data.type !== 'dash-device-id' || !e.data.id) return;
+    if (_idResolved) return; _idResolved = true;
+    checkRole(e.data.id, e.data.label);
+  });
+  // Fallback: a ?as=<idtfr> override for setup/testing (low-security, matches the app's open model).
+  setTimeout(() => {
+    if (_idResolved) return;
+    const p = new URLSearchParams(location.search).get('as');
+    if (p) { _idResolved = true; checkRole(p); return; }
+    _idResolved = true;
+    gateFail('Couldn\'t detect your WMS login. Open this in a browser where the extension is installed and you\'ve visited wms.golocad.com, then Retry.');
+  }, 2500);
+
+  // ── Boot: warehouses + role/tab dropdowns ──────────────────────────────────
+  async function boot() {
+    // role dropdowns
+    $('userRole').innerHTML = ROLES.map(r => `<option>${r}</option>`).join('');
+    $('tabRole').innerHTML = ROLES.map(r => `<option>${r}</option>`).join('');
+    // tab checkboxes
+    $('tabChecks').innerHTML = APP_TABS.map(([k, n]) => `<label><input type="checkbox" value="${k}"> ${n}</label>`).join('');
+    // warehouses from b2c_data
+    const rows = await sbGet('/b2c_data?select=wh,type&order=wh.asc');
+    const whs = [...new Set(rows.filter(r => (!r.type || r.type === 'warehouse') && r.wh).map(r => r.wh))];
+    $('whSelect').innerHTML = '<option value="*">★ All warehouses (default)</option>' + whs.map(w => `<option value="${esc(w)}">${esc(w)}</option>`).join('');
+    onWhChange();
+  }
+  function onWhChange() {
+    CURRENT_WH = $('whSelect').value;
+    loadTiming(); loadCarriers(); loadWebhooks(); loadRoles(); loadRoleTabs();
+  }
+
+  // ── 1 + 3: Timing ──────────────────────────────────────────────────────────
+  async function loadTiming() {
+    const r = (await sbGet('/warehouse_config?wh=eq.' + encodeURIComponent(CURRENT_WH) + '&select=*'))[0] || {};
+    $('cfgMp').value = r.mp_cutoff || '16:15'; $('cfgNonmp').value = r.nonmp_cutoff || '14:09';
+    $('cfgOpen').value = r.operating_start || '09:00'; $('cfgClose').value = r.operating_end || '18:00';
+    $('cfgTz').value = r.tz || 'Asia/Manila';
+  }
+  async function saveTiming() {
+    try {
+      await sbSend('POST', '/warehouse_config?on_conflict=wh', [{
+        wh: CURRENT_WH, mp_cutoff: $('cfgMp').value || '16:15', nonmp_cutoff: $('cfgNonmp').value || '14:09',
+        operating_start: $('cfgOpen').value || '09:00', operating_end: $('cfgClose').value || '18:00',
+        tz: $('cfgTz').value || 'Asia/Manila', updated_at: new Date().toISOString()
+      }], 'resolution=merge-duplicates,return=minimal');
+      flash('timingMsg', 'Saved ✓', true);
+    } catch (e) { flash('timingMsg', 'Save failed', false); }
+  }
+
+  // ── 4: Carriers ─────────────────────────────────────────────────────────────
+  async function loadCarriers() {
+    const rows = await sbGet('/warehouse_carriers?wh=eq.' + encodeURIComponent(CURRENT_WH) + '&select=id,carrier&order=carrier.asc');
+    $('carrierRows').innerHTML = rows.length ? rows.map(r =>
+      `<tr><td>${esc(r.carrier)}</td><td style="text-align:right"><button class="btn icon" title="Remove" onclick="delCarrier(${r.id})">✕</button></td></tr>`
+    ).join('') : '<tr><td style="color:var(--muted)">No carriers yet.</td></tr>';
+  }
+  async function addCarrier() {
+    const v = $('carrierInput').value.trim(); if (!v) return;
+    try { await sbSend('POST', '/warehouse_carriers?on_conflict=wh,carrier', [{ wh: CURRENT_WH, carrier: v }], 'resolution=merge-duplicates,return=minimal'); $('carrierInput').value = ''; loadCarriers(); } catch (e) {}
+  }
+  async function delCarrier(id) { try { await sbSend('DELETE', '/warehouse_carriers?id=eq.' + id); loadCarriers(); } catch (e) {} }
+
+  // ── 5: Webhooks ──────────────────────────────────────────────────────────────
+  async function loadWebhooks() {
+    const rows = await sbGet('/warehouse_webhooks?wh=eq.' + encodeURIComponent(CURRENT_WH) + '&select=*&order=id.asc');
+    $('webhookRows').innerHTML = rows.length ? rows.map(r =>
+      `<tr><td>${esc(r.label) || '—'}</td><td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.url)}">${esc(r.url)}</td>
+       <td>${r.on_packing_error ? '✓' : ''}</td><td>${r.on_cutoff_alert ? '✓' : ''}</td>
+       <td style="text-align:right"><button class="btn icon" title="Remove" onclick="delWebhook(${r.id})">✕</button></td></tr>`
+    ).join('') : '<tr><td colspan="5" style="color:var(--muted)">No webhooks yet.</td></tr>';
+  }
+  async function addWebhook() {
+    const url = $('whUrl').value.trim(); if (!/^https?:\/\//.test(url)) { alert('Enter a valid http(s) URL.'); return; }
+    try {
+      await sbSend('POST', '/warehouse_webhooks', [{ wh: CURRENT_WH, label: $('whLabel').value.trim() || null, url, on_packing_error: $('whErr').checked, on_cutoff_alert: $('whCut').checked }], 'return=minimal');
+      $('whLabel').value = ''; $('whUrl').value = ''; loadWebhooks();
+    } catch (e) {}
+  }
+  async function delWebhook(id) { try { await sbSend('DELETE', '/warehouse_webhooks?id=eq.' + id); loadWebhooks(); } catch (e) {} }
+
+  // ── 2: User roles ────────────────────────────────────────────────────────────
+  async function loadRoles() {
+    // Show roles scoped to this warehouse and the global (*) ones.
+    const scope = CURRENT_WH === '*' ? 'wh=eq.*' : 'or=(wh.eq.' + encodeURIComponent(CURRENT_WH) + ',wh.eq.*)';
+    const rows = await sbGet('/user_roles?' + scope + '&select=id,user_id,wh,role&order=role.asc');
+    const users = await sbGet('/wms_users?select=user_id,name,email');
+    const nameOf = {}; users.forEach(u => nameOf[u.user_id] = u.name || u.email || u.user_id);
+    $('roleRows').innerHTML = rows.length ? rows.map(r => {
+      const nm = nameOf[r.user_id] || (r.user_id.slice(0, 10) + '…');
+      return `<tr><td title="${esc(r.user_id)}">${esc(nm)}</td><td><span class="pill">${r.wh === '*' ? 'All' : esc(r.wh)}</span></td>
+        <td><select onchange="setRole(${r.id}, this.value)" style="width:auto">${ROLES.map(x => `<option ${x === r.role ? 'selected' : ''}>${x}</option>`).join('')}</select></td>
+        <td style="text-align:right"><button class="btn icon" title="Remove" onclick="delRole(${r.id})">✕</button></td></tr>`;
+    }).join('') : '<tr><td colspan="4" style="color:var(--muted)">No users assigned for this scope.</td></tr>';
+  }
+  async function addUserRole() {
+    const uid = $('userId').value.trim(), nm = $('userName').value.trim();
+    if (!uid) { flash('roleMsg', 'Enter the user\'s WMS id.', false); return; }
+    try {
+      if (nm) await sbSend('POST', '/wms_users?on_conflict=user_id', [{ user_id: uid, name: nm }], 'resolution=merge-duplicates,return=minimal');
+      await sbSend('POST', '/user_roles?on_conflict=user_id,wh', [{ user_id: uid, wh: CURRENT_WH, role: $('userRole').value }], 'resolution=merge-duplicates,return=minimal');
+      $('userId').value = ''; $('userName').value = ''; loadRoles(); flash('roleMsg', 'Added ✓', true);
+    } catch (e) { flash('roleMsg', 'Failed — check the id.', false); }
+  }
+  async function setRole(id, role) { try { await sbSend('PATCH', '/user_roles?id=eq.' + id, { role, updated_at: new Date().toISOString() }, 'return=minimal'); } catch (e) {} }
+  async function delRole(id) { try { await sbSend('DELETE', '/user_roles?id=eq.' + id); loadRoles(); } catch (e) {} }
+
+  // ── 6: Role → tabs ───────────────────────────────────────────────────────────
+  async function loadRoleTabs() {
+    const role = $('tabRole').value;
+    const r = (await sbGet('/role_tabs?wh=eq.' + encodeURIComponent(CURRENT_WH) + '&role=eq.' + encodeURIComponent(role) + '&select=tabs'))[0];
+    let tabs = r && Array.isArray(r.tabs) ? r.tabs : null;
+    // Default: no row → all tabs on (so nothing is accidentally hidden before configured).
+    const on = new Set(tabs || APP_TABS.map(t => t[0]));
+    $('tabChecks').querySelectorAll('input').forEach(cb => cb.checked = on.has(cb.value));
+  }
+  async function saveRoleTabs() {
+    const role = $('tabRole').value;
+    const tabs = [...$('tabChecks').querySelectorAll('input')].filter(cb => cb.checked).map(cb => cb.value);
+    try {
+      await sbSend('POST', '/role_tabs?on_conflict=wh,role', [{ wh: CURRENT_WH, role, tabs, updated_at: new Date().toISOString() }], 'resolution=merge-duplicates,return=minimal');
+      flash('tabsMsg', 'Saved ✓', true);
+    } catch (e) { flash('tabsMsg', 'Save failed', false); }
+  }
+</script>
+</body>
+</html>
