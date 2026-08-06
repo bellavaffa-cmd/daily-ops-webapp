@@ -658,6 +658,13 @@
     .panel { width: 100% !important; max-width: none !important; border-right: none !important; }
     #openPreviewBtn { display: inline-flex !important; }
   }
+
+  /* Embedded in the host app — hide the generator's own title bar and the
+     floating panel toggle so it reads as a native tab, not a separate app. */
+  .panel-head { display: none !important; }
+  #panelToggleBtn { display: none !important; }
+  .panel { padding-top: 14px !important; }
+  body { background: transparent !important; }
 </style>
 <script>try { document.documentElement.setAttribute('data-theme', 'dark'); } catch (e) {}</script>
 </head>

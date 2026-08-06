@@ -2484,28 +2484,22 @@
 
   <!-- ── TOOLS VIEW ── -->
   <div class="view" id="view-labels">
-    <div style="margin-bottom:16px">
-      <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Label Printer</div>
-      <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Generate &amp; print QR labels · shared PDFs live in the printer's Shared PDFs tab</div>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:14px">
+      <div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Label Printer</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Generate &amp; print QR labels · shared PDFs live in the Shared PDFs tab</div>
+      </div>
+      <a href="label-printer/index.html" target="_blank" rel="noopener" title="Open in a full tab"
+         style="flex:none;display:inline-flex;align-items:center;gap:5px;padding:5px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:.76rem;font-weight:600;color:var(--muted);text-decoration:none;white-space:nowrap"
+         onmouseover="this.style.borderColor='var(--primary)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">
+        <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><path d="M15 3h6v6M10 14L21 3"/></svg>
+        New tab
+      </a>
     </div>
 
-    <div class="card" style="padding:0;overflow:hidden">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 16px;border-bottom:1px solid var(--border)">
-        <div style="display:flex;align-items:center;gap:8px;font-size:.9rem;font-weight:600;color:var(--text)">
-          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z"/></svg>
-          QR Label Printer
-        </div>
-        <a href="label-printer/index.html" target="_blank" rel="noopener"
-           style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;font-size:.76rem;font-weight:600;color:var(--text);text-decoration:none;white-space:nowrap"
-           onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
-          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><path d="M15 3h6v6M10 14L21 3"/></svg>
-          Open in new tab
-        </a>
-      </div>
-      <iframe id="toolsLabelFrame" data-src="label-printer/index.html" src="about:blank"
-              title="QR Label Printer" allow="camera; clipboard-write; clipboard-read"
-              style="width:100%;height:76vh;min-height:460px;border:0;display:block;background:#fff"></iframe>
-    </div>
+    <iframe id="toolsLabelFrame" data-src="label-printer/index.html" src="about:blank"
+            title="QR Label Printer" allow="camera; clipboard-write; clipboard-read"
+            style="width:100%;height:calc(100vh - 150px);min-height:460px;border:0;display:block;background:transparent"></iframe>
   </div>
 
   <!-- ── HELP VIEW ── -->
