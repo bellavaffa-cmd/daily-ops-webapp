@@ -2946,6 +2946,8 @@
   ];
 
   let opsConfig = { operating_start: '09:00', operating_end: '18:00', mp_cutoff: '16:15', nonmp_cutoff: '14:09' };
+  let whOps = {};        // wh -> warehouse_config row ('*' = global default)
+  let whCarriers = {};   // wh -> [carrier, ...] ('*' = default)
   let b2cFlow = [];       // b2c_flow_snapshot rows — B2C new-orders inflow (inflow_1h)
   let b2cPackSnaps = [];  // productivity_snapshot rows — cumulative packed_orders for the hourly packing rate
 
@@ -3336,11 +3338,19 @@
   // (opsConfig is declared with the other globals so load-time renders can read it.)
   async function fetchOpsConfig() {
     try {
-      const r = await fetch(SB_URL + '/ops_config?id=eq.1&select=*', { headers: SB_HDR });
-      if (r.ok) { const rows = await r.json(); if (rows && rows[0]) opsConfig = { ...opsConfig, ...rows[0] }; }
+      const r = await fetch(SB_URL + '/warehouse_config?select=*', { headers: SB_HDR });
+      if (r.ok) {
+        const map = {};
+        for (const row of (await r.json()) || []) map[row.wh] = row;
+        whOps = map;
+        if (map['*']) opsConfig = { ...opsConfig, ...map['*'] };
+      }
     } catch (e) { /* keep defaults */ }
     loadOpsConfigInputs();
   }
+  function opsFor(wh) { return (wh && whOps[wh]) || whOps['*'] || opsConfig; }
+  // Config for the current B2C view: the selected warehouse if exactly one, else the default.
+  function selectedOpsCfg() { const sel = (typeof getSelectedWhs === 'function' ? getSelectedWhs() : []); return sel.length === 1 ? opsFor(sel[0]) : (whOps['*'] || opsConfig); }
 
   // Apply the Manager-Console role config: reveal the console link for
   // Admin/Manager, and for other roles hide any tabs role_tabs doesn't allow.
@@ -3368,6 +3378,7 @@
     } catch (e) { /* leave everything visible on error */ }
   }
   checkManagerAccess();
+  fetchWarehouseCarriers();
 
   function loadOpsConfigInputs() {
     const set = (id, v) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = v || ''; };
@@ -3375,8 +3386,10 @@
     set('cfgMpCut', opsConfig.mp_cutoff); set('cfgNonmpCut', opsConfig.nonmp_cutoff);
   }
   async function saveOpsConfig() {
+    // Writes the global default (warehouse_config '*'); per-warehouse overrides
+    // live in the Manager Console.
     const cfg = {
-      id: 1,
+      wh: '*',
       operating_start: document.getElementById('cfgOpStart').value || '09:00',
       operating_end:   document.getElementById('cfgOpEnd').value || '18:00',
       mp_cutoff:       document.getElementById('cfgMpCut').value || '16:15',
@@ -3384,10 +3397,11 @@
       updated_at: new Date().toISOString(),
     };
     opsConfig = { ...opsConfig, ...cfg };
+    whOps['*'] = { ...(whOps['*'] || {}), ...cfg };
     const msg = document.getElementById('cfgSaveMsg');
     if (msg) { msg.textContent = 'Saving…'; msg.style.color = 'var(--muted)'; }
     try {
-      const r = await fetch(SB_URL + '/ops_config?on_conflict=id', {
+      const r = await fetch(SB_URL + '/warehouse_config?on_conflict=wh', {
         method: 'POST',
         headers: { ...SB_HDR, Prefer: 'resolution=merge-duplicates,return=minimal' },
         body: JSON.stringify([cfg]),
@@ -3403,11 +3417,12 @@
   }
   function hhmmToMins(hhmm) { const [h, m] = String(hhmm || '').split(':').map(Number); return (h || 0) * 60 + (m || 0); }
   function nowMinsLocal() { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); }
-  function opsIsOpen() { const n = nowMinsLocal(); return n >= hhmmToMins(opsConfig.operating_start) && n < hhmmToMins(opsConfig.operating_end); }
+  function opsIsOpen(cfg) { cfg = cfg || selectedOpsCfg(); const n = nowMinsLocal(); return n >= hhmmToMins(cfg.operating_start) && n < hhmmToMins(cfg.operating_end); }
   function opsStatusLabel() {
-    return opsIsOpen()
-      ? `🟢 Open · ${opsConfig.operating_start}–${opsConfig.operating_end}`
-      : `🔴 Closed · opens ${opsConfig.operating_start}`;
+    const cfg = selectedOpsCfg();
+    return opsIsOpen(cfg)
+      ? `🟢 Open · ${cfg.operating_start}–${cfg.operating_end}`
+      : `🔴 Closed · opens ${cfg.operating_start}`;
   }
 
   // Red banner when a type's cut-off has passed and orders of that type are
@@ -3415,14 +3430,15 @@
   function renderB2CRiskBanner(filtered) {
     const el = document.getElementById('b2cRiskBanner');
     if (!el || !opsConfig) return;
+    const cfg = selectedOpsCfg();
     const KEYS = ['new', 'rfp', 'picking', 'picked', 'packing'];
     const sumType = suffix => (filtered || []).reduce((a, r) => a + KEYS.reduce((s, k) => s + (r[k + suffix] || 0), 0), 0);
     const now = nowMinsLocal();
     const risks = [];
-    if (opsConfig.nonmp_cutoff && now >= hhmmToMins(opsConfig.nonmp_cutoff)) {
+    if (cfg.nonmp_cutoff && now >= hhmmToMins(cfg.nonmp_cutoff)) {
       const n = sumType('_nonmp'); if (n > 0) risks.push(`${n.toLocaleString()} Non-MP`);
     }
-    if (opsConfig.mp_cutoff && now >= hhmmToMins(opsConfig.mp_cutoff)) {
+    if (cfg.mp_cutoff && now >= hhmmToMins(cfg.mp_cutoff)) {
       const n = sumType('_prioritymp'); if (n > 0) risks.push(`${n.toLocaleString()} Priority-MP`);
     }
     el.innerHTML = risks.length
@@ -3899,6 +3915,23 @@
     try { const a = JSON.parse(localStorage.getItem('carriers') || '[]'); return Array.isArray(a) ? a : []; }
     catch { return []; }
   }
+  // Per-warehouse carriers from the Manager Console (warehouse_carriers). Falls back
+  // to the '*' default, then to the local Settings list when none are configured.
+  async function fetchWarehouseCarriers() {
+    try {
+      const r = await fetch(SB_URL + '/warehouse_carriers?active=is.true&select=wh,carrier&order=carrier.asc', { headers: SB_HDR });
+      if (!r.ok) return;
+      const map = {};
+      for (const row of (await r.json()) || []) { (map[row.wh] = map[row.wh] || []).push(row.carrier); }
+      whCarriers = map;
+      try { renderB2BOrders(); } catch (e) {}
+    } catch (e) { /* keep fallback */ }
+  }
+  function carriersFor(wh) {
+    if (wh && whCarriers[wh] && whCarriers[wh].length) return whCarriers[wh];
+    if (whCarriers['*'] && whCarriers['*'].length) return whCarriers['*'];
+    return getCarriers();
+  }
 
   function renderB2BOrders() {
     const filtered = b2bOrders.filter(o => inWhFilter(o.wh));
@@ -3915,7 +3948,7 @@
     tbl.innerHTML = filtered.map(o => {
       const meta = B2B_STATUS_META[o.status] || { label: o.status || 'Unknown', color: 'var(--text)' };
       // Include a removed/unknown carrier as an option so an existing selection stays visible.
-      const carriers = getCarriers().slice();
+      const carriers = carriersFor(o.wh).slice();
       if (o.collected_by && !carriers.includes(o.collected_by)) carriers.unshift(o.collected_by);
       const jsId = String(o.order_id).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
       const collectedSel = `<select onchange="setCollectedBy('${jsId}', this.value)" style="font-size:.78rem;padding:3px 6px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;max-width:150px">
