@@ -288,27 +288,37 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return JSON.parse(atob(b64));
     } catch (e) { return null; }
   }
-  // Readable display name lives in the Userpilot user object (customer.name).
+  // Readable identity lives in the Userpilot user object (customer.name/email).
   // The key has an app-specific numeric suffix, so match by prefix.
-  function readDisplayName() {
+  function readCustomer() {
     try {
       const key = Object.keys(localStorage).find(function (k) { return k.indexOf('userpilotUser') === 0; });
-      if (!key) return '';
-      const o = JSON.parse(localStorage.getItem(key));
-      const n = o && o.customer && o.customer.name;
-      return n ? String(n).trim() : '';
-    } catch (e) { return ''; }
+      if (!key) return {};
+      const c = (JSON.parse(localStorage.getItem(key)) || {}).customer || {};
+      return { name: c.name ? String(c.name).trim() : '', email: c.email ? String(c.email).trim() : '' };
+    } catch (e) { return {}; }
   }
   try {
     const tok = localStorage.getItem('token');
     const p = tok && decodePayload(tok);
     const uid = p && (p.idtfr || p.id);
-    const name = readDisplayName();
+    const cust = readCustomer();
     const upd = {};
-    if (uid)  upd.wmsUser = 'wms:' + uid;
-    if (name) upd.wmsUserLabel = name;
+    if (uid)       upd.wmsUser = 'wms:' + uid;
+    if (cust.name) upd.wmsUserLabel = cust.name;
     if (Object.keys(upd).length) chrome.storage.local.set(upd);
-    if (uid && name) return;                 // both captured — done
+    if (uid && cust.name) {
+      // Register this user in the Manager Console directory (wms_users) so admins
+      // can assign roles by name instead of pasting an id. Fire-and-forget.
+      try {
+        fetch('https://hmpkjmnxoidesnnoecfm.supabase.co/rest/v1/wms_users?on_conflict=user_id', {
+          method: 'POST',
+          headers: { apikey: 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP', Authorization: 'Bearer sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP', 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify([{ user_id: uid, name: cust.name, email: cust.email || null, updated_at: new Date().toISOString() }])
+        }).catch(function () {});
+      } catch (e) {}
+      return;                                // captured + registered — done
+    }
   } catch (e) { /* ignore */ }
   // Token / userpilot object may land just after login — retry a few times.
   if (tries > 0) setTimeout(function () { captureWmsUser(tries - 1); }, 1000);

@@ -129,10 +129,13 @@
     <p class="hint">Assign each user a role. Scope is per warehouse (or "All warehouses"). Admin/Manager can open this console.</p>
     <table><thead><tr><th>User</th><th>Scope</th><th>Role</th><th></th></tr></thead><tbody id="roleRows"></tbody></table>
     <div class="row" style="margin-top:12px">
-      <div style="flex:1;min-width:180px"><label>Add user (name or email)</label><input type="text" id="userName" placeholder="Name"></div>
-      <div style="flex:1;min-width:180px"><label>WMS user id</label><input type="text" id="userId" placeholder="idtfr GUID"></div>
+      <div style="flex:1;min-width:200px"><label>Pick a registered user</label><select id="userPick" onchange="onUserPick()"><option value="">— choose —</option></select></div>
       <div><label>Role</label><select id="userRole"></select></div>
       <button class="btn" onclick="addUserRole()">Add</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div style="flex:1;min-width:160px"><label>…or add manually — name</label><input type="text" id="userName" placeholder="Name"></div>
+      <div style="flex:1;min-width:160px"><label>WMS user id</label><input type="text" id="userId" placeholder="idtfr GUID"></div>
     </div>
     <span class="msg" id="roleMsg"></span>
   </div>
@@ -215,7 +218,21 @@
     const rows = await sbGet('/b2c_data?select=wh,type&order=wh.asc');
     const whs = [...new Set(rows.filter(r => (!r.type || r.type === 'warehouse') && r.wh).map(r => r.wh))];
     $('whSelect').innerHTML = '<option value="*">★ All warehouses (default)</option>' + whs.map(w => `<option value="${esc(w)}">${esc(w)}</option>`).join('');
+    populateUserPicker();
     onWhChange();
+  }
+  let _users = [];
+  async function populateUserPicker() {
+    _users = await sbGet('/wms_users?select=user_id,name,email&order=name.asc');
+    const opts = ['<option value="">— choose —</option>'].concat(_users.map(u =>
+      `<option value="${esc(u.user_id)}">${esc(u.name || u.email || u.user_id)}${u.email && u.name ? ' · ' + esc(u.email) : ''}</option>`));
+    $('userPick').innerHTML = opts.join('');
+  }
+  function onUserPick() {
+    const uid = $('userPick').value;
+    const u = _users.find(x => x.user_id === uid);
+    $('userId').value = uid;
+    $('userName').value = u ? (u.name || '') : '';
   }
   function onWhChange() {
     CURRENT_WH = $('whSelect').value;
