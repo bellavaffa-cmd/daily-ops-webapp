@@ -1471,7 +1471,7 @@
           <div class="theme-toggle-row" style="align-items:center">
             <div>
               <div style="font-size:.85rem;color:var(--text);font-weight:500">Role</div>
-              <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Set user role</div>
+              <div id="profileRoleSub" style="font-size:.75rem;color:var(--muted);margin-top:2px">Set user role</div>
             </div>
             <select id="profileRole" onchange="localStorage.setItem('userRole', this.value); applyRoleVisibility(this.value)" style="font-size:.8rem;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
               <option value="picker">Picker</option>
@@ -1479,6 +1479,7 @@
               <option value="cs">CS</option>
               <option value="ops_manager">Ops Manager</option>
             </select>
+            <span id="profileRoleServer" style="display:none;font-size:.82rem;font-weight:600;color:var(--primary)"></span>
           </div>
           <!-- Default Warehouse -->
           <div class="theme-toggle-row" style="align-items:center">
@@ -3360,7 +3361,14 @@
       if (!id || id.indexOf('wms:') !== 0) return;   // only WMS-identified users
       const uid = id.slice(4);
       const roles = await fetch(SB_URL + '/user_roles?user_id=eq.' + encodeURIComponent(uid) + '&select=role,wh', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
-      if (!roles || !roles.length) return;           // no role assigned → no restriction
+      if (!roles || !roles.length) return;           // no server role → keep the local self-select
+      // The manager-assigned role is authoritative — show it read-only in Settings
+      // and hide the per-device self-select so the two systems don't diverge.
+      const primary = roles.find(x => x.role === 'Admin') || roles.find(x => x.role === 'Manager') || roles[0];
+      const span = document.getElementById('profileRoleServer'), sel = document.getElementById('profileRole'), sub = document.getElementById('profileRoleSub');
+      if (span) { span.textContent = primary.role; span.style.display = ''; }
+      if (sel) sel.style.display = 'none';
+      if (sub) sub.textContent = 'Assigned by your manager (Manager Console)';
       if (roles.some(x => x.role === 'Admin' || x.role === 'Manager')) {
         const el = document.getElementById('snav-btn-manager'); if (el) el.style.display = '';
         return;                                       // managers see everything
