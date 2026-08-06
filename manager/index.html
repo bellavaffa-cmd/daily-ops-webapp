@@ -198,6 +198,9 @@
     if (_idResolved) return; _idResolved = true;
     checkRole(e.data.id, e.data.label);
   });
+  // If the main app handed us an identity via ?as=, use it immediately (it already
+  // verified the visitor is Admin/Manager; we still re-check the role below).
+  (function () { const p = new URLSearchParams(location.search).get('as'); if (p && !_idResolved) { _idResolved = true; checkRole(p); } })();
   // Fallback: a ?as=<idtfr> override for setup/testing (low-security, matches the app's open model).
   setTimeout(() => {
     if (_idResolved) return;
