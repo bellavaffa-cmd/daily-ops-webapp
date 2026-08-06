@@ -2486,24 +2486,7 @@
   <div class="view" id="view-labels">
     <div style="margin-bottom:16px">
       <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Label Printer</div>
-      <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Generate &amp; print QR labels · shared PDF documents</div>
-    </div>
-
-    <!-- Shared PDF document storage (available on every device) -->
-    <div class="card" style="padding:14px 16px;margin-bottom:16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-        <div style="display:flex;align-items:center;gap:8px;font-size:.9rem;font-weight:600;color:var(--text)">
-          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path stroke-linecap="round" stroke-linejoin="round" d="M14 2v6h6"/></svg>
-          Shared PDFs
-          <span style="font-size:.72rem;font-weight:500;color:var(--muted)">· available on every device</span>
-        </div>
-        <label style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:var(--primary);color:#fff;border-radius:8px;font-size:.8rem;font-weight:600;cursor:pointer">
-          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          Upload PDF
-          <input type="file" accept="application/pdf,.pdf" multiple onchange="docUpload(this)" style="display:none">
-        </label>
-      </div>
-      <div id="docList" style="font-size:.82rem;color:var(--muted)">Loading…</div>
+      <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Generate &amp; print QR labels · shared PDFs live in the printer's Shared PDFs tab</div>
     </div>
 
     <div class="card" style="padding:0;overflow:hidden">
@@ -5507,7 +5490,7 @@
     if (fab) fab.classList.toggle('visible', v === 'b2c');
     if (v === 'overview') { try { renderDashboard(); } catch(e){} }
     if (v === 'tomorrow') { try { renderTomorrow(); } catch(e){} }
-    if (v === 'labels') { const f = document.getElementById('toolsLabelFrame'); if (f && f.dataset.src && f.src !== f.dataset.src) f.src = f.dataset.src; try { docRefresh(); } catch(e){} }
+    if (v === 'labels') { const f = document.getElementById('toolsLabelFrame'); if (f && f.dataset.src && f.src !== f.dataset.src) f.src = f.dataset.src; }
     if (v === 'dash') { try { renderStats(); } catch(e){} try { initWarehouseFilter(); renderTable(); } catch(e){} }
     if (v === 'jobs') {
       try { renderJobs(); } catch(e){}

@@ -647,6 +647,17 @@
   body { font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
   /* Mint accent is light → primary buttons need dark text for contrast. */
   button.primary, button.primary:hover { color: #06210b; }
+
+  /* Narrow screens (embedded side panel / phones): drop the preview column so
+     the inputs get the full width, and surface a button to pop the preview out
+     into its own window. Scoped to @media screen so printing is unaffected. */
+  #openPreviewBtn { display: none; }
+  @media screen and (max-width: 760px) {
+    .app { display: block !important; }
+    .stage { display: none !important; }
+    .panel { width: 100% !important; max-width: none !important; border-right: none !important; }
+    #openPreviewBtn { display: inline-flex !important; }
+  }
 </style>
 <script>try { document.documentElement.setAttribute('data-theme', 'dark'); } catch (e) {}</script>
 </head>
@@ -679,7 +690,10 @@
       <button type="button" class="tab-btn" data-tab="pdf">Print PDF</button>
       <button type="button" class="tab-btn" data-tab="collage">Collage</button>
       <button type="button" class="tab-btn" data-tab="saved">Saved</button>
+      <button type="button" class="tab-btn" data-tab="shared">Shared PDFs</button>
     </div>
+
+    <button type="button" id="openPreviewBtn" class="primary" style="margin-bottom:12px;width:100%;justify-content:center" onclick="openPreviewInNewWindow()">Open preview ↗</button>
 
     <div id="createTab" class="tab-panel">
       <label for="data">QR content (URL, text, ID&hellip;)</label>
@@ -807,10 +821,23 @@
         <button type="button" id="pdfNextPage">Next &rsaquo;</button>
       </div>
 
+      <label for="pdfSharedSelect" style="margin-top:6px">&hellip;or load from Shared PDFs</label>
+      <select id="pdfSharedSelect"><option value="">Select a shared PDF&hellip;</option></select>
+
       <div class="actions">
         <button class="primary" id="pdfPrintBtn" disabled>Print PDF</button>
       </div>
-      <p class="hint" id="pdfHint">Upload a PDF, then choose a size to preview and print it.</p>
+      <p class="hint" id="pdfHint">Upload a PDF (or pick a shared one), then choose a size to preview and print it.</p>
+    </div>
+
+    <div id="sharedTab" class="tab-panel" hidden>
+      <p class="hint">PDFs stored here are shared &mdash; available to everyone on every device.</p>
+      <label style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:var(--accent);color:#06210b;border-radius:8px;font-weight:600;cursor:pointer;width:fit-content">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Upload PDF
+        <input type="file" id="sharedUpload" accept="application/pdf,.pdf" multiple style="display:none">
+      </label>
+      <div id="sharedList" style="margin-top:14px;font-size:.9rem;color:var(--muted)">Loading&hellip;</div>
     </div>
 
     <div id="collageTab" class="tab-panel" hidden>
@@ -1313,6 +1340,93 @@
   const pdfStage = document.getElementById('pdfStage');
   const collageStage = document.getElementById('collageStage');
 
+  // ── Shared PDF storage (Supabase Storage — available on every device) ──────
+  const DOC_BUCKET = 'documents';
+  const DOC_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
+  const DOC_BASE = 'https://hmpkjmnxoidesnnoecfm.supabase.co/storage/v1';
+  const _docHdr = extra => Object.assign({ apikey: DOC_KEY, Authorization: 'Bearer ' + DOC_KEY }, extra || {});
+  const docPublicUrl = name => DOC_BASE + '/object/public/' + DOC_BUCKET + '/' + encodeURIComponent(name);
+  const _docEsc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  async function docListFiles() {
+    try {
+      const r = await fetch(DOC_BASE + '/object/list/' + DOC_BUCKET, { method: 'POST', headers: _docHdr({ 'Content-Type': 'application/json' }), body: JSON.stringify({ prefix: '', limit: 200, sortBy: { column: 'created_at', order: 'desc' } }) });
+      if (!r.ok) return [];
+      return ((await r.json()) || []).filter(f => f && f.name && f.id);
+    } catch (e) { return []; }
+  }
+  async function docUploadFiles(fileList) {
+    for (const file of Array.from(fileList || [])) {
+      if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) continue;
+      try { await fetch(DOC_BASE + '/object/' + DOC_BUCKET + '/' + encodeURIComponent(file.name), { method: 'POST', headers: _docHdr({ 'Content-Type': 'application/pdf', 'x-upsert': 'true' }), body: file }); } catch (e) {}
+    }
+  }
+  async function renderSharedList() {
+    const el = document.getElementById('sharedList'); if (!el) return;
+    el.textContent = 'Loading…';
+    const files = await docListFiles();
+    if (!files.length) { el.innerHTML = '<div style="padding:6px 0">No PDFs yet — upload one to share it with every device.</div>'; return; }
+    const fmtSize = b => b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+    el.innerHTML = files.map(f => {
+      const size = f.metadata && f.metadata.size ? fmtSize(f.metadata.size) : '';
+      const arg = encodeURIComponent(f.name);
+      return `<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid var(--border)">
+        <a href="${docPublicUrl(f.name)}" target="_blank" rel="noopener" title="${_docEsc(f.name)}" style="flex:1;min-width:0;color:var(--text);text-decoration:none;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_docEsc(f.name)}</a>
+        <span style="color:var(--muted);font-size:.72rem;white-space:nowrap">${size}</span>
+        <button type="button" onclick="printSharedPdf('${arg}')" title="Open in Print PDF" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--text);cursor:pointer;padding:3px 9px;font-size:.72rem">Print</button>
+        <button type="button" onclick="deleteSharedPdf('${arg}')" title="Delete for everyone" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:2px 4px;font-size:.9rem">✕</button>
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('sharedUpload').addEventListener('change', async (e) => {
+    const inp = e.target; await docUploadFiles(inp.files); inp.value = '';
+    renderSharedList(); populatePdfSharedSelect();
+  });
+  window.deleteSharedPdf = async (arg) => {
+    const name = decodeURIComponent(arg);
+    if (!confirm('Delete "' + name + '" for everyone?')) return;
+    try { await fetch(DOC_BASE + '/object/' + DOC_BUCKET + '/' + encodeURIComponent(name), { method: 'DELETE', headers: _docHdr() }); } catch (e) {}
+    renderSharedList(); populatePdfSharedSelect();
+  };
+  async function loadSharedPdfIntoPrint(name) {
+    try {
+      const res = await fetch(docPublicUrl(name));
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const file = new File([await res.blob()], name, { type: 'application/pdf' });
+      await loadPdfFile(file);
+    } catch (e) { if (typeof pdfHint !== 'undefined' && pdfHint) pdfHint.textContent = 'Could not load that shared PDF.'; }
+  }
+  window.printSharedPdf = (arg) => {
+    document.querySelector('.tab-btn[data-tab="pdf"]').click();
+    loadSharedPdfIntoPrint(decodeURIComponent(arg));
+  };
+  async function populatePdfSharedSelect() {
+    const sel = document.getElementById('pdfSharedSelect'); if (!sel) return;
+    const cur = sel.value; const files = await docListFiles();
+    sel.innerHTML = '<option value="">Select a shared PDF…</option>' + files.map(f => `<option value="${_docEsc(f.name)}">${_docEsc(f.name)}</option>`).join('');
+    sel.value = cur;
+  }
+  document.getElementById('pdfSharedSelect').addEventListener('change', (e) => { if (e.target.value) loadSharedPdfIntoPrint(e.target.value); });
+
+  // ── Pop the current preview into its own window (used on narrow screens) ───
+  function openPreviewInNewWindow() {
+    const stage = document.querySelector('.stage'); if (!stage) return;
+    const clone = stage.cloneNode(true);
+    // <canvas> pixels don't survive HTML serialization — snapshot each to an <img>.
+    const src = stage.querySelectorAll('canvas');
+    clone.querySelectorAll('canvas').forEach((c, i) => {
+      try { const img = new Image(); img.src = src[i].toDataURL('image/png'); img.style.cssText = c.getAttribute('style') || ''; c.replaceWith(img); } catch (e) {}
+    });
+    const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]')).map(n => n.outerHTML).join('');
+    const w = window.open('', '_blank', 'width=460,height=680');
+    if (!w) { alert('Please allow pop-ups to open the preview.'); return; }
+    w.document.open();
+    w.document.write('<!doctype html><html data-theme="dark"><head><meta charset="utf-8"><title>Label preview</title>' + styles +
+      '<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0d0a;padding:16px}.stage{display:flex !important}</style></head><body>' +
+      clone.innerHTML + '</body></html>');
+    w.document.close();
+  }
+  window.openPreviewInNewWindow = openPreviewInNewWindow;
+
   document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const tab = btn.dataset.tab;
@@ -1322,12 +1436,15 @@
       document.getElementById('pdfTab').hidden = tab !== 'pdf';
       document.getElementById('collageTab').hidden = tab !== 'collage';
       document.getElementById('savedTab').hidden = tab !== 'saved';
+      document.getElementById('sharedTab').hidden = tab !== 'shared';
       if (tab === 'saved') renderSavedList();
+      if (tab === 'shared') renderSharedList();
+      if (tab === 'pdf') populatePdfSharedSelect();
       if (tab !== 'scan') stopScan(); // release the camera once the user leaves the tab
 
       // The big preview area (and what @page prints) follows whichever of these tabs is active.
       // Create/Scan/Saved all share the same live label preview underneath.
-      labelStage.hidden = tab === 'pdf' || tab === 'collage';
+      labelStage.hidden = tab === 'pdf' || tab === 'collage' || tab === 'shared';
       pdfStage.hidden = tab !== 'pdf';
       collageStage.hidden = tab !== 'collage';
       if (tab === 'pdf') syncPdfPageSize();
