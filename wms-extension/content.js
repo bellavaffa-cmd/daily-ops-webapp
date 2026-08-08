@@ -298,6 +298,31 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return { name: c.name ? String(c.name).trim() : '', email: c.email ? String(c.email).trim() : '' };
     } catch (e) { return {}; }
   }
+  // Capture the warehouses this account can access. Logiwa scopes this list to
+  // the user's permissions, so it IS the user's warehouse access. Same host +
+  // token as the sync; the WMS page origin is allowed by the API's CORS. We
+  // stash the codes in chrome.storage.local (for closer.js → the app) and upsert
+  // the full {code,id} set to wms_users so the Manager Console can see it too.
+  function captureWarehouses(uid) {
+    try {
+      fetch('https://mywmsquery.logiwa.com/api/warehouse/list/i/0/s/1000', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (localStorage.getItem('token') || '') },
+        body: '{}'
+      }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+        var arr = (d && d.data) || d || [];
+        if (!Array.isArray(arr) || !arr.length) return;
+        var whs = arr.map(function (w) { return { code: w.code, id: w.warehouseIdentifier }; }).filter(function (w) { return w.code; });
+        if (!whs.length) return;
+        chrome.storage.local.set({ wmsWarehouses: whs.map(function (w) { return w.code; }) });
+        fetch('https://hmpkjmnxoidesnnoecfm.supabase.co/rest/v1/wms_users?on_conflict=user_id', {
+          method: 'POST',
+          headers: { apikey: 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP', Authorization: 'Bearer sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP', 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify([{ user_id: uid, warehouses: whs, warehouses_updated_at: new Date().toISOString() }])
+        }).catch(function () {});
+      }).catch(function () {});
+    } catch (e) { /* ignore */ }
+  }
   try {
     const tok = localStorage.getItem('token');
     const p = tok && decodePayload(tok);
@@ -307,6 +332,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (uid)       upd.wmsUser = 'wms:' + uid;
     if (cust.name) upd.wmsUserLabel = cust.name;
     if (Object.keys(upd).length) chrome.storage.local.set(upd);
+    if (uid) captureWarehouses(uid);
     if (uid && cust.name) {
       // Register this user in the Manager Console directory (wms_users) so admins
       // can assign roles by name instead of pasting an id. Fire-and-forget.

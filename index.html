@@ -2949,6 +2949,15 @@
   let opsConfig = { operating_start: '09:00', operating_end: '18:00', mp_cutoff: '16:15', nonmp_cutoff: '14:09' };
   let whOps = {};        // wh -> warehouse_config row ('*' = global default)
   let whCarriers = {};   // wh -> [carrier, ...] ('*' = default)
+  // Warehouse-access restriction. When a WMS user's accessible-warehouse set is
+  // known (captured on WMS by the extension, delivered via the identity bridge or
+  // read from wms_users), the dashboard is HARD-restricted to it: non-allowed
+  // warehouses are dropped from every data array at ingest, so no tab, total,
+  // dropdown, or widget can ever surface them. null = unrestricted (admin /
+  // all-access, or identity not yet known). Seeded from the last session's cache
+  // so there's no flash of all-warehouses before the fresh set resolves.
+  let _whAllow = (function () { try { const a = JSON.parse(localStorage.getItem('whAllowSet')); return Array.isArray(a) && a.length ? new Set(a) : null; } catch (e) { return null; } })();
+  function whAllowed(wh) { return !_whAllow || _whAllow.has(wh); }
   let b2cFlow = [];       // b2c_flow_snapshot rows — B2C new-orders inflow (inflow_1h)
   let b2cPackSnaps = [];  // productivity_snapshot rows — cumulative packed_orders for the hourly packing rate
 
@@ -3387,14 +3396,47 @@
       if (active && !allowed.has(active)) { const first = TAB_KEYS.find(t => allowed.has(t.view)); if (first) showView(first.view); }
     } catch (e) { /* leave everything visible on error */ }
   }
+  // ── Warehouse-access restriction ────────────────────────────────────────
+  // Lock the dashboard to the warehouses the user's WMS account can access
+  // (captured by the extension). Fail-open: an unknown/empty set leaves the app
+  // unrestricted rather than locking someone out of everything.
+  function applyWhRestriction(codes) {
+    const arr = (Array.isArray(codes) ? codes : []).filter(Boolean);
+    if (!arr.length) return;                     // never restrict to zero warehouses
+    const next = new Set(arr);
+    const same = _whAllow && _whAllow.size === next.size && [...next].every(w => _whAllow.has(w));
+    _whAllow = next;
+    try { localStorage.setItem('whAllowSet', JSON.stringify([...next])); } catch (e) {}
+    // Drop any currently-selected warehouses that are no longer allowed.
+    try {
+      const cur = getSelectedWhs();
+      const keep = cur.filter(w => next.has(w));
+      if (keep.length !== cur.length) localStorage.setItem('whFilterSet', JSON.stringify(keep));
+    } catch (e) {}
+    if (!same) { try { refreshFromCache(true); } catch (e) {} }   // re-read + re-filter every surface
+  }
+  async function resolveWhAllow(id, bridgeWarehouses) {
+    try {
+      if (!id || String(id).indexOf('wms:') !== 0) return;        // only WMS-identified users
+      if (Array.isArray(bridgeWarehouses) && bridgeWarehouses.length) { applyWhRestriction(bridgeWarehouses); return; }
+      const uid = String(id).slice(4);
+      const rows = await fetch(SB_URL + '/wms_users?user_id=eq.' + encodeURIComponent(uid) + '&select=warehouses', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      const w = rows && rows[0] && rows[0].warehouses;
+      if (Array.isArray(w) && w.length) applyWhRestriction(w.map(x => (typeof x === 'string' ? x : (x && x.code))).filter(Boolean));
+    } catch (e) { /* fail-open */ }
+  }
+
   checkManagerAccess();
+  dashGetDeviceId().then(id => resolveWhAllow(id));
   fetchWarehouseCarriers();
   // Re-check when the WMS identity arrives from the extension bridge — it can land
   // after dashGetDeviceId() already fell back to a local id, which would otherwise
-  // leave the console link hidden for an Admin.
+  // leave the console link hidden for an Admin. The same message carries the
+  // user's accessible warehouses, so lock the view to them here too.
   window.addEventListener('message', function (e) {
     if (e.source === window && e.data && e.data.type === 'dash-device-id' && e.data.id && String(e.data.id).indexOf('wms:') === 0) {
       checkManagerAccess(String(e.data.id));
+      resolveWhAllow(String(e.data.id), e.data.warehouses);
     }
   });
 
@@ -3500,7 +3542,7 @@
             o[s + '_tomorrow' + v] = tmr;          // tomorrow
           }));
           return o;
-        });
+        }).filter(o => whAllowed(o.wh));   // hard-restrict to the user's warehouses
         populateViewWarehouseSelects(); // rebuild optgroups now that b2cData has real country info
         renderB2C();
         try { renderTomorrow(); } catch (e) {}
@@ -3540,8 +3582,8 @@
         fetch(SB_URL + '/b2c_flow_snapshot?select=warehouse_code,inflow_1h,captured_at&captured_at=gte.' + enc + '&order=captured_at.desc', { headers: SB_HDR }),
         fetch(SB_URL + '/productivity_snapshot?select=warehouse_code,activity_date,picked_orders,packed_orders,captured_at&captured_at=gte.' + enc + '&order=captured_at.desc', { headers: SB_HDR }),
       ]);
-      b2cFlow = flowRes.ok ? await flowRes.json() : [];
-      b2cPackSnaps = packRes.ok ? await packRes.json() : [];
+      b2cFlow = (flowRes.ok ? await flowRes.json() : []).filter(r => whAllowed(r.warehouse_code));
+      b2cPackSnaps = (packRes.ok ? await packRes.json() : []).filter(r => whAllowed(r.warehouse_code));
       renderB2CFlow();
     } catch (err) {
       console.error('B2C flow fetch error:', err);
@@ -3931,7 +3973,7 @@
           pack_ready: r.pack_ready || 0,
           packing:    r.packing    || 0,
           ready_ship: r.ready_ship || 0,
-        }));
+        })).filter(r => whAllowed(r.wh));   // hard-restrict to the user's warehouses
         renderB2B();
         const latest = rows.reduce((a, b) => (a.updated_at > b.updated_at ? a : b), rows[0]);
         if (latest && latest.updated_at) {
@@ -4037,7 +4079,7 @@
     try {
       const res = await fetch(SB_URL + '/b2b_orders?select=*&order=wh.asc,order_id.asc', { headers: SB_HDR });
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      b2bOrders = await res.json();
+      b2bOrders = (await res.json()).filter(r => whAllowed(r.wh));   // hard-restrict to the user's warehouses
       renderB2BOrders();
     } catch (err) {
       console.error('B2B orders fetch error:', err);
@@ -4251,7 +4293,7 @@
     try {
       const res = await fetch(SB_URL + '/job_data?select=*&order=wh.asc', { headers: SB_HDR });
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      jobData = await res.json();
+      jobData = (await res.json()).filter(r => whAllowed(r.wh));   // hard-restrict to the user's warehouses
       renderJobs();
       if (modeEl) { modeEl.textContent = 'Supabase ●'; modeEl.style.color = 'var(--success)'; }
     } catch (err) {
@@ -4406,7 +4448,7 @@
           age_1_3:    r.age_1_3    || 0,
           age_4_7:    r.age_4_7    || 0,
           age_7_plus: r.age_7_plus || 0,
-        }));
+        })).filter(r => whAllowed(r.wh));   // hard-restrict to the user's warehouses
         renderShortage();
         const latest = rows.reduce((a, b) => (a.updated_at > b.updated_at ? a : b), rows[0]);
         if (latest && latest.updated_at) {
@@ -4430,7 +4472,7 @@
     try {
       const res = await fetch(SB_URL + '/shortage_orders?select=*&order=wh.asc,order_id.asc', { headers: SB_HDR });
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      shortageOrders = await res.json();
+      shortageOrders = (await res.json()).filter(r => whAllowed(r.wh));   // hard-restrict to the user's warehouses
       renderShortageOrders();
     } catch (err) {
       console.error('Shortage orders fetch error:', err);
@@ -4505,8 +4547,8 @@
         fetch(snapUrl, { headers: SB_HDR }),
       ]);
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      userPerf = await res.json();
-      prodSnaps = snapRes.ok ? await snapRes.json() : [];
+      userPerf = (await res.json()).filter(r => whAllowed(r.warehouse_code));   // hard-restrict to the user's warehouses
+      prodSnaps = (snapRes.ok ? await snapRes.json() : []).filter(r => whAllowed(r.warehouse_code));
       populateProdWarehouseSelect();
       populateProdPersonSelect();
       renderProductivity();

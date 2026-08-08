@@ -13,7 +13,7 @@
 // browser profile, so we mint the id here and postMessage it into the page,
 // letting the dashboard scope its saved layout per device (not globally).
 try {
-  chrome.storage.local.get(['wmsUser', 'wmsUserLabel', 'dashDeviceId'], (res) => {
+  chrome.storage.local.get(['wmsUser', 'wmsUserLabel', 'dashDeviceId', 'wmsWarehouses'], (res) => {
     // Prefer the WMS-login identity (captured on wms.golocad.com by content.js)
     // so the layout follows the PERSON across computers. Fall back to a stable
     // per-device id when the user hasn't been on WMS yet in this browser.
@@ -28,6 +28,10 @@ try {
     const msg = { type: 'dash-device-id', id: id };
     // Attach the readable display name only for the WMS identity (labels the row).
     if (res && res.wmsUserLabel && id === res.wmsUser) msg.label = res.wmsUserLabel;
+    // Hand the app the warehouses this account can access (captured on WMS by
+    // content.js) so it can lock the dashboard to the user's warehouses. Only
+    // meaningful for the WMS identity.
+    if (res && Array.isArray(res.wmsWarehouses) && id === res.wmsUser) msg.warehouses = res.wmsWarehouses;
     window.postMessage(msg, '*');
   });
 } catch (e) { /* storage unavailable — app falls back to a local id */ }
