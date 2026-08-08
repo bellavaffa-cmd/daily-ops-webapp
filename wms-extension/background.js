@@ -147,11 +147,27 @@ async function performSync(isB2B) {
       sorts: []
     });
 
+    // Split cadence: orders drive the dashboard and always sync. Productivity
+    // (a 30-day per-user report) and jobs are heavy and change slowly, so we
+    // fetch them only every 3rd sync and let Supabase hold the last values in
+    // between. First run (n%3===1) is always a full heavy cycle.
+    let heavyCycle = true;
+    try {
+      const st = await chrome.storage.local.get('syncCadenceCount');
+      const n = (st.syncCadenceCount || 0) + 1;
+      await chrome.storage.local.set({ syncCadenceCount: n });
+      heavyCycle = (n % 3 === 1);
+    } catch (e) { /* default: fetch */ }
+
     const ordersP = fetchAllPages(p => `${LG_API}/api/shipmentorder/list/unshipped/i/${p}/s/1000`, '{}');
-    const perfP   = fetchAllPages(p => `${LG_API}/api/warehousetask/userperformance/last/30/i/${p}/s/1000`, perfBody)
-                      .catch(e => { console.error('[WMS bg] userperformance fetch:', e.message); return null; });
-    const jobsP   = fetchAllPages(p => `${LG_API}/api/warehousejob/list/i/${p}/s/1000`, jobBody)
-                      .catch(e => { console.error('[WMS bg] warehousejob fetch:', e.message); return null; });
+    const perfP   = heavyCycle
+      ? fetchAllPages(p => `${LG_API}/api/warehousetask/userperformance/last/30/i/${p}/s/1000`, perfBody)
+          .catch(e => { console.error('[WMS bg] userperformance fetch:', e.message); return null; })
+      : Promise.resolve(null);
+    const jobsP   = heavyCycle
+      ? fetchAllPages(p => `${LG_API}/api/warehousejob/list/i/${p}/s/1000`, jobBody)
+          .catch(e => { console.error('[WMS bg] warehousejob fetch:', e.message); return null; })
+      : Promise.resolve(null);
 
     const all = await ordersP;  // critical path — a failure here fails the sync
 
@@ -369,7 +385,8 @@ async function performSync(isB2B) {
     // 6. Productivity: Logiwa's authoritative user-performance report — per
     // user, per day, picked/packed order+item counts for the last 30 days.
     // Same host + token as the order fetch; failures here don't fail the sync.
-    try {
+    // Skipped on light-cadence syncs (heavyCycle=false) — last values persist.
+    if (heavyCycle) try {
       const perfAll = (await perfP) || [];
       const perfRows = perfAll.map(u => ({
         warehouse_code:   u.warehouseCode,
@@ -432,7 +449,8 @@ async function performSync(isB2B) {
     // (3=High, 2=Medium, 1=Low; anything else = none). Filter to Pending in the
     // request body (WarehouseJobStatusId in [1]) — the unfiltered list returns
     // every job ever (thousands of Completed), so filtering keeps this light.
-    try {
+    // Skipped on light-cadence syncs (heavyCycle=false) — last values persist.
+    if (heavyCycle) try {
       const jobsAll = (await jobsP) || [];
       // Zero-seed from the order-fetch warehouses so a Pending count dropping to
       // zero still gets written rather than keeping its last value.

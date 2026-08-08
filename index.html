@@ -3475,10 +3475,10 @@
   }
 
   // ── B2C Live Data Fetch (reads from Supabase b2c_data table) ─────────────
-  async function fetchB2CData() {
+  async function fetchB2CData(silent = false) {
     fetchOpsConfig();
     const modeEl = document.getElementById('b2cDataMode');
-    if (modeEl) { modeEl.textContent = 'Loading…'; modeEl.style.color = 'var(--muted)'; }
+    if (modeEl && !silent) { modeEl.textContent = 'Loading…'; modeEl.style.color = 'var(--muted)'; }
     try {
       const res = await fetch(SB_URL + '/b2c_data?select=*&order=country.asc,wh.asc', { headers: SB_HDR });
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -3634,11 +3634,12 @@
   //   1. Direct on wms.golocad.com (rare) — runs inline
   //   2. Extension side panel (iframe) — routes via extension → content script
   //   3. Standalone browser tab on github.io — falls back with instructions
-  async function syncLogiwaAndRefresh(btn, silent = false) {
+  async function syncLogiwaAndRefresh(btn, silent = false, onDone = null) {
     const origHTML = btn ? btn.innerHTML : '';
     const setBusy  = () => { if (btn) { btn.disabled = true;  btn.innerHTML = '<svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" style="animation:spin 1s linear infinite"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.36-3.36L23 10M1 14l5.13 4.36A9 9 0 0020.49 15"/></svg> Syncing…'; } };
     const setIdle  = () => { if (btn) { btn.disabled = false; btn.innerHTML = origHTML; } };
     const notify   = (msg, ok) => { if (!silent || ok) showToast(msg, ok); };
+    const done     = () => { if (onDone) { const f = onDone; onDone = null; try { f(); } catch (e) {} } };
 
     // ── Path 1: direct token (running on wms.golocad.com itself) ─────────────
     const token = localStorage.getItem('token');
@@ -3682,7 +3683,7 @@
         fetchJobData();
       } catch (e) {
         notify('Sync failed: ' + e.message, false);
-      } finally { setIdle(); }
+      } finally { setIdle(); done(); }
       return;
     }
 
@@ -3692,6 +3693,7 @@
       const timeout = setTimeout(() => {
         window.removeEventListener('message', onResult);
         setIdle();
+        done();
         showToast('Sync is taking a while (large order volume) — it may still finish in the background; check the sync time shortly.', false);
       }, 120000);
 
@@ -3702,13 +3704,14 @@
         setIdle();
         if (e.data.ok) {
           notify('Synced ' + e.data.count + ' warehouse(s) from Logiwa ✓', true);
-          fetchB2CData();
+          fetchB2CData(silent);
           fetchShortageData();
           fetchShortageOrders();
           fetchJobData();
         } else {
           notify('Sync failed: ' + (e.data.error || 'unknown error'), false);
         }
+        done();
       }
 
       window.addEventListener('message', onResult);
@@ -3718,27 +3721,64 @@
 
     // ── Path 3: standalone tab on github.io — guide the user ─────────────────
     notify('Open the app via the WMS Chrome extension, or drag the Bookmarklet to your bar and click it on wms.golocad.com.', false);
+    done();
   }
 
-  // One global Sync button (top bar / sidebar footer) replaces the old per-tab
-  // buttons: it refreshes B2C (+ shortage + jobs) and B2B in one click. The B2C
-  // call drives the button's spinner; B2B runs alongside with its own toast.
+  // Cheap "read what the background sync already wrote" — re-reads only the
+  // Supabase-backed tables (no Logiwa fetch). The extension keeps Supabase fresh
+  // on its own (hourly alarm + this app's periodic live sync), so re-reading the
+  // cache is how the UI surfaces that data without anyone waiting.
+  function refreshFromCache(silent = true) {
+    try { fetchB2CData(silent);   } catch (e) {}
+    try { fetchB2CFlow();         } catch (e) {}
+    try { fetchB2BData();         } catch (e) {}
+    try { fetchB2BOrders();       } catch (e) {}
+    try { fetchShortageData();    } catch (e) {}
+    try { fetchShortageOrders();  } catch (e) {}
+    try { fetchJobData();         } catch (e) {}
+    try { fetchProductivity();    } catch (e) {}
+  }
+
+  // One global Sync button (top bar / sidebar footer). Optimistic + non-blocking:
+  // it first re-reads the latest cached data instantly (so you see the freshest
+  // background-synced numbers with zero wait), then kicks a live Logiwa sync that
+  // runs in the background without locking the button. The "synced …" label shows
+  // a brief "refreshing…" while the live sync is in flight.
+  let _wmsSyncInFlight = false;
+  function setRefreshing(on) {
+    const el = document.getElementById('lastSyncLabel');
+    if (!el) return;
+    if (on) { el.dataset.refreshing = '1'; el.textContent = 'refreshing…'; }
+    else { delete el.dataset.refreshing; fmtLastSync(); }
+  }
   function syncAllAndRefresh(btn) {
-    syncLogiwaB2BAndRefresh(null);
-    syncLogiwaAndRefresh(btn);
+    refreshFromCache(true);                               // instant: latest cached data
+    if (_wmsSyncInFlight) { showToast('Already refreshing in the background…', true); return; }
+    _wmsSyncInFlight = true;
+    setRefreshing(true);
+    let pending = 2;
+    const done = () => { if (--pending <= 0) { _wmsSyncInFlight = false; setRefreshing(false); } };
+    syncLogiwaB2BAndRefresh(null, true, done);
+    syncLogiwaAndRefresh(null, true, done);
+    showToast('Showing latest synced data · refreshing in the background…', true);
   }
 
   // Global "last synced" indicator next to the top-bar Sync button, driven by the
   // most recent data updated_at seen from Supabase.
   function markLastSync(ts){ const el=document.getElementById('lastSyncLabel'); if(!el||!ts) return; if(ts>(+el.dataset.ts||0)) el.dataset.ts=ts; fmtLastSync(); }
-  function fmtLastSync(){ const el=document.getElementById('lastSyncLabel'); if(!el) return; const ts=+el.dataset.ts||0; if(!ts){ el.textContent=''; return; } const m=Math.floor((Date.now()-ts)/60000); el.textContent = m<1 ? 'synced just now' : ('synced '+(m<60?m+'m':(Math.floor(m/60)+'h '+(m%60)+'m'))+' ago'); }
+  function fmtLastSync(){ const el=document.getElementById('lastSyncLabel'); if(!el) return; if(el.dataset.refreshing) return; const ts=+el.dataset.ts||0; if(!ts){ el.textContent=''; return; } const m=Math.floor((Date.now()-ts)/60000); el.textContent = m<1 ? 'synced just now' : ('synced '+(m<60?m+'m':(Math.floor(m/60)+'h '+(m%60)+'m'))+' ago'); }
   setInterval(fmtLastSync, 30000);
 
-  // Fetch on load, then auto-refresh every 5 min
+  // Fetch on load, then keep fresh two ways:
+  //  • every 60s: cheap silent cache re-read → surfaces whatever the extension's
+  //    background sync (or another device) wrote, with no spinner and no wait.
+  //  • every 5 min: a live Logiwa sync (non-blocking) so this browser also keeps
+  //    pushing fresh numbers to Supabase between the extension's hourly runs.
   // Wait for b2cData (used to match the WMS scan's warehouse hint) before applying a pending scan.
   if (_extMode) document.body.classList.add('ext-mode');
   fetchB2CData().then(applyWmsScanFromUrl);
   fetchB2CFlow();
+  setInterval(() => refreshFromCache(true), 60 * 1000);
   setInterval(() => syncLogiwaAndRefresh(null, true), 5 * 60 * 1000);
   setInterval(fetchB2CFlow, 5 * 60 * 1000);
 
@@ -4022,11 +4062,12 @@
     }
   }
 
-  async function syncLogiwaB2BAndRefresh(btn, silent = false) {
+  async function syncLogiwaB2BAndRefresh(btn, silent = false, onDone = null) {
     const origHTML = btn ? btn.innerHTML : '';
     const setBusy  = () => { if (btn) { btn.disabled = true;  btn.innerHTML = '<svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" style="animation:spin 1s linear infinite"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.36-3.36L23 10M1 14l5.13 4.36A9 9 0 0020.49 15"/></svg> Syncing…'; } };
     const setIdle  = () => { if (btn) { btn.disabled = false; btn.innerHTML = origHTML; } };
     const notify   = (msg, ok) => { if (!silent || ok) showToast(msg, ok); };
+    const done     = () => { if (onDone) { const f = onDone; onDone = null; try { f(); } catch (e) {} } };
 
     // Path 2: extension side panel bridge
     if (window.parent !== window) {
@@ -4034,6 +4075,7 @@
       const timeout = setTimeout(() => {
         window.removeEventListener('message', onResult);
         setIdle();
+        done();
         showToast('B2B sync is taking a while (large order volume) — it may still finish in the background.', false);
       }, 120000);
 
@@ -4052,6 +4094,7 @@
         } else {
           notify('B2B sync failed: ' + (e.data.error || 'unknown error'), false);
         }
+        done();
       }
 
       window.addEventListener('message', onResult);
@@ -4060,6 +4103,7 @@
     }
 
     notify('Open the app via the WMS Chrome extension to sync B2B data.', false);
+    done();
   }
 
   renderB2B();
