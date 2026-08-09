@@ -3415,14 +3415,35 @@
     } catch (e) {}
     if (!same) { try { refreshFromCache(true); } catch (e) {} }   // re-read + re-filter every surface
   }
+  function clearWhRestriction() {
+    if (_whAllow === null) return;
+    _whAllow = null;
+    try { localStorage.removeItem('whAllowSet'); } catch (e) {}
+    try { refreshFromCache(true); } catch (e) {}
+  }
+  // Instances not tied to a WMS user (phone / shared screen / no extension) use
+  // the manager-configured default scope — warehouse_config['*'].default_warehouses.
+  // Empty/unset → unrestricted (all warehouses).
+  async function applyDefaultScope() {
+    try {
+      const rows = await fetch(SB_URL + '/warehouse_config?wh=eq.' + encodeURIComponent('*') + '&select=default_warehouses', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      const def = rows && rows[0] && rows[0].default_warehouses;
+      const codes = Array.isArray(def) ? def.map(x => (typeof x === 'string' ? x : (x && x.code))).filter(Boolean) : [];
+      if (codes.length) applyWhRestriction(codes); else clearWhRestriction();
+    } catch (e) { clearWhRestriction(); }
+  }
   async function resolveWhAllow(id, bridgeWarehouses) {
     try {
-      if (!id || String(id).indexOf('wms:') !== 0) return;        // only WMS-identified users
-      if (Array.isArray(bridgeWarehouses) && bridgeWarehouses.length) { applyWhRestriction(bridgeWarehouses); return; }
-      const uid = String(id).slice(4);
-      const rows = await fetch(SB_URL + '/wms_users?user_id=eq.' + encodeURIComponent(uid) + '&select=warehouses', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
-      const w = rows && rows[0] && rows[0].warehouses;
-      if (Array.isArray(w) && w.length) applyWhRestriction(w.map(x => (typeof x === 'string' ? x : (x && x.code))).filter(Boolean));
+      if (id && String(id).indexOf('wms:') === 0) {                // identified WMS user
+        if (Array.isArray(bridgeWarehouses) && bridgeWarehouses.length) { applyWhRestriction(bridgeWarehouses); return; }
+        const uid = String(id).slice(4);
+        const rows = await fetch(SB_URL + '/wms_users?user_id=eq.' + encodeURIComponent(uid) + '&select=warehouses', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+        const w = rows && rows[0] && rows[0].warehouses;
+        if (Array.isArray(w) && w.length) applyWhRestriction(w.map(x => (typeof x === 'string' ? x : (x && x.code))).filter(Boolean));
+        // known user but access not captured yet → leave unrestricted (fail-open)
+        return;
+      }
+      applyDefaultScope();   // not tied to a user → configurable default scope
     } catch (e) { /* fail-open */ }
   }
 
