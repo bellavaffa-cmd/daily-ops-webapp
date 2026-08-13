@@ -164,6 +164,10 @@
     <table><thead><tr><th>Profile</th><th>Warehouses</th><th>Tabs</th><th></th></tr></thead><tbody id="profileRows"></tbody></table>
     <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
       <div class="row"><div style="flex:1;min-width:200px"><label>Profile name</label><input type="text" id="profName" placeholder="e.g. Manila Floor Screen"></div><input type="hidden" id="profEditId"></div>
+      <div class="row" style="margin-top:8px">
+        <div style="flex:1;min-width:200px"><label>Password <span class="hint">(blank = keep existing / no password)</span></label><input type="password" id="profPass" placeholder="Set or change password" autocomplete="new-password"></div>
+        <label style="display:flex;align-items:center;gap:6px;color:var(--text);align-self:flex-end;padding-bottom:8px;white-space:nowrap"><input type="checkbox" id="profPassClear"> Remove password</label>
+      </div>
       <label style="margin-top:10px;display:block">Warehouses <span class="hint">(none = all)</span></label>
       <div id="profWhChecks" class="row" style="flex-wrap:wrap;gap:8px 16px"></div>
       <label style="margin-top:10px;display:block">Tabs <span class="hint">(none = all)</span></label>
@@ -397,6 +401,10 @@
 
   // ── 7: Instance profiles ─────────────────────────────────────────────────────
   let _profiles = [];
+  async function sha256Hex(s) {
+    const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(s)));
+    return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
+  }
   function renderProfileChecks(selWh, selTabs) {
     const wset = new Set(selWh || []), tset = new Set(selTabs || []);
     $('profWhChecks').innerHTML = _whList.map(w =>
@@ -405,11 +413,12 @@
   }
   async function loadProfiles() {
     renderProfileChecks();
-    _profiles = await sbGet('/instance_profiles?select=id,name,warehouses,tabs&order=name.asc');
+    _profiles = await sbGet('/instance_profiles?select=id,name,warehouses,tabs,password_hash&order=name.asc');
     $('profileRows').innerHTML = _profiles.map(p => {
       const nw = Array.isArray(p.warehouses) && p.warehouses.length ? p.warehouses.length : 'all';
       const nt = Array.isArray(p.tabs) && p.tabs.length ? p.tabs.length : 'all';
-      return `<tr><td>${esc(p.name || p.id)}</td><td>${nw}</td><td>${nt}</td>
+      const lock = p.password_hash ? ' 🔒' : '';
+      return `<tr><td>${esc(p.name || p.id)}${lock}</td><td>${nw}</td><td>${nt}</td>
         <td style="text-align:right;white-space:nowrap"><button class="btn" onclick="editProfile('${esc(p.id)}')">Edit</button> <button class="btn" onclick="delProfile('${esc(p.id)}')">✕</button></td></tr>`;
     }).join('') || '<tr><td colspan="4" class="hint">No profiles yet.</td></tr>';
   }
@@ -417,11 +426,12 @@
     const p = _profiles.find(x => x.id === id); if (!p) return;
     $('profEditId').value = p.id;
     $('profName').value = p.name || '';
+    $('profPass').value = ''; $('profPassClear').checked = false;
     const whs = (Array.isArray(p.warehouses) ? p.warehouses : []).map(x => (typeof x === 'string' ? x : (x && x.code))).filter(Boolean);
     renderProfileChecks(whs, Array.isArray(p.tabs) ? p.tabs : []);
-    flash('profMsg', 'Editing "' + (p.name || p.id) + '"', true);
+    flash('profMsg', 'Editing "' + (p.name || p.id) + '"' + (p.password_hash ? ' · password set (blank keeps it)' : ''), true);
   }
-  function resetProfileForm() { $('profEditId').value = ''; $('profName').value = ''; renderProfileChecks([], []); }
+  function resetProfileForm() { $('profEditId').value = ''; $('profName').value = ''; $('profPass').value = ''; $('profPassClear').checked = false; renderProfileChecks([], []); }
   async function saveProfile() {
     const name = $('profName').value.trim();
     if (!name) { flash('profMsg', 'Enter a name', false); return; }
@@ -429,8 +439,14 @@
     if (!id) id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) + '-' + Date.now().toString(36).slice(-4);
     const warehouses = [...$('profWhChecks').querySelectorAll('input:checked')].map(c => c.value);
     const tabs = [...$('profTabChecks').querySelectorAll('input:checked')].map(c => c.value);
+    const row = { id, name, warehouses, tabs, updated_at: new Date().toISOString() };
+    // Password: "Remove" clears it; a typed value (re)sets it; blank keeps the
+    // existing hash (omitted from the partial upsert).
+    const pass = $('profPass').value;
+    if ($('profPassClear').checked) row.password_hash = null;
+    else if (pass) row.password_hash = await sha256Hex(pass);
     try {
-      await sbSend('POST', '/instance_profiles?on_conflict=id', [{ id, name, warehouses, tabs, updated_at: new Date().toISOString() }], 'resolution=merge-duplicates,return=minimal');
+      await sbSend('POST', '/instance_profiles?on_conflict=id', [row], 'resolution=merge-duplicates,return=minimal');
       flash('profMsg', 'Saved ✓', true); resetProfileForm(); loadProfiles();
     } catch (e) { flash('profMsg', 'Save failed', false); }
   }
