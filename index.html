@@ -1477,6 +1477,16 @@
             </select>
             <span id="profileRoleServer" style="display:none;font-size:.82rem;font-weight:600;color:var(--primary)"></span>
           </div>
+          <!-- Instance profile (named warehouse + tab scope for this device) -->
+          <div class="theme-toggle-row" style="align-items:center">
+            <div>
+              <div style="font-size:.85rem;color:var(--text);font-weight:500">Instance profile</div>
+              <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Limits this device to a warehouse + tab set (from the Manager Console)</div>
+            </div>
+            <select id="instanceProfileSelect" onchange="onInstanceProfileChange(this.value)" style="font-size:.8rem;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;max-width:220px">
+              <option value="">None (default)</option>
+            </select>
+          </div>
           <!-- Default Warehouse -->
           <div class="theme-toggle-row" style="align-items:center">
             <div>
@@ -2796,27 +2806,44 @@
     { key: 'packingErrorTabHelp',     navId: 'snav-btn-help',     view: 'help',     toggleId: 'tabToggleHelp'     },
   ];
 
+  // Tab visibility gate. A tab shows only if allowed by BOTH the instance profile
+  // and the WMS role (each null = no restriction) — the same intersection model
+  // as warehouses. Declared before initTabVisibility() runs so tabAllowed() (used
+  // by refreshTabVisibility) never hits a temporal-dead-zone at load.
+  let _profileTabs = null;           // Set<viewKey> from the instance profile, or null
+  let _roleTabs = null;              // Set<viewKey> from the WMS role, or null
+  let _instanceProfile = undefined;  // cached instance_profiles row; null = none chosen
+  // A tab's own user toggle (Settings checkbox if open, else the saved pref).
+  function tabToggledOn(t) {
+    const chk = document.getElementById(t.toggleId);
+    if (chk) return chk.checked;
+    const def = t.key === 'packingErrorTabDash' ? '0' : '1';
+    return (localStorage.getItem(t.key) ?? def) !== '0';
+  }
+  // Single source of truth for which nav buttons show: the user's toggle AND the
+  // profile/role gate (tabAllowed). Called on init, on toggle change, and when the
+  // instance profile or role resolves.
+  function refreshTabVisibility() {
+    TAB_KEYS.forEach(t => {
+      const btn = document.getElementById(t.navId);
+      if (btn) btn.style.display = (tabToggledOn(t) && tabAllowed(t.view)) ? '' : 'none';
+    });
+    const activeView = document.querySelector('.view.active')?.id?.replace('view-', '');
+    const activeT = TAB_KEYS.find(t => t.view === activeView);
+    if (activeT && document.getElementById(activeT.navId)?.style.display === 'none') {
+      const first = TAB_KEYS.find(t => { const b = document.getElementById(t.navId); return b && b.style.display !== 'none'; });
+      if (first) showView(first.view);
+    }
+  }
   function applyTabVisibility() {
     // Count how many are checked — prevent hiding all tabs
     const checked = TAB_KEYS.map(t => document.getElementById(t.toggleId)?.checked ?? true);
     if (checked.filter(Boolean).length === 0) {
-      // Re-check the one that was just unchecked
       TAB_KEYS.forEach((t, i) => { if (!checked[i]) document.getElementById(t.toggleId).checked = true; });
       return;
     }
-    TAB_KEYS.forEach((t, i) => {
-      const visible = checked[i];
-      localStorage.setItem(t.key, visible ? '1' : '0');
-      const btn = document.getElementById(t.navId);
-      if (btn) btn.style.display = visible ? '' : 'none';
-    });
-    // If current view's nav item is now hidden, switch to first visible tab
-    const activeView = document.querySelector('.view.active')?.id?.replace('view-', '');
-    const activeHidden = TAB_KEYS.find(t => t.view === activeView && document.getElementById(t.navId)?.style.display === 'none');
-    if (activeHidden) {
-      const first = TAB_KEYS.find(t => (localStorage.getItem(t.key) ?? '1') !== '0');
-      if (first) showView(first.view);
-    }
+    TAB_KEYS.forEach((t, i) => { localStorage.setItem(t.key, checked[i] ? '1' : '0'); });
+    refreshTabVisibility();   // final visibility ANDs the toggle with the profile/role gate
   }
 
   function initTabVisibility() {
@@ -2825,12 +2852,7 @@
       localStorage.setItem('packingErrorTabDash', '0');
       localStorage.setItem('dashHideDefault_v1', '1');
     }
-    TAB_KEYS.forEach(t => {
-      const def = t.key === 'packingErrorTabDash' ? '0' : '1';
-      const visible = (localStorage.getItem(t.key) ?? def) !== '0';
-      const btn = document.getElementById(t.navId);
-      if (btn) btn.style.display = visible ? '' : 'none';
-    });
+    refreshTabVisibility();
   }
   initTabVisibility();
   applyRoleVisibility();
@@ -2924,6 +2946,19 @@
   // so there's no flash of all-warehouses before the fresh set resolves.
   let _whAllow = (function () { try { const a = JSON.parse(localStorage.getItem('whAllowSet')); return Array.isArray(a) && a.length ? new Set(a) : null; } catch (e) { return null; } })();
   function whAllowed(wh) { return !_whAllow || _whAllow.has(wh); }
+  function tabAllowed(view) { return (!_profileTabs || _profileTabs.has(view)) && (!_roleTabs || _roleTabs.has(view)); }
+  // The device's chosen instance profile (a named warehouse + tab scope). Stored
+  // per-device in localStorage; resolved from Supabase once and cached.
+  async function getInstanceProfile() {
+    if (_instanceProfile !== undefined) return _instanceProfile;
+    let pid = null; try { pid = localStorage.getItem('instanceProfileId'); } catch (e) {}
+    if (!pid) { _instanceProfile = null; return null; }
+    try {
+      const rows = await fetch(SB_URL + '/instance_profiles?id=eq.' + encodeURIComponent(pid) + '&select=id,name,warehouses,tabs', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      _instanceProfile = (rows && rows[0]) || null;
+    } catch (e) { _instanceProfile = null; }
+    return _instanceProfile;
+  }
   let b2cFlow = [];       // b2c_flow_snapshot rows — B2C new-orders inflow (inflow_1h)
   let b2cPackSnaps = [];  // productivity_snapshot rows — cumulative packed_orders for the hourly packing rate
 
@@ -3437,20 +3472,17 @@
       const rt = await fetch(SB_URL + '/role_tabs?role=eq.' + encodeURIComponent(roleRow.role) + '&or=(wh.eq.' + encodeURIComponent(roleRow.wh) + ',wh.eq.*)&select=wh,tabs', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
       const cfg = rt.find(x => x.wh === roleRow.wh) || rt.find(x => x.wh === '*');
       if (!cfg || !Array.isArray(cfg.tabs)) return;   // no tab config → no restriction
-      const allowed = new Set(cfg.tabs);
-      TAB_KEYS.forEach(t => { if (!allowed.has(t.view)) { const b = document.getElementById(t.navId); if (b) b.style.display = 'none'; } });
-      // If the current view just got hidden, jump to the first allowed one.
-      const active = document.querySelector('.view.active') && document.querySelector('.view.active').id.replace('view-', '');
-      if (active && !allowed.has(active)) { const first = TAB_KEYS.find(t => allowed.has(t.view)); if (first) showView(first.view); }
+      _roleTabs = new Set(cfg.tabs);
+      refreshTabVisibility();   // intersects with the instance profile's tab set
     } catch (e) { /* leave everything visible on error */ }
   }
   // ── Warehouse-access restriction ────────────────────────────────────────
   // Lock the dashboard to the warehouses the user's WMS account can access
   // (captured by the extension). Fail-open: an unknown/empty set leaves the app
   // unrestricted rather than locking someone out of everything.
-  function applyWhRestriction(codes) {
+  function applyWhRestriction(codes, allowEmpty) {
     const arr = (Array.isArray(codes) ? codes : []).filter(Boolean);
-    if (!arr.length) return;                     // never restrict to zero warehouses
+    if (!arr.length && !allowEmpty) return;      // never accidentally lock to zero (unless an explicit empty intersection)
     const next = new Set(arr);
     const same = _whAllow && _whAllow.size === next.size && [...next].every(w => _whAllow.has(w));
     _whAllow = next;
@@ -3480,24 +3512,60 @@
       if (codes.length) applyWhRestriction(codes); else clearWhRestriction();
     } catch (e) { clearWhRestriction(); }
   }
+  const _whCodes = arr => (Array.isArray(arr) ? arr.map(x => (typeof x === 'string' ? x : (x && x.code))).filter(Boolean) : null);
   async function resolveWhAllow(id, bridgeWarehouses) {
     try {
-      if (id && String(id).indexOf('wms:') === 0) {                // identified WMS user
-        if (Array.isArray(bridgeWarehouses) && bridgeWarehouses.length) { applyWhRestriction(bridgeWarehouses); return; }
-        const uid = String(id).slice(4);
-        const rows = await fetch(SB_URL + '/wms_users?user_id=eq.' + encodeURIComponent(uid) + '&select=warehouses', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
-        const w = rows && rows[0] && rows[0].warehouses;
-        if (Array.isArray(w) && w.length) applyWhRestriction(w.map(x => (typeof x === 'string' ? x : (x && x.code))).filter(Boolean));
-        // known user but access not captured yet → leave unrestricted (fail-open)
+      // Instance profile first — it limits BOTH warehouses and tabs, and feeds
+      // the tab gate. null on either dimension = no restriction there.
+      const profile = await getInstanceProfile();
+      const profWhs = profile && Array.isArray(profile.warehouses) && profile.warehouses.length ? _whCodes(profile.warehouses) : null;
+      _profileTabs = profile && Array.isArray(profile.tabs) && profile.tabs.length ? new Set(profile.tabs) : null;
+      refreshTabVisibility();
+
+      // The user's own warehouse access (only for a signed-in WMS identity).
+      let userWhs = null;
+      if (id && String(id).indexOf('wms:') === 0) {
+        if (Array.isArray(bridgeWarehouses) && bridgeWarehouses.length) userWhs = _whCodes(bridgeWarehouses);
+        else {
+          const uid = String(id).slice(4);
+          const rows = await fetch(SB_URL + '/wms_users?user_id=eq.' + encodeURIComponent(uid) + '&select=warehouses', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+          const w = rows && rows[0] && rows[0].warehouses;
+          userWhs = (Array.isArray(w) && w.length) ? _whCodes(w) : null;
+        }
+        // Intersection of the user's access and the instance profile (safest).
+        if (userWhs && profWhs) applyWhRestriction(userWhs.filter(w => profWhs.includes(w)), true);
+        else if (userWhs || profWhs) applyWhRestriction(userWhs || profWhs);
+        else clearWhRestriction();   // neither restricts → all warehouses
         return;
       }
-      applyDefaultScope();   // not tied to a user → configurable default scope
+      // Not tied to a user: the profile is the scope; with no profile, fall back
+      // to the manager-configured global default (warehouse_config['*']).
+      if (profWhs) applyWhRestriction(profWhs);
+      else applyDefaultScope();
     } catch (e) { /* fail-open */ }
+  }
+
+  // Instance-profile picker (Settings). Selecting one stores it per-device and
+  // re-resolves the warehouse + tab scope immediately.
+  function onInstanceProfileChange(val) {
+    try { if (val) localStorage.setItem('instanceProfileId', val); else localStorage.removeItem('instanceProfileId'); } catch (e) {}
+    _instanceProfile = undefined;               // bust the cache
+    _profileTabs = null;                        // will be recomputed by resolveWhAllow
+    (async () => { const id = _dashDeviceId || await dashGetDeviceId(); resolveWhAllow(id); })();
+  }
+  async function populateInstanceProfileSelect() {
+    const el = document.getElementById('instanceProfileSelect');
+    if (!el) return;
+    let rows = [];
+    try { rows = await fetch(SB_URL + '/instance_profiles?select=id,name&order=name.asc', { headers: SB_HDR }).then(r => r.ok ? r.json() : []); } catch (e) {}
+    let cur = ''; try { cur = localStorage.getItem('instanceProfileId') || ''; } catch (e) {}
+    el.innerHTML = '<option value="">None (default)</option>' + rows.map(p => `<option value="${escHtml(p.id)}"${p.id === cur ? ' selected' : ''}>${escHtml(p.name || p.id)}</option>`).join('');
   }
 
   checkManagerAccess();
   dashGetDeviceId().then(id => resolveWhAllow(id));
   fetchWarehouseCarriers();
+  populateInstanceProfileSelect();
   // Re-check when the WMS identity arrives from the extension bridge — it can land
   // after dashGetDeviceId() already fell back to a local id, which would otherwise
   // leave the console link hidden for an Admin. The same message carries the
