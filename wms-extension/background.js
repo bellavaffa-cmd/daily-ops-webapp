@@ -468,9 +468,11 @@ async function performSync(isB2B) {
               body: JSON.stringify(snapRows)
             });
           }
-          // Retention: keep ~2 days of snapshots (the app only needs the last hour).
-          const snapCutoff = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
-          await fetch(`${SB_URL}/rest/v1/productivity_snapshot?captured_at=lt.${encodeURIComponent(snapCutoff)}`, {
+          // Retention: keep the per-warehouse snapshot ~31 days so the app can
+          // build a 30-day daily×hourly pick/pack view (server-side rollup RPC).
+          const snapCutoff = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();   // per-user snapshot (below)
+          const prodSnapCutoff = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString();
+          await fetch(`${SB_URL}/rest/v1/productivity_snapshot?captured_at=lt.${encodeURIComponent(prodSnapCutoff)}`, {
             method: 'DELETE', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY }
           }).catch(() => {});
 

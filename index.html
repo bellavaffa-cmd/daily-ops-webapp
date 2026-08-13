@@ -2370,6 +2370,12 @@
       </div>
     </div>
 
+    <!-- 30-day daily × hourly heatmap -->
+    <div class="card" style="padding:0;overflow:hidden;margin-top:16px">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Hourly by day — last 30 days · <span id="prodHeatMode">Picked</span> orders</div>
+      <div id="prodHeatmap" style="overflow-x:auto;padding:12px 18px"></div>
+    </div>
+
     <!-- Daily -->
     <div class="card fill-card" style="padding:0;overflow:hidden;margin-top:16px">
       <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Daily — last 30 days · <span id="prodDailyMode">Picked</span></div>
@@ -4660,6 +4666,7 @@
   let userPerf = [];
   let prodSnaps = [];
   let userPerfSnaps = [];   // per-user cumulative snapshots → hourly per-user rate + chart
+  let hourlyDaily = [];     // [{day, hour, picked_orders, packed_orders}] — 30-day daily×hourly rollup (RPC)
   const MONTHS_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const dayLabel = ds => { const p = String(ds).split('-'); return p[2] ? `${p[2]} ${MONTHS_ABBR[+p[1]-1]}` : ds; };
@@ -4672,6 +4679,27 @@
   function onProdWarehouseChange(value) {
     localStorage.setItem('prodWarehouseFilter', value);
     renderProductivity();
+    fetchHourlyDaily();   // heatmap is scoped server-side, so re-pull on filter change
+  }
+
+  // 30-day daily×hourly pick/pack rollup — computed server-side from the retained
+  // per-warehouse snapshots (RPC), scoped to the selected/allowed warehouses and
+  // the viewer's timezone.
+  async function fetchHourlyDaily() {
+    const selWh = localStorage.getItem('prodWarehouseFilter') || '';
+    let whs = null;
+    if (selWh) whs = [selWh];
+    else if (_whAllow) whs = [..._whAllow];
+    const tz = (function () { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) { return 'Asia/Manila'; } })() || 'Asia/Manila';
+    try {
+      const r = await fetch(SB_URL + '/rpc/daily_hourly_productivity', {
+        method: 'POST',
+        headers: { ...SB_HDR, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ _days: 30, _tz: tz, _warehouses: whs })
+      });
+      hourlyDaily = r.ok ? await r.json() : [];
+    } catch (e) { hourlyDaily = []; }
+    try { renderHourlyHeatmap((localStorage.getItem('prodMode') === 'packed') ? 'packed' : 'picked'); } catch (e) {}
   }
 
   function populateProdWarehouseSelect() {
@@ -4724,6 +4752,7 @@
       populateProdWarehouseSelect();
       populateProdPersonSelect();
       renderProductivity();
+      fetchHourlyDaily();   // 30-day daily×hourly heatmap (independent RPC)
       if (modeEl) { modeEl.textContent = 'Supabase ●'; modeEl.style.color = 'var(--success)'; }
     } catch (err) {
       console.error('Productivity fetch error:', err);
@@ -4831,6 +4860,45 @@
       .map(d => ({ label: dayLabel(d.date), orders: d.orders, items: d.items }));
     const dEl = document.getElementById('prodDailyTable');
     if (dEl) dEl.innerHTML = tableHtml(days, 'label');
+
+    renderHourlyHeatmap(mode);
+  }
+
+  // 30-day daily × hourly heatmap: rows = days (newest first), cols = hours,
+  // cell = pick/pack order count for that hour, shaded by intensity. Follows the
+  // picked/packed toggle. Data from the daily_hourly_productivity RPC.
+  function renderHourlyHeatmap(mode) {
+    const el = document.getElementById('prodHeatmap'); if (!el) return;
+    const key = mode === 'packed' ? 'packed_orders' : 'picked_orders';
+    const color = mode === 'packed' ? '#5eead4' : '#86efac';
+    const lbl = document.getElementById('prodHeatMode'); if (lbl) lbl.textContent = mode === 'packed' ? 'Packed' : 'Picked';
+    const fmt = n => Number(n || 0).toLocaleString();
+    const data = hourlyDaily || [];
+    if (!data.length) { el.innerHTML = '<div style="color:var(--muted);font-size:.82rem;padding:8px 2px">Collecting hourly history… this fills in as the extension keeps snapshotting (up to 30 days).</div>'; return; }
+    const dayKeys = [...new Set(data.map(d => d.day))].sort((a, b) => String(b).localeCompare(String(a)));  // newest first
+    let minH = 23, maxH = 0;
+    data.forEach(d => { if (Number(d[key] || 0) > 0) { minH = Math.min(minH, d.hour); maxH = Math.max(maxH, d.hour); } });
+    if (minH > maxH) { minH = 6; maxH = 20; }
+    const hours = []; for (let h = minH; h <= maxH; h++) hours.push(h);
+    const map = {}; data.forEach(d => { map[d.day + '|' + d.hour] = Number(d[key] || 0); });
+    const max = data.reduce((m, d) => Math.max(m, Number(d[key] || 0)), 0) || 1;
+    const hourLbl = h => (h % 12 || 12) + (h < 12 ? 'a' : 'p');
+    const cell = v => {
+      const pct = v > 0 ? Math.round((0.15 + 0.85 * (v / max)) * 100) : 0;
+      const bg = v > 0 ? `color-mix(in srgb, ${color} ${pct}%, transparent)` : 'transparent';
+      const txt = v > max * 0.55 ? '#06120a' : 'var(--text)';
+      return `<td style="padding:1px" title="${v}"><div style="width:36px;height:22px;line-height:22px;text-align:center;font-size:.62rem;color:${v > 0 ? txt : 'var(--muted)'};background:${bg};border-radius:3px">${v > 0 ? fmt(v) : ''}</div></td>`;
+    };
+    let html = '<table style="border-collapse:collapse"><thead><tr><th style="position:sticky;left:0;background:var(--surface);z-index:1"></th>';
+    hours.forEach(h => html += `<th style="font-size:.6rem;color:var(--muted);font-weight:600;text-align:center;padding:2px 0">${hourLbl(h)}</th>`);
+    html += '</tr></thead><tbody>';
+    dayKeys.forEach(day => {
+      html += `<tr><td style="position:sticky;left:0;background:var(--surface);font-size:.66rem;color:var(--muted);white-space:nowrap;padding:0 8px 0 0;text-align:right">${dayLabel(day)}</td>`;
+      hours.forEach(h => { html += cell(map[day + '|' + h] || 0); });
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
   }
 
   // Compute the hourly depletion rate from the snapshot history for the selected
