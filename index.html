@@ -2362,6 +2362,7 @@
               <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Person</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)">Orders</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)">Items</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)" title="Orders in the last ~1 hour">Last hr</th>
             </tr>
           </thead>
           <tbody id="prodUserTable"></tbody>
@@ -4658,6 +4659,7 @@
   // extension. Day-level, so we show today's per-person split + a daily trend.
   let userPerf = [];
   let prodSnaps = [];
+  let userPerfSnaps = [];   // per-user cumulative snapshots → hourly per-user rate + chart
   const MONTHS_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const dayLabel = ds => { const p = String(ds).split('-'); return p[2] ? `${p[2]} ${MONTHS_ABBR[+p[1]-1]}` : ds; };
@@ -4707,13 +4709,18 @@
       // (this sync's cumulative total minus the total ~1h ago).
       const snapCutoff = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
       const snapUrl = SB_URL + '/productivity_snapshot?select=*&captured_at=gte.' + encodeURIComponent(snapCutoff) + '&order=captured_at.desc';
-      const [res, snapRes] = await Promise.all([
+      // Per-user snapshots over ~16h so the drill-down chart covers a full shift.
+      const uSnapCutoff = new Date(Date.now() - 16 * 60 * 60 * 1000).toISOString();
+      const uSnapUrl = SB_URL + '/user_perf_snapshot?select=*&captured_at=gte.' + encodeURIComponent(uSnapCutoff) + '&order=captured_at.desc';
+      const [res, snapRes, uSnapRes] = await Promise.all([
         fetch(url, { headers: SB_HDR }),
         fetch(snapUrl, { headers: SB_HDR }),
+        fetch(uSnapUrl, { headers: SB_HDR }),
       ]);
       if (!res.ok) throw new Error('HTTP ' + res.status);
       userPerf = (await res.json()).filter(r => whAllowed(r.warehouse_code));   // hard-restrict to the user's warehouses
       prodSnaps = (snapRes.ok ? await snapRes.json() : []).filter(r => whAllowed(r.warehouse_code));
+      userPerfSnaps = (uSnapRes.ok ? await uSnapRes.json() : []).filter(r => whAllowed(r.warehouse_code));
       populateProdWarehouseSelect();
       populateProdPersonSelect();
       renderProductivity();
@@ -4794,7 +4801,21 @@
     const uCount = document.getElementById('prodUserCount');
     if (uCount) uCount.textContent = users.length ? `(${users.length})` : '';
     const uEl = document.getElementById('prodUserTable');
-    if (uEl) uEl.innerHTML = tableHtml(users.map(u => ({ name: escHtml(u.name), orders: u.orders, items: u.items })), 'name');
+    if (uEl) {
+      const lastHr = userLastHour(selWh);   // person -> { po,ko,pi,ki } over the last ~1h
+      const maxO = users.reduce((m, u) => Math.max(m, u.orders), 0);
+      const maxI = users.reduce((m, u) => Math.max(m, u.items), 0);
+      uEl.innerHTML = users.length ? users.map(u => {
+        const lh = lastHr[u.name];
+        const lhOrders = lh ? (mode === 'packed' ? lh.ko : lh.po) : null;
+        return `<tr style="border-top:1px solid var(--border);cursor:pointer" onclick="openUserHourly(this.dataset.person)" data-person="${escHtml(u.name)}" title="Hourly breakdown for ${escHtml(u.name)}">
+          <td style="padding:7px 18px;color:var(--text);font-size:.82rem;white-space:nowrap">${escHtml(u.name)} <span style="color:var(--muted);font-size:.72rem">›</span></td>
+          ${barCell(u.orders, maxO, modeColor)}
+          ${barCell(u.items, maxI, '#94a3b8')}
+          <td style="padding:7px 14px;text-align:right;font-size:.82rem;white-space:nowrap;color:${lhOrders ? modeColor : 'var(--muted)'}">${lhOrders != null ? fmt(lhOrders) : '—'}</td>
+        </tr>`;
+      }).join('') : `<tr><td colspan="4" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No data yet.</td></tr>`;
+    }
 
     renderHourlyRate(selWh);
 
@@ -4861,6 +4882,95 @@
         ? `Collecting… need ~1h of history (last sync ${timeStr(latest.t)})`
         : 'Collecting data… (waiting for the first hourly sync)');
     }
+  }
+
+  // ── Per-user hourly productivity (from user_perf_snapshot) ──────────────
+  // Each snapshot is a user's cumulative TODAY totals at a sync time; diffs give
+  // the hourly rate. Buckets are keyed by sync time, summed over the warehouse
+  // filter (a user can work across warehouses).
+  function userHourlyBuckets(selWh) {
+    const byPerson = {};
+    for (const s of userPerfSnaps) {
+      if (selWh && s.warehouse_code !== selWh) continue;
+      const key = s.executed_by_name || ('#' + s.executed_by);
+      const p = (byPerson[key] = byPerson[key] || { name: key, buckets: {} });
+      const t = new Date(s.captured_at).getTime();
+      const b = (p.buckets[t] = p.buckets[t] || { t, po: 0, ko: 0, pi: 0, ki: 0, date: s.activity_date });
+      b.po += Number(s.picked_orders || 0); b.ko += Number(s.packed_orders || 0);
+      b.pi += Number(s.picked_items || 0);  b.ki += Number(s.packed_items || 0);
+    }
+    return byPerson;
+  }
+  // person -> { po,ko,pi,ki } for the last ~1h (latest cumulative minus ~1h ago).
+  function userLastHour(selWh) {
+    const bp = userHourlyBuckets(selWh);
+    const out = {};
+    for (const key of Object.keys(bp)) {
+      const arr = Object.values(bp[key].buckets).sort((a, b) => b.t - a.t);
+      const latest = arr[0]; if (!latest) continue;
+      let prev = null, best = Infinity; const target = latest.t - 3600e3;
+      for (let i = 1; i < arr.length; i++) {
+        const b = arr[i]; if (b.date !== latest.date) continue;
+        const gap = latest.t - b.t; if (gap < 30 * 60e3 || gap > 100 * 60e3) continue;
+        const d = Math.abs(b.t - target); if (d < best) { best = d; prev = b; }
+      }
+      if (prev) out[key] = { po: Math.max(0, latest.po - prev.po), ko: Math.max(0, latest.ko - prev.ko), pi: Math.max(0, latest.pi - prev.pi), ki: Math.max(0, latest.ki - prev.ki) };
+    }
+    return out;
+  }
+  function _uhEsc(e) { if (e.key === 'Escape') closeUserHourly(); }
+  function closeUserHourly() { const m = document.getElementById('userHourlyModal'); if (m) m.remove(); document.removeEventListener('keydown', _uhEsc); }
+  function openUserHourly(person) {
+    const selWh = localStorage.getItem('prodWarehouseFilter') || '';
+    const p = userHourlyBuckets(selWh)[person];
+    const fmt = n => Number(n || 0).toLocaleString();
+    const today = localDateStr();
+    const arr = p ? Object.values(p.buckets).filter(b => b.date === today).sort((a, b) => a.t - b.t) : [];
+    // Per-clock-hour throughput = sum of consecutive-snapshot deltas landing in that hour.
+    const hours = {};
+    for (let i = 1; i < arr.length; i++) {
+      const cur = arr[i], prev = arr[i - 1];
+      const d = new Date(cur.t); d.setMinutes(0, 0, 0);
+      const h = (hours[d.getTime()] = hours[d.getTime()] || { picked: 0, packed: 0 });
+      h.picked += Math.max(0, cur.po - prev.po);
+      h.packed += Math.max(0, cur.ko - prev.ko);
+    }
+    const hourArr = Object.keys(hours).map(Number).sort((a, b) => a - b).map(hk => ({ hk, ...hours[hk] }));
+    const maxV = hourArr.reduce((m, h) => Math.max(m, h.picked, h.packed), 0) || 1;
+    const totP = hourArr.reduce((a, h) => a + h.picked, 0), totK = hourArr.reduce((a, h) => a + h.packed, 0);
+    const hourLbl = hk => new Date(hk).toLocaleTimeString([], { hour: 'numeric' }).replace(/\s/g, '').toLowerCase();
+    const bars = hourArr.length ? hourArr.map(h => `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;min-width:34px">
+        <div style="display:flex;align-items:flex-end;gap:3px;height:150px">
+          <div title="Picked ${fmt(h.picked)}" style="width:11px;height:${Math.round(h.picked / maxV * 150)}px;background:#86efac;border-radius:3px 3px 0 0"></div>
+          <div title="Packed ${fmt(h.packed)}" style="width:11px;height:${Math.round(h.packed / maxV * 150)}px;background:#5eead4;border-radius:3px 3px 0 0"></div>
+        </div>
+        <div style="font-size:.65rem;color:var(--muted);white-space:nowrap">${hourLbl(h.hk)}</div>
+      </div>`).join('') : `<div style="color:var(--muted);padding:30px 0;text-align:center;width:100%">Collecting hourly data… (needs a couple of syncs today)</div>`;
+    closeUserHourly();
+    const ov = document.createElement('div');
+    ov.id = 'userHourlyModal';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto';
+    ov.addEventListener('click', e => { if (e.target === ov) closeUserHourly(); });
+    ov.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;max-width:720px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+      <div style="display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border)">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:1.05rem;font-weight:700;color:var(--text)">${escHtml(person)}</div>
+          <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Hourly throughput today${selWh ? ' · ' + escHtml(selWh) : ''}</div>
+        </div>
+        <div style="text-align:right;font-size:.75rem;color:var(--muted);white-space:nowrap"><span style="color:#86efac;font-weight:700">${fmt(totP)}</span> picked · <span style="color:#5eead4;font-weight:700">${fmt(totK)}</span> packed</div>
+        <button onclick="closeUserHourly()" aria-label="Close" style="background:none;border:none;color:var(--muted);font-size:1.4rem;cursor:pointer;line-height:1;padding:0 4px">×</button>
+      </div>
+      <div style="padding:18px 20px">
+        <div style="display:flex;gap:14px;font-size:.72rem;color:var(--muted);margin-bottom:12px">
+          <span><span style="display:inline-block;width:9px;height:9px;background:#86efac;border-radius:2px;margin-right:4px"></span>Picked orders</span>
+          <span><span style="display:inline-block;width:9px;height:9px;background:#5eead4;border-radius:2px;margin-right:4px"></span>Packed orders</span>
+        </div>
+        <div style="overflow-x:auto"><div style="display:flex;gap:8px;align-items:flex-end;min-height:170px;padding-top:6px">${bars}</div></div>
+      </div>
+    </div>`;
+    document.body.appendChild(ov);
+    document.addEventListener('keydown', _uhEsc);
   }
 
   fetchProductivity();

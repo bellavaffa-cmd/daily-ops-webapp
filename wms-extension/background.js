@@ -473,6 +473,27 @@ async function performSync(isB2B) {
           await fetch(`${SB_URL}/rest/v1/productivity_snapshot?captured_at=lt.${encodeURIComponent(snapCutoff)}`, {
             method: 'DELETE', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY }
           }).catch(() => {});
+
+          // 6c. Per-USER snapshot of today's cumulative totals — same timestamp as
+          // the per-warehouse one. Lets the app show each user's last-hour pick/pack
+          // rate (now minus ~1h ago) and an hour-by-hour series for today.
+          const userSnap = perfRows.filter(r => r.activity_date === todayStr).map(r => ({
+            executed_by: r.executed_by, executed_by_name: r.executed_by_name,
+            warehouse_code: r.warehouse_code, activity_date: todayStr,
+            picked_orders: r.picked_orders, packed_orders: r.packed_orders,
+            picked_items: r.picked_items, packed_items: r.packed_items,
+            captured_at: nowIso
+          }));
+          if (userSnap.length) {
+            await fetch(`${SB_URL}/rest/v1/user_perf_snapshot`, {
+              method: 'POST',
+              headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+              body: JSON.stringify(userSnap)
+            });
+          }
+          await fetch(`${SB_URL}/rest/v1/user_perf_snapshot?captured_at=lt.${encodeURIComponent(snapCutoff)}`, {
+            method: 'DELETE', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY }
+          }).catch(() => {});
         }
       } catch (e) {
         console.error('[WMS bg] snapshot error:', e.message);
