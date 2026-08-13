@@ -1326,10 +1326,6 @@
     </button>
   </div>
   <nav class="sidebar-nav">
-    <button class="snav-btn" id="snav-btn-overview" onclick="showView('overview')">
-      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-      Dashboard
-    </button>
     <div class="snav-group" id="snav-group-outbound">
       <button class="snav-group-header" onclick="toggleNavGroup(this)">
         <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
@@ -1532,13 +1528,6 @@
               <svg id="tabsSectionChevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition:transform .15s"><polyline points="6 9 12 15 18 9"/></svg>
             </div>
             <div id="tabsSectionBody" style="display:none;margin-top:4px">
-              <div class="theme-toggle-row">
-                <div style="font-size:.85rem;color:var(--text);font-weight:500">Dashboard</div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="tabToggleOverview" onchange="applyTabVisibility()" checked />
-                  <span class="toggle-track"></span>
-                </label>
-              </div>
               <div class="theme-toggle-row">
                 <div style="font-size:.85rem;color:var(--text);font-weight:500">Error Dashboard</div>
                 <label class="toggle-switch">
@@ -2079,30 +2068,8 @@
   </div>
 
   <!-- ── DASHBOARD (OVERVIEW) VIEW ── -->
-  <div class="view active" id="view-overview">
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-      <div>
-        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Dashboard</div>
-        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Drag to move · resize width from the sides · long-press for options · Lock to freeze the layout</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <select id="overviewWarehouse" onchange="onOverviewWarehouseChange(this.value)"
-          style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;flex:0 1 220px;min-width:140px;max-width:240px"></select>
-        <button class="btn btn-primary btn-sm" onclick="dashOpenAddMenu(this)" title="Add a widget to the dashboard"
-          style="display:flex;align-items:center;gap:5px;font-size:.78rem;padding:6px 12px;white-space:nowrap">
-          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Add widget
-        </button>
-        <button id="dashLockBtn" class="btn btn-ghost btn-sm" onclick="dashToggleLock()"
-          style="display:flex;align-items:center;gap:5px;font-size:.78rem;padding:6px 12px;white-space:nowrap">Lock</button>
-      </div>
-    </div>
-    <div class="grid-stack" id="dashGrid"></div>
-    <div id="dashSkeleton" class="kpi-skeleton-row" aria-hidden="true"><div class="kpi-skeleton"></div><div class="kpi-skeleton"></div><div class="kpi-skeleton"></div><div class="kpi-skeleton"></div></div>
-  </div>
-
   <!-- ── B2C DASHBOARD VIEW ── -->
-  <div class="view" id="view-b2c">
+  <div class="view active" id="view-b2c">
 
     <!-- Header -->
     <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
@@ -2818,7 +2785,6 @@
 
   // ── Tab visibility ─────────────────────────────────────────────────────
   const TAB_KEYS = [
-    { key: 'packingErrorTabOverview',     navId: 'snav-btn-overview',     view: 'overview',     toggleId: 'tabToggleOverview'     },
     { key: 'packingErrorTabB2c',      navId: 'snav-btn-b2c',      view: 'b2c',      toggleId: 'tabToggleB2c'      },
     { key: 'packingErrorTabTomorrow', navId: 'snav-btn-tomorrow', view: 'tomorrow', toggleId: 'tabToggleTomorrow' },
     { key: 'packingErrorTabB2b',      navId: 'snav-btn-b2b',      view: 'b2b',      toggleId: 'tabToggleB2b'      },
@@ -3170,6 +3136,7 @@
     const _whOpts  = { whIds: _wms.whIds, whLbl: _wms.whLbl };
     const _cdMp    = wmsCdRange(_wms.range, opsConfig.mp_cutoff);
     const _cdNon   = wmsCdRange(_wms.range, opsConfig.nonmp_cutoff);
+    const _day     = opts.day || 'today';   // which set the boxes reflect → drives the brand breakdown
 
     return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(${opts.minCard||140}px,1fr));gap:12px">
       ${statuses.map(s => {
@@ -3185,7 +3152,7 @@
         // nested inside the status link — nested <a> is invalid and the status
         // link would otherwise swallow their clicks.
         return `
-        <div class="card" style="position:relative;padding:16px 18px${excluded ? ';opacity:.5' : ''}">
+        <div class="card kpi-link" onclick="brandBoxClick(event,'${_day}','${s.key}')" title="Click for the per-brand breakdown" style="cursor:pointer;position:relative;padding:16px 18px${excluded ? ';opacity:.5' : ''}">
           ${interactive && !isTotal ? excludeBtn('b2c', s.key, excluded) : ''}
           <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px${excluded ? ';text-decoration:line-through' : ''}">${s.label}</div>
           <a class="mp-link" href="${url}" target="_blank" title="Open in WMS" style="display:inline-block;text-decoration:none;color:var(--text);font-size:2rem;font-weight:700;line-height:1">${fmt(s.count)}</a>
@@ -3198,6 +3165,87 @@
         </div>`;
       }).join('')}
     </div>`;
+  }
+
+  // ── Per-brand breakdown modal (Today/Tomorrow status-box drill-down) ─────
+  // Clicking a B2C status box opens this: per-brand counts split into
+  // Priority-MP-only / Priority-MP+Next-Day / Non-MP, read from the b2c_brand
+  // table the sync writes. Scoped to the current warehouse selection + day.
+  function brandBoxClick(e, day, statusKey) {
+    if (e && e.target && e.target.closest('a,button')) return;   // let WMS links / exclude buttons work
+    openBrandBreakdown(day, statusKey);
+  }
+  function _brandEsc(e) { if (e.key === 'Escape') closeBrandModal(); }
+  function closeBrandModal() { const m = document.getElementById('brandModal'); if (m) m.remove(); document.removeEventListener('keydown', _brandEsc); }
+  async function openBrandBreakdown(day, statusKey) {
+    const BRAND_STATUS = {
+      new:     { label: 'Open',            ids: () => [WMS_STATUS_ID['Open']] },
+      rfp:     { label: 'Ready to Pick',   ids: () => [WMS_STATUS_ID['Ready to Pick']] },
+      picking: { label: 'Picking Started', ids: () => [WMS_STATUS_ID['Picking Started']] },
+      picked:  { label: 'Ready to Pack',   ids: () => [WMS_STATUS_ID['Ready to Pack']] },
+      packing: { label: 'Packing Started', ids: () => [WMS_STATUS_ID['Packing Started']] },
+      total:   { label: 'Total Orders',    ids: () => WMS_B2C_ALL_STATUS },
+    };
+    const meta = BRAND_STATUS[statusKey] || BRAND_STATUS.total;
+    const selSet = new Set(getSelectedWhs());
+    const inScope = wh => (selSet.size ? selSet.has(wh) : whAllowed(wh));
+    const scopeLbl = selSet.size ? (selSet.size + ' warehouse' + (selSet.size > 1 ? 's' : '')) : 'all warehouses';
+    closeBrandModal();
+    const ov = document.createElement('div');
+    ov.id = 'brandModal';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto';
+    ov.addEventListener('click', e => { if (e.target === ov) closeBrandModal(); });
+    const wmsUrl = wmsStatusUrl('B2C', meta.ids(), statusKey === 'total' ? 'All' : meta.label, { ...b2cWmsWhOpts(), ...wmsCdRange(day === 'today' ? 'pre' : 'post', opsConfig.mp_cutoff) });
+    ov.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;max-width:720px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+      <div style="display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border)">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:1.05rem;font-weight:700;color:var(--text)">${escHtml(meta.label)} · ${day === 'today' ? 'Today' : 'Tomorrow'}</div>
+          <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Per-brand tag breakdown · ${escHtml(scopeLbl)}</div>
+        </div>
+        <a href="${wmsUrl}" target="_blank" style="text-decoration:none;font-size:.78rem;padding:7px 12px;border:1px solid var(--border);border-radius:8px;color:var(--text);white-space:nowrap">Open in WMS ↗</a>
+        <button onclick="closeBrandModal()" aria-label="Close" style="background:none;border:none;color:var(--muted);font-size:1.4rem;cursor:pointer;line-height:1;padding:0 4px">×</button>
+      </div>
+      <div id="brandModalBody" style="padding:8px 20px 20px"><div style="color:var(--muted);padding:24px 0;text-align:center">Loading…</div></div>
+    </div>`;
+    document.body.appendChild(ov);
+    document.addEventListener('keydown', _brandEsc);
+
+    let rows = [];
+    try {
+      const statusFilter = statusKey === 'total' ? '' : ('&status=eq.' + encodeURIComponent(statusKey));
+      rows = await fetch(SB_URL + '/b2c_brand?day=eq.' + encodeURIComponent(day) + statusFilter + '&select=wh,status,brands', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+    } catch (e) { rows = []; }
+    const agg = {};
+    for (const r of rows) {
+      if (!inScope(r.wh)) continue;
+      const b = r.brands || {};
+      for (const brand of Object.keys(b)) {
+        const v = b[brand] || {};
+        const a = (agg[brand] = agg[brand] || { mp_only: 0, mp_nextday: 0, nonmp: 0, total: 0 });
+        a.mp_only += v.mp_only || 0; a.mp_nextday += v.mp_nextday || 0; a.nonmp += v.nonmp || 0; a.total += v.total || 0;
+      }
+    }
+    const list = Object.keys(agg).map(brand => ({ brand, ...agg[brand] })).sort((x, y) => y.total - x.total);
+    const grand = list.reduce((a, r) => ({ mp_only: a.mp_only + r.mp_only, mp_nextday: a.mp_nextday + r.mp_nextday, nonmp: a.nonmp + r.nonmp, total: a.total + r.total }), { mp_only: 0, mp_nextday: 0, nonmp: 0, total: 0 });
+    const fmt = n => Number(n || 0).toLocaleString();
+    const body = document.getElementById('brandModalBody');
+    if (!body) return;
+    if (!list.length) { body.innerHTML = '<div style="color:var(--muted);padding:24px 0;text-align:center">No orders in this bucket yet.</div>'; return; }
+    const th = (t, r) => `<th style="text-align:${r ? 'right' : 'left'};padding:9px 10px;font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap">${t}</th>`;
+    const td = (n, color, bold) => `<td style="text-align:right;padding:8px 10px;font-size:.82rem;color:${color || 'var(--text)'};${bold ? 'font-weight:700' : ''}">${fmt(n)}</td>`;
+    body.innerHTML = `<div style="overflow-x:auto;max-height:60vh;overflow-y:auto"><table style="width:100%;border-collapse:collapse">
+      <thead><tr>${th('Brand')}${th('Priority MP only', 1)}${th('MP + Next Day', 1)}${th('Non-MP', 1)}${th('Total', 1)}</tr></thead>
+      <tbody>
+        ${list.map(r => `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:8px 10px;font-size:.82rem;color:var(--text);white-space:nowrap">${escHtml(r.brand)}</td>
+          ${td(r.mp_only, '#c084fc')}${td(r.mp_nextday, '#f0abfc')}${td(r.nonmp, 'var(--text)')}${td(r.total, 'var(--text)', true)}
+        </tr>`).join('')}
+      </tbody>
+      <tfoot><tr style="border-top:2px solid var(--border)">
+        <td style="padding:9px 10px;font-size:.82rem;font-weight:700;color:var(--text)">Total · ${list.length} brand${list.length > 1 ? 's' : ''}</td>
+        ${td(grand.mp_only, '#c084fc', true)}${td(grand.mp_nextday, '#f0abfc', true)}${td(grand.nonmp, 'var(--text)', true)}${td(grand.total, 'var(--text)', true)}
+      </tr></tfoot>
+    </table></div>`;
   }
 
   function renderB2C() {
@@ -3228,7 +3276,7 @@
     const fmt   = n => n.toLocaleString();
 
     renderB2CRiskBanner(filtered);
-    document.getElementById('b2cKpis').innerHTML = b2cKpiCardsHtml(filtered, { interactive: true, wms: { ...b2cWmsWhOpts(), range: 'pre' } });
+    document.getElementById('b2cKpis').innerHTML = b2cKpiCardsHtml(filtered, { interactive: true, day: 'today', wms: { ...b2cWmsWhOpts(), range: 'pre' } });
 
     // Table helpers
     const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color||'var(--text)'};font-size:.82rem">${fmt(n)}</td>`;
@@ -3310,7 +3358,7 @@
     const nm = document.getElementById('tmrNonmpCut'); if (nm) nm.textContent = opsConfig.nonmp_cutoff || '14:09';
     const sel = getSelectedWhs();
     const filtered = tomorrowRows().filter(r => inWhFilter(r.wh));
-    kEl.innerHTML = b2cKpiCardsHtml(filtered, { interactive: false, wms: { ...b2cWmsWhOpts(), range: 'post' } });
+    kEl.innerHTML = b2cKpiCardsHtml(filtered, { interactive: false, day: 'tomorrow', wms: { ...b2cWmsWhOpts(), range: 'post' } });
 
     const fmt = n => n.toLocaleString();
     const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color || 'var(--text)'};font-size:.82rem">${fmt(n || 0)}</td>`;
@@ -4722,11 +4770,10 @@
   fetchProductivity();
   setInterval(fetchProductivity, 5 * 60 * 1000);
 
-  // Overview dashboard reads all the in-memory data (b2c/b2b/shortage/jobs/
-  // productivity); refresh periodically so the landing page fills in as each
-  // source loads. Placed after the productivity vars above exist.
-  renderDashboard();
-  setInterval(renderDashboard, 8000);
+  // The customizable Dashboard tab was removed; B2C (Today's Order) is the
+  // landing view. showView sets the nav highlight, expands the B2C group, and
+  // shows the Report-Error FAB.
+  try { showView('b2c'); } catch (e) {}
 
   // ── Warehouse Picker ──────────────────────────────────────────────────
   function showWarehousePicker() {
@@ -5659,7 +5706,7 @@
     docRefresh();
   }
 
-  const VIEW_ORDER = ['overview', 'b2c', 'tomorrow', 'b2b', 'shortage', 'productivity', 'jobs', 'dash', 'help'];
+  const VIEW_ORDER = ['b2c', 'tomorrow', 'b2b', 'shortage', 'productivity', 'jobs', 'dash', 'help'];
   let _lastJobsSync = 0;
   function showView(v) {
     if (!document.getElementById('view-' + v)) return;
@@ -5682,7 +5729,6 @@
     // Toggle Report Error FAB (before renderTable so errors don't hide it)
     const fab = document.getElementById('fabReport');
     if (fab) fab.classList.toggle('visible', v === 'b2c');
-    if (v === 'overview') { try { renderDashboard(); } catch(e){} }
     if (v === 'tomorrow') { try { renderTomorrow(); } catch(e){} }
     if (v === 'labels') { const f = document.getElementById('toolsLabelFrame'); if (f && f.dataset.src && f.src !== f.dataset.src) f.src = f.dataset.src; }
     if (v === 'dash') { try { renderStats(); } catch(e){} try { initWarehouseFilter(); renderTable(); } catch(e){} }
@@ -5743,7 +5789,7 @@
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
     const t = e.target || {}, tag = t.tagName || '';
     if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || t.isContentEditable) return;
-    const map = { '1':'overview','2':'b2c','3':'b2b','4':'shortage','5':'productivity','6':'jobs','7':'dash','8':'labels','9':'help' };
+    const map = { '1':'b2c','2':'tomorrow','3':'b2b','4':'shortage','5':'productivity','6':'jobs','7':'dash','8':'labels','9':'help' };
     const v = map[e.key];
     if (v && document.getElementById('view-' + v)) { e.preventDefault(); showView(v); }
   });

@@ -325,6 +325,41 @@ async function performSync(isB2B) {
       }))
       .filter(o => o.order_id && o.wh);
 
+    // 4d. B2C brand breakdown per (wh, status, day) → { brand: {mp_only,
+    // mp_nextday, nonmp, total} }. Feeds the status-box drill-down. Tags:
+    // Priority MP (prioritymp) — split by whether it also carries Next Day
+    // (nextday) — and Non-MP (nonmp). `total` counts every B2C order for the
+    // brand in that status/day regardless of tag. Zero-seeded per warehouse ×
+    // status × day so a combo that empties out clears rather than going stale.
+    const brandAgg = {};   // wh -> status -> day -> { brand -> counts }
+    const B2C_COLS = [...new Set(Object.values(B2C_SM_AGG))];
+    const ensureWh = (wh) => {
+      if (brandAgg[wh]) return brandAgg[wh];
+      const m = (brandAgg[wh] = {});
+      for (const col of B2C_COLS) m[col] = { today: {}, tomorrow: {} };
+      return m;
+    };
+    for (const o of all) { if (o.warehouseCode) ensureWh(o.warehouseCode); }
+    for (const o of all) {
+      if (o.shipmentOrderTypeName !== 'B2C') continue;
+      const wh = o.warehouseCode, col = B2C_SM_AGG[o.shipmentOrderStatusId];
+      if (!wh || !col) continue;
+      const isMp = orderHasTag(o, 'prioritymp'), isNon = orderHasTag(o, 'nonmp'), isNext = orderHasTag(o, 'nextday');
+      const day = isTomorrowOrder(o, isMp) ? 'tomorrow' : 'today';
+      const bag = ensureWh(wh)[col][day];
+      const brand = o.clientDisplayName || '(no brand)';
+      const b = (bag[brand] = bag[brand] || { mp_only: 0, mp_nextday: 0, nonmp: 0, total: 0 });
+      b.total++;
+      if (isMp && isNext) b.mp_nextday++; else if (isMp) b.mp_only++;
+      if (isNon) b.nonmp++;
+    }
+    const brandNow = new Date().toISOString();
+    const b2cBrandRows = [];
+    for (const wh of Object.keys(brandAgg))
+      for (const col of B2C_COLS)
+        for (const day of ['today', 'tomorrow'])
+          b2cBrandRows.push({ wh, status: col, day, brands: brandAgg[wh][col][day], updated_at: brandNow });
+
     // 5. Upsert to Supabase — all tables every sync so nothing lags.
     const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co';
     const SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
@@ -343,6 +378,7 @@ async function performSync(isB2B) {
       sbUpsert('b2b_orders',      b2bOrders,      'order_id'),
       sbUpsert('shortage_data',   shortageRows,   'wh'),
       sbUpsert('shortage_orders', shortageOrders, 'order_id'),
+      sbUpsert('b2c_brand',       b2cBrandRows,   'wh,status,day'),
     ]);
 
     // 5b. B2C flow snapshot (feature 2): per warehouse, the current Open count
