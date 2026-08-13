@@ -1463,29 +1463,17 @@
         </div>
         <!-- Profile content (unlocked) -->
         <div id="sg-profile-content" style="display:none">
-          <!-- Role -->
-          <div class="theme-toggle-row" style="align-items:center">
-            <div>
-              <div style="font-size:.85rem;color:var(--text);font-weight:500">Role</div>
-              <div id="profileRoleSub" style="font-size:.75rem;color:var(--muted);margin-top:2px">Set user role</div>
-            </div>
-            <select id="profileRole" onchange="localStorage.setItem('userRole', this.value); applyRoleVisibility(this.value)" style="font-size:.8rem;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
-              <option value="picker">Picker</option>
-              <option value="packer">Packer</option>
-              <option value="cs">CS</option>
-              <option value="ops_manager">Ops Manager</option>
-            </select>
-            <span id="profileRoleServer" style="display:none;font-size:.82rem;font-weight:600;color:var(--primary)"></span>
-          </div>
-          <!-- Instance profile (named warehouse + tab scope for this device) -->
+          <!-- Instance profile — read-only. Changed only by logging out / back in
+               with a different profile login, or when a WMS ID is tied to the device. -->
           <div class="theme-toggle-row" style="align-items:center">
             <div>
               <div style="font-size:.85rem;color:var(--text);font-weight:500">Instance profile</div>
-              <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Limits this device to a warehouse + tab set (from the Manager Console)</div>
+              <div id="profileStatusSub" style="font-size:.75rem;color:var(--muted);margin-top:2px">Signed in via your profile login</div>
             </div>
-            <select id="instanceProfileSelect" onchange="onInstanceProfileChange(this.value)" style="font-size:.8rem;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;max-width:220px">
-              <option value="">None (default)</option>
-            </select>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span id="profileStatusName" style="font-size:.82rem;font-weight:600;color:var(--primary)"></span>
+              <button id="profileLogoutBtn" onclick="logoutProfile()" class="btn btn-sm" style="font-size:.78rem;padding:6px 12px;display:none">Log out</button>
+            </div>
           </div>
           <!-- Default Warehouse -->
           <div class="theme-toggle-row" style="align-items:center">
@@ -1505,32 +1493,6 @@
               <option value="LOCAD Umm Ramool FC">LOCAD Umm Ramool FC</option>
             </select>
           </div>
-          <!-- Operating hours & cut-offs -->
-          <div class="theme-toggle-row" style="align-items:flex-start;flex-direction:column;gap:10px">
-            <div>
-              <div style="font-size:.85rem;color:var(--text);font-weight:500">Operating hours &amp; cut-offs</div>
-              <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Local time. Drives the Tomorrow split, at-risk flags, and Open/Closed status.</div>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;width:100%;max-width:360px">
-              <label style="font-size:.75rem;color:var(--muted);display:flex;flex-direction:column;gap:3px">Open<input type="time" id="cfgOpStart" onchange="saveOpsConfig()" style="font-size:.82rem;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></label>
-              <label style="font-size:.75rem;color:var(--muted);display:flex;flex-direction:column;gap:3px">Close<input type="time" id="cfgOpEnd" onchange="saveOpsConfig()" style="font-size:.82rem;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></label>
-              <label style="font-size:.75rem;color:var(--muted);display:flex;flex-direction:column;gap:3px">Priority-MP cut-off<input type="time" id="cfgMpCut" onchange="saveOpsConfig()" style="font-size:.82rem;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></label>
-              <label style="font-size:.75rem;color:var(--muted);display:flex;flex-direction:column;gap:3px">Non-MP cut-off<input type="time" id="cfgNonmpCut" onchange="saveOpsConfig()" style="font-size:.82rem;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></label>
-            </div>
-            <div id="cfgSaveMsg" style="font-size:.72rem;color:var(--muted);min-height:14px"></div>
-          </div>
-          <!-- Carriers -->
-          <div style="margin-top:16px">
-            <div style="font-size:.72rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Carriers</div>
-            <div style="font-size:.75rem;color:var(--muted);margin-bottom:8px">Options for the “Collected By” dropdown on B2B orders</div>
-            <div style="display:flex;gap:6px;margin-bottom:8px">
-              <input type="text" id="carrierInput" placeholder="Add a carrier…" onkeydown="if(event.key==='Enter'){event.preventDefault();addCarrier();}"
-                style="flex:1;min-width:0;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:.8rem" />
-              <button onclick="addCarrier()" class="btn btn-primary btn-sm" style="font-size:.8rem;padding:6px 12px">Add</button>
-            </div>
-            <div id="carrierList"></div>
-          </div>
-
           <!-- Visible Tabs (collapsible) -->
           <div style="margin-top:16px">
             <div onclick="toggleTabsSection()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;font-size:.72rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:2px 0;user-select:none">
@@ -1604,23 +1566,29 @@
             </div>
           </div>
 
-          <!-- Slack Webhook -->
-          <div style="margin-top:16px;display:flex;flex-direction:column;gap:6px">
-            <div>
-              <div style="font-size:.85rem;color:var(--text);font-weight:500">Slack Webhook</div>
-              <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Post a message to Slack on every error submission</div>
-            </div>
-            <input type="url" id="slackWebhookInput" placeholder="https://hooks.slack.com/services/…"
-              oninput="saveSlackWebhook(this.value.trim())"
-              style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:.8rem" />
-            <div id="slackWebhookStatus" style="font-size:.75rem;color:var(--muted)"></div>
-          </div>
         </div>
       </div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary" onclick="saveSettings()">Save</button>
     </div>
+  </div>
+</div>
+
+<!-- ── PROFILE LOGIN GATE ── -->
+<!-- Shown on devices with no WMS identity and no active profile login. Opaque so
+     no data shows behind it. Dismissed by a successful profile login, or hidden
+     automatically once a WMS ID is tied to the device. -->
+<div id="profileLoginGate" style="display:none;position:fixed;inset:0;z-index:12000;background:var(--bg);align-items:center;justify-content:center;padding:20px">
+  <div style="width:100%;max-width:360px;text-align:center">
+    <img src="icons/locad-logo.png" alt="" style="height:30px;margin-bottom:18px;opacity:.9" onerror="this.style.display='none'">
+    <div style="font-size:1.15rem;font-weight:700;color:var(--text);margin-bottom:4px">Sign in to this device</div>
+    <div style="font-size:.8rem;color:var(--muted);margin-bottom:20px">Enter the profile username and password provided by your manager.</div>
+    <input id="profileLoginUser" type="text" placeholder="Profile username" autocomplete="username" style="width:100%;font-size:.9rem;padding:11px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);margin-bottom:10px">
+    <input id="profileLoginPass" type="password" placeholder="Password" autocomplete="current-password" style="width:100%;font-size:.9rem;padding:11px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
+    <div id="profileLoginErr" style="font-size:.78rem;color:var(--danger);margin-top:8px;display:none;min-height:16px"></div>
+    <button onclick="doProfileLogin()" class="btn btn-primary" style="width:100%;margin-top:16px;padding:11px;font-size:.9rem">Sign in</button>
+    <div style="font-size:.72rem;color:var(--muted);margin-top:16px">Devices signed in to WMS via the extension are scoped automatically — no login needed.</div>
   </div>
 </div>
 
@@ -2944,7 +2912,13 @@
   // dropdown, or widget can ever surface them. null = unrestricted (admin /
   // all-access, or identity not yet known). Seeded from the last session's cache
   // so there's no flash of all-warehouses before the fresh set resolves.
-  let _whAllow = (function () { try { const a = JSON.parse(localStorage.getItem('whAllowSet')); return Array.isArray(a) && a.length ? new Set(a) : null; } catch (e) { return null; } })();
+  let _whAllow = (function () {
+    try { const a = JSON.parse(localStorage.getItem('whAllowSet')); if (Array.isArray(a) && a.length) return new Set(a); } catch (e) {}
+    // No cached scope and no active profile login → show nothing until identity
+    // resolves (a WMS bridge or the login gate), so data never flashes pre-login.
+    try { if (!localStorage.getItem('instanceProfileId')) return new Set(); } catch (e) {}
+    return null;
+  })();
   function whAllowed(wh) { return !_whAllow || _whAllow.has(wh); }
   function tabAllowed(view) { return (!_profileTabs || _profileTabs.has(view)) && (!_roleTabs || _roleTabs.has(view)); }
   // The device's chosen instance profile (a named warehouse + tab scope). Stored
@@ -3515,16 +3489,13 @@
   const _whCodes = arr => (Array.isArray(arr) ? arr.map(x => (typeof x === 'string' ? x : (x && x.code))).filter(Boolean) : null);
   async function resolveWhAllow(id, bridgeWarehouses) {
     try {
-      // Instance profile first — it limits BOTH warehouses and tabs, and feeds
-      // the tab gate. null on either dimension = no restriction there.
-      const profile = await getInstanceProfile();
-      const profWhs = profile && Array.isArray(profile.warehouses) && profile.warehouses.length ? _whCodes(profile.warehouses) : null;
-      _profileTabs = profile && Array.isArray(profile.tabs) && profile.tabs.length ? new Set(profile.tabs) : null;
-      refreshTabVisibility();
-
-      // The user's own warehouse access (only for a signed-in WMS identity).
-      let userWhs = null;
+      // 1) A tied WMS identity always wins — the device is scoped to that user's
+      // own access (+ role tabs), and any profile login is ignored. This is the
+      // "or when the instance syncs and has a WMS ID" path.
       if (id && String(id).indexOf('wms:') === 0) {
+        hideProfileLogin();
+        _profileTabs = null; refreshTabVisibility();   // WMS uses role tabs (checkManagerAccess)
+        let userWhs = null;
         if (Array.isArray(bridgeWarehouses) && bridgeWarehouses.length) userWhs = _whCodes(bridgeWarehouses);
         else {
           const uid = String(id).slice(4);
@@ -3532,86 +3503,97 @@
           const w = rows && rows[0] && rows[0].warehouses;
           userWhs = (Array.isArray(w) && w.length) ? _whCodes(w) : null;
         }
-        // Intersection of the user's access and the instance profile (safest).
-        if (userWhs && profWhs) applyWhRestriction(userWhs.filter(w => profWhs.includes(w)), true);
-        else if (userWhs || profWhs) applyWhRestriction(userWhs || profWhs);
-        else clearWhRestriction();   // neither restricts → all warehouses
+        if (userWhs) applyWhRestriction(userWhs); else clearWhRestriction();
+        updateProfileStatusUI({ wms: true, label: _dashDeviceLabel });
         return;
       }
-      // Not tied to a user: the profile is the scope; with no profile, fall back
-      // to the manager-configured global default (warehouse_config['*']).
-      if (profWhs) applyWhRestriction(profWhs);
-      else applyDefaultScope();
+      // 2) No WMS identity → require a logged-in instance profile.
+      const profile = await getInstanceProfile();
+      if (profile) {
+        hideProfileLogin();
+        _profileTabs = (Array.isArray(profile.tabs) && profile.tabs.length) ? new Set(profile.tabs) : null;
+        refreshTabVisibility();
+        const profWhs = (Array.isArray(profile.warehouses) && profile.warehouses.length) ? _whCodes(profile.warehouses) : null;
+        if (profWhs) applyWhRestriction(profWhs); else clearWhRestriction();
+        updateProfileStatusUI({ profile });
+        return;
+      }
+      // 3) No WMS + no profile → block: show the login gate and hide all data
+      // (empty allow-set) until someone signs in.
+      _profileTabs = null; refreshTabVisibility();
+      applyWhRestriction([], true);
+      updateProfileStatusUI({});
+      showProfileLogin();
     } catch (e) { /* fail-open */ }
   }
 
-  // Instance-profile picker (Settings). A profile can carry a password (hashed),
-  // so it doubles as a lightweight credential for non-WMS users. Selecting a
-  // password-protected profile prompts for it; on success we store it per-device
-  // and re-resolve the warehouse + tab scope. Switching to "None" is free.
-  let _appProfiles = [];
+  // Instance-profile LOGIN. Non-WMS devices sign in with a profile username +
+  // password to get their warehouse + tab scope. The profile can't be changed
+  // from Settings — only by logging out and back in with a different profile, or
+  // when a WMS ID ties to the device (which takes over). sha256Hex verifies the
+  // entered password against the stored hash.
   async function sha256Hex(s) {
     try {
       const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(s)));
       return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
     } catch (e) { return null; }
   }
-  function promptInstancePassword(profile) {
-    return new Promise(resolve => {
-      const ov = document.createElement('div');
-      ov.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px';
-      const done = ok => { ov.remove(); document.removeEventListener('keydown', esc); resolve(ok); };
-      const esc = e => { if (e.key === 'Escape') done(false); };
-      ov.addEventListener('click', e => { if (e.target === ov) done(false); });
-      ov.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;max-width:360px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.5)">
-        <div style="font-size:1rem;font-weight:700;color:var(--text);margin-bottom:4px">Unlock "${escHtml(profile.name || profile.id)}"</div>
-        <div style="font-size:.78rem;color:var(--muted);margin-bottom:12px">Enter the profile password to apply it to this device.</div>
-        <input id="_ipwInput" type="password" placeholder="Password" autocomplete="off" style="width:100%;font-size:.9rem;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
-        <div id="_ipwErr" style="font-size:.75rem;color:var(--danger);margin-top:6px;display:none">Incorrect password</div>
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
-          <button id="_ipwCancel" style="font-size:.82rem;padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--text);cursor:pointer">Cancel</button>
-          <button id="_ipwOk" class="btn btn-primary" style="font-size:.82rem;padding:7px 14px">Unlock</button>
-        </div>
-      </div>`;
-      document.body.appendChild(ov);
-      document.addEventListener('keydown', esc);
-      const input = ov.querySelector('#_ipwInput'); input.focus();
-      const attempt = async () => {
-        const h = await sha256Hex(input.value);
-        if (h && h === profile.password_hash) done(true);
-        else { ov.querySelector('#_ipwErr').style.display = ''; input.select(); }
-      };
-      ov.querySelector('#_ipwOk').onclick = attempt;
-      ov.querySelector('#_ipwCancel').onclick = () => done(false);
-      input.addEventListener('keydown', e => { if (e.key === 'Enter') attempt(); });
-    });
+  function showProfileLogin() {
+    const g = document.getElementById('profileLoginGate');
+    if (g) { g.style.display = 'flex'; const u = document.getElementById('profileLoginUser'); if (u) setTimeout(() => u.focus(), 30); }
   }
-  async function onInstanceProfileChange(val) {
-    let prev = ''; try { prev = localStorage.getItem('instanceProfileId') || ''; } catch (e) {}
-    if (val) {
-      const p = _appProfiles.find(x => x.id === val);
-      if (p && p.password_hash) {
-        const ok = await promptInstancePassword(p);
-        if (!ok) { const el = document.getElementById('instanceProfileSelect'); if (el) el.value = prev; return; }
-      }
+  function hideProfileLogin() { const g = document.getElementById('profileLoginGate'); if (g) g.style.display = 'none'; }
+  function updateProfileStatusUI(state) {
+    const nameEl = document.getElementById('profileStatusName');
+    const subEl = document.getElementById('profileStatusSub');
+    const btn = document.getElementById('profileLogoutBtn');
+    if (!nameEl) return;
+    if (state.wms) {
+      nameEl.textContent = state.label || 'WMS user';
+      if (subEl) subEl.textContent = 'Signed in via WMS — scope from your account';
+      if (btn) btn.style.display = 'none';                 // WMS scope, nothing to log out of
+    } else if (state.profile) {
+      nameEl.textContent = state.profile.name || state.profile.username || state.profile.id;
+      if (subEl) subEl.textContent = 'Log out to switch to a different profile';
+      if (btn) btn.style.display = '';
+    } else {
+      nameEl.textContent = 'Not signed in';
+      if (subEl) subEl.textContent = 'Sign in with a profile to view data';
+      if (btn) btn.style.display = 'none';
     }
-    try { if (val) localStorage.setItem('instanceProfileId', val); else localStorage.removeItem('instanceProfileId'); } catch (e) {}
-    _instanceProfile = undefined;               // bust the cache
-    _profileTabs = null;                        // will be recomputed by resolveWhAllow
-    (async () => { const id = _dashDeviceId || await dashGetDeviceId(); resolveWhAllow(id); })();
   }
-  async function populateInstanceProfileSelect() {
-    const el = document.getElementById('instanceProfileSelect');
-    if (!el) return;
-    try { _appProfiles = await fetch(SB_URL + '/instance_profiles?select=id,name,password_hash&order=name.asc', { headers: SB_HDR }).then(r => r.ok ? r.json() : []); } catch (e) { _appProfiles = []; }
-    let cur = ''; try { cur = localStorage.getItem('instanceProfileId') || ''; } catch (e) {}
-    el.innerHTML = '<option value="">None (default)</option>' + _appProfiles.map(p => `<option value="${escHtml(p.id)}"${p.id === cur ? ' selected' : ''}>${escHtml(p.name || p.id)}${p.password_hash ? ' 🔒' : ''}</option>`).join('');
+  async function doProfileLogin() {
+    const uEl = document.getElementById('profileLoginUser'), pEl = document.getElementById('profileLoginPass'), errEl = document.getElementById('profileLoginErr');
+    const u = (uEl && uEl.value || '').trim(), p = (pEl && pEl.value) || '';
+    const fail = m => { if (errEl) { errEl.textContent = m; errEl.style.display = ''; } };
+    if (!u) return fail('Enter your profile username');
+    let rows = [];
+    try { rows = await fetch(SB_URL + '/instance_profiles?username=ilike.' + encodeURIComponent(u) + '&select=id,name,username,password_hash,warehouses,tabs', { headers: SB_HDR }).then(r => r.ok ? r.json() : []); } catch (e) {}
+    const prof = (rows || []).find(x => String(x.username || '').toLowerCase() === u.toLowerCase());
+    if (!prof) return fail('Unknown username');
+    if (prof.password_hash) {
+      const h = await sha256Hex(p);
+      if (h !== prof.password_hash) return fail('Incorrect password');
+    }
+    try { localStorage.setItem('instanceProfileId', prof.id); } catch (e) {}
+    _instanceProfile = undefined; _profileTabs = null;
+    if (errEl) errEl.style.display = 'none';
+    if (pEl) pEl.value = '';
+    hideProfileLogin();
+    const id = _dashDeviceId || await dashGetDeviceId();
+    resolveWhAllow(id);
+  }
+  async function logoutProfile() {
+    try { localStorage.removeItem('instanceProfileId'); } catch (e) {}
+    _instanceProfile = undefined; _profileTabs = null;
+    const id = _dashDeviceId || await dashGetDeviceId();
+    resolveWhAllow(id);   // → login gate when there's no WMS identity
   }
 
   checkManagerAccess();
   dashGetDeviceId().then(id => resolveWhAllow(id));
   fetchWarehouseCarriers();
-  populateInstanceProfileSelect();
+  ['profileLoginUser', 'profileLoginPass'].forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') doProfileLogin(); }); });
   // Re-check when the WMS identity arrives from the extension bridge — it can land
   // after dashGetDeviceId() already fell back to a local id, which would otherwise
   // leave the console link hidden for an Admin. The same message carries the
