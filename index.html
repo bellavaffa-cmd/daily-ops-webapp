@@ -2454,14 +2454,30 @@
   <!-- ── TOOLS VIEW ── -->
   <!-- ── CUSTOMER SUCCESS VIEW ── -->
   <div class="view" id="view-cs">
-    <div style="margin-bottom:16px">
-      <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Customer Success</div>
-      <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Brand &amp; customer-facing view</div>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      <div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Customer Success</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Today's B2C orders by brand · honors the operating cut-off (post-cut-off orders count for tomorrow)</div>
+      </div>
+      <select id="csWarehouse" onchange="onCsWarehouseChange(this.value)"
+        style="font-size:.8rem;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;max-width:240px"></select>
     </div>
-    <div class="card" style="padding:40px 24px;text-align:center">
-      <div style="font-size:2rem;margin-bottom:8px">🎧</div>
-      <div style="font-size:.95rem;font-weight:600;color:var(--text);margin-bottom:6px">Customer Success</div>
-      <div style="font-size:.82rem;color:var(--muted);max-width:420px;margin:0 auto">This tab is ready — tell me what it should show (e.g. orders/status by brand, at-risk or aging orders per client, SLA/cut-off tracking) and I'll build it in.</div>
+
+    <div id="csKpis" style="margin-bottom:16px"></div>
+
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Today's orders — per brand × warehouse <span id="csMatrixHint" style="font-weight:400;color:var(--muted);font-size:.75rem"></span></div>
+      <div id="csMatrix" style="overflow-x:auto"></div>
+    </div>
+
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Fulfilment progress — per brand <span style="font-weight:400;color:var(--muted);font-size:.75rem">· in packing (Ready to Pack + Packing) ÷ today's total</span></div>
+      <div id="csCompletion" style="overflow-x:auto"></div>
+    </div>
+
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Pending picking — per brand <span style="font-weight:400;color:var(--muted);font-size:.75rem">· Open + Ready to Pick</span></div>
+      <div id="csPending" style="overflow-x:auto"></div>
     </div>
   </div>
 
@@ -5072,6 +5088,113 @@
   fetchProductivity();
   setInterval(fetchProductivity, 5 * 60 * 1000);
 
+  // ── Customer Success — today's B2C orders by brand (from b2c_brand) ──────
+  // b2c_brand holds per-(wh,status,day,brand) counts; day='today' already honors
+  // the operating cut-off (post-cut-off arrivals are day='tomorrow').
+  let csData = [];
+  function onCsWarehouseChange(v) { try { localStorage.setItem('csWarehouseFilter', v); } catch (e) {} renderCustomerSuccess(); }
+  async function fetchCustomerSuccess() {
+    try {
+      const rows = await fetch(SB_URL + '/b2c_brand?day=eq.today&select=wh,status,brands', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      csData = (rows || []).filter(r => whAllowed(r.wh));
+    } catch (e) { csData = []; }
+    populateCsWarehouseSelect();
+    renderCustomerSuccess();
+  }
+  function populateCsWarehouseSelect() {
+    const el = document.getElementById('csWarehouse'); if (!el) return;
+    let sel = ''; try { sel = localStorage.getItem('csWarehouseFilter') || ''; } catch (e) {}
+    const whs = [...new Set(csData.map(r => r.wh).filter(Boolean))].sort();
+    const html = '<option value="">All warehouses</option>' + whs.map(w => `<option value="${escHtml(w)}">${escHtml(w)}</option>`).join('');
+    if (el.dataset.opts !== html) { el.innerHTML = html; el.dataset.opts = html; }
+    el.value = whs.includes(sel) ? sel : '';
+  }
+  function renderCustomerSuccess() {
+    if (!document.getElementById('csKpis')) return;
+    const fmt = n => Number(n || 0).toLocaleString();
+    let selWh = ''; try { selWh = localStorage.getItem('csWarehouseFilter') || ''; } catch (e) {}
+    const inScope = wh => (!selWh || wh === selWh);
+    const STAT = ['new', 'rfp', 'picking', 'picked', 'packing'];
+    const brandWh = {}, brandStatus = {}, whSet = new Set();
+    for (const r of csData) {
+      if (!inScope(r.wh)) continue;
+      whSet.add(r.wh);
+      const b = r.brands || {};
+      for (const brand of Object.keys(b)) {
+        const t = Number((b[brand] || {}).total || 0);
+        if (!t) continue;
+        (brandWh[brand] = brandWh[brand] || {})[r.wh] = (brandWh[brand][r.wh] || 0) + t;
+        const bs = brandStatus[brand] = brandStatus[brand] || { new: 0, rfp: 0, picking: 0, picked: 0, packing: 0 };
+        bs[r.status] = (bs[r.status] || 0) + t;
+      }
+    }
+    const brandTotal = br => STAT.reduce((a, s) => a + (brandStatus[br][s] || 0), 0);
+    const pendingOf = br => (brandStatus[br].new || 0) + (brandStatus[br].rfp || 0);
+    const packingOf = br => (brandStatus[br].picked || 0) + (brandStatus[br].packing || 0);
+    const brands = Object.keys(brandStatus).sort((a, b) => brandTotal(b) - brandTotal(a));
+    const whs = [...whSet].sort();
+
+    const totalToday = brands.reduce((a, br) => a + brandTotal(br), 0);
+    const totalPending = brands.reduce((a, br) => a + pendingOf(br), 0);
+    const totalPacking = brands.reduce((a, br) => a + packingOf(br), 0);
+    const overall = totalToday ? Math.round(totalPacking / totalToday * 100) : 0;
+    const kpi = (label, val, sub, color) => `<div class="card" style="padding:16px 18px">
+      <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${color};margin-bottom:8px">${label}</div>
+      <div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${val}</div>
+      <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${sub}</div></div>`;
+    document.getElementById('csKpis').innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
+      ${kpi("Today's Orders", fmt(totalToday), brands.length + ' brand' + (brands.length !== 1 ? 's' : ''), '#94ffa1')}
+      ${kpi('In Packing', overall + '%', fmt(totalPacking) + ' of today', '#5eead4')}
+      ${kpi('Pending Picking', fmt(totalPending), 'Open + Ready to Pick', '#fb923c')}</div>`;
+
+    const empty = '<div style="padding:16px 18px;color:var(--muted);font-size:.82rem">No orders today yet.</div>';
+    const th = (t, r) => `<th style="text-align:${r ? 'right' : 'left'};padding:10px 14px;font-weight:600;color:var(--muted);font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">${t}</th>`;
+    const tdN = (n, color, bold) => `<td style="padding:8px 14px;text-align:right;font-size:.82rem;color:${color || 'var(--text)'};${bold ? 'font-weight:700' : ''}">${fmt(n)}</td>`;
+
+    // 1) matrix: brand × warehouse
+    const mEl = document.getElementById('csMatrix');
+    const mh = document.getElementById('csMatrixHint'); if (mh) mh.textContent = selWh ? '· ' + selWh : (whs.length ? '· ' + whs.length + ' warehouses' : '');
+    if (!brands.length) { mEl.innerHTML = empty; }
+    else {
+      const cols = selWh ? [selWh] : whs;
+      mEl.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.82rem">
+        <thead><tr>${th('Brand')}${cols.map(w => th(w.replace(/^LOCAD /, ''), 1)).join('')}${th('Total', 1)}</tr></thead>
+        <tbody>${brands.map(br => `<tr style="border-top:1px solid var(--border)">
+          <td style="padding:8px 14px;color:var(--text);white-space:nowrap">${escHtml(br)}</td>
+          ${cols.map(w => tdN((brandWh[br] || {})[w] || 0, ((brandWh[br] || {})[w] ? 'var(--text)' : 'var(--muted)'))).join('')}
+          ${tdN(brandTotal(br), 'var(--text)', true)}
+        </tr>`).join('')}</tbody></table>`;
+    }
+
+    // 2) fulfilment progress per brand
+    const cEl = document.getElementById('csCompletion');
+    if (!brands.length) { cEl.innerHTML = empty; }
+    else {
+      const byRate = brands.slice().sort((a, b) => (packingOf(b) / (brandTotal(b) || 1)) - (packingOf(a) / (brandTotal(a) || 1)));
+      cEl.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.82rem">
+        <thead><tr>${th('Brand')}${th('Today', 1)}${th('In packing', 1)}${th('Progress', 1)}</tr></thead>
+        <tbody>${byRate.map(br => { const t = brandTotal(br), p = packingOf(br), pct = t ? Math.round(p / t * 100) : 0;
+          return `<tr style="border-top:1px solid var(--border)">
+            <td style="padding:8px 14px;color:var(--text);white-space:nowrap">${escHtml(br)}</td>
+            ${tdN(t)}${tdN(p, '#5eead4')}
+            <td style="padding:8px 14px;text-align:right;white-space:nowrap"><span style="display:inline-flex;align-items:center;gap:8px;justify-content:flex-end"><span style="width:70px;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;display:inline-block"><span style="display:block;height:100%;width:${pct}%;background:#5eead4"></span></span><b style="color:var(--text);min-width:34px;text-align:right">${pct}%</b></span></td>
+          </tr>`; }).join('')}</tbody></table>`;
+    }
+
+    // 3) pending picking per brand
+    const pEl = document.getElementById('csPending');
+    const byPending = brands.filter(br => pendingOf(br) > 0).sort((a, b) => pendingOf(b) - pendingOf(a));
+    if (!byPending.length) { pEl.innerHTML = '<div style="padding:16px 18px;color:var(--muted);font-size:.82rem">Nothing pending picking 🎉</div>'; }
+    else {
+      pEl.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.82rem">
+        <thead><tr>${th('Brand')}${th('Open', 1)}${th('Ready to Pick', 1)}${th('Pending', 1)}</tr></thead>
+        <tbody>${byPending.map(br => `<tr style="border-top:1px solid var(--border)">
+          <td style="padding:8px 14px;color:var(--text);white-space:nowrap">${escHtml(br)}</td>
+          ${tdN(brandStatus[br].new || 0, '#fb923c')}${tdN(brandStatus[br].rfp || 0, '#fcd34d')}${tdN(pendingOf(br), 'var(--text)', true)}
+        </tr>`).join('')}</tbody></table>`;
+    }
+  }
+
   // The customizable Dashboard tab was removed; B2C (Today's Order) is the
   // landing view. showView sets the nav highlight, expands the B2C group, and
   // shows the Report-Error FAB.
@@ -6032,6 +6155,7 @@
     const fab = document.getElementById('fabReport');
     if (fab) fab.classList.toggle('visible', v === 'b2c');
     if (v === 'tomorrow') { try { renderTomorrow(); } catch(e){} }
+    if (v === 'cs') { try { fetchCustomerSuccess(); } catch(e){} }
     if (v === 'labels') { const f = document.getElementById('toolsLabelFrame'); if (f && f.dataset.src && f.src !== f.dataset.src) f.src = f.dataset.src; }
     if (v === 'dash') { try { renderStats(); } catch(e){} try { initWarehouseFilter(); renderTable(); } catch(e){} }
     if (v === 'jobs') {
