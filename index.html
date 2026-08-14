@@ -1369,6 +1369,10 @@
         </button>
       </div>
     </div>
+    <button class="snav-btn" id="snav-btn-cs" onclick="showView('cs')">
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 14v-3a8 8 0 0116 0v3"/><path stroke-linecap="round" stroke-linejoin="round" d="M4 14a2 2 0 002 2h1v-5H6a2 2 0 00-2 2zM20 14a2 2 0 01-2 2h-1v-5h1a2 2 0 012 2z"/><path stroke-linecap="round" stroke-linejoin="round" d="M18 16v1a3 3 0 01-3 3h-3"/></svg>
+      Customer Success
+    </button>
     <button class="snav-btn" id="snav-btn-dash" onclick="showView('dash')">
       <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
       <span style="flex:1;text-align:left">Error Dashboard</span>
@@ -1546,6 +1550,13 @@
                 <div style="font-size:.85rem;color:var(--text);font-weight:500">Jobs</div>
                 <label class="toggle-switch">
                   <input type="checkbox" id="tabToggleJobs" onchange="applyTabVisibility()" checked />
+                  <span class="toggle-track"></span>
+                </label>
+              </div>
+              <div class="theme-toggle-row">
+                <div style="font-size:.85rem;color:var(--text);font-weight:500">Customer Success</div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="tabToggleCs" onchange="applyTabVisibility()" checked />
                   <span class="toggle-track"></span>
                 </label>
               </div>
@@ -2441,6 +2452,19 @@
   </div>
 
   <!-- ── TOOLS VIEW ── -->
+  <!-- ── CUSTOMER SUCCESS VIEW ── -->
+  <div class="view" id="view-cs">
+    <div style="margin-bottom:16px">
+      <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Customer Success</div>
+      <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Brand &amp; customer-facing view</div>
+    </div>
+    <div class="card" style="padding:40px 24px;text-align:center">
+      <div style="font-size:2rem;margin-bottom:8px">🎧</div>
+      <div style="font-size:.95rem;font-weight:600;color:var(--text);margin-bottom:6px">Customer Success</div>
+      <div style="font-size:.82rem;color:var(--muted);max-width:420px;margin:0 auto">This tab is ready — tell me what it should show (e.g. orders/status by brand, at-risk or aging orders per client, SLA/cut-off tracking) and I'll build it in.</div>
+    </div>
+  </div>
+
   <div class="view" id="view-labels">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:14px">
       <div>
@@ -2776,6 +2800,7 @@
     { key: 'packingErrorTabShortage', navId: 'snav-btn-shortage', view: 'shortage', toggleId: 'tabToggleShortage' },
     { key: 'packingErrorTabProductivity', navId: 'snav-btn-productivity', view: 'productivity', toggleId: 'tabToggleProductivity' },
     { key: 'packingErrorTabJobs',     navId: 'snav-btn-jobs',     view: 'jobs',     toggleId: 'tabToggleJobs'     },
+    { key: 'packingErrorTabCs',       navId: 'snav-btn-cs',       view: 'cs',       toggleId: 'tabToggleCs'       },
     { key: 'packingErrorTabDash',     navId: 'snav-btn-dash',     view: 'dash',     toggleId: 'tabToggleDash'     },
     { key: 'packingErrorTabLabels',   navId: 'snav-btn-labels',   view: 'labels',   toggleId: 'tabToggleLabels'   },
     { key: 'packingErrorTabHelp',     navId: 'snav-btn-help',     view: 'help',     toggleId: 'tabToggleHelp'     },
@@ -5983,7 +6008,7 @@
     docRefresh();
   }
 
-  const VIEW_ORDER = ['b2c', 'tomorrow', 'b2b', 'shortage', 'productivity', 'jobs', 'dash', 'help'];
+  const VIEW_ORDER = ['b2c', 'tomorrow', 'b2b', 'shortage', 'productivity', 'jobs', 'cs', 'dash', 'help'];
   let _lastJobsSync = 0;
   function showView(v) {
     if (!document.getElementById('view-' + v)) return;
