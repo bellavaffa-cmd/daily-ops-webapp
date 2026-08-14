@@ -418,6 +418,45 @@ async function performSync(isB2B) {
     const aggCount = (isB2B ? b2bRows : b2cRows).length;
     await broadcast({ ok: true, count: aggCount, b2bCount: b2bOrders.length, shortageCount: shortageOrders.length });
 
+    // 5c. B2C per-order rows (brand per order). Written after the broadcast so the
+    // dashboard isn't held up. Full-replace: upsert all current unshipped B2C
+    // orders (chunked), then delete any not touched this sync (shipped/cancelled).
+    try {
+      const syncIso = new Date().toISOString();
+      const b2cOrders = all
+        .filter(o => o.shipmentOrderTypeName === 'B2C' && B2C_SM_AGG[o.shipmentOrderStatusId])
+        .map(o => {
+          const isMp = orderHasTag(o, 'prioritymp');
+          return {
+            order_id:       String(o.code ?? o.identifier ?? ''),
+            wh:             o.warehouseCode,
+            status:         B2C_SM_AGG[o.shipmentOrderStatusId],
+            brand:          o.clientDisplayName || null,
+            created_at:     o.createdDateTime || o.shipmentOrderDate || null,
+            is_priority_mp: isMp,
+            is_nonmp:       orderHasTag(o, 'nonmp'),
+            is_next_day:    orderHasTag(o, 'nextday'),
+            is_tomorrow:    isTomorrowOrder(o, isMp),
+            updated_at:     syncIso
+          };
+        })
+        .filter(o => o.order_id && o.wh);
+      for (let i = 0; i < b2cOrders.length; i += 2000) {
+        const chunk = b2cOrders.slice(i, i + 2000);
+        const r = await fetch(`${SB_URL}/rest/v1/b2c_orders?on_conflict=order_id`, {
+          method: 'POST',
+          headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify(chunk)
+        });
+        if (!r.ok) throw new Error('b2c_orders upsert ' + r.status);
+      }
+      await fetch(`${SB_URL}/rest/v1/b2c_orders?updated_at=lt.${encodeURIComponent(syncIso)}`, {
+        method: 'DELETE', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY }
+      }).catch(() => {});
+    } catch (e) {
+      console.error('[WMS bg] b2c_orders error:', e.message);
+    }
+
     // 6. Productivity: Logiwa's authoritative user-performance report — per
     // user, per day, picked/packed order+item counts for the last 30 days.
     // Same host + token as the order fetch; failures here don't fail the sync.
