@@ -153,7 +153,7 @@
   <div class="card">
     <h2>📺 Instance profiles</h2>
     <p class="hint">Named warehouse + tab scopes for shared screens / phones without a WMS account. A device <b>signs in</b> with the profile's <b>login username + password</b> (the app shows a login gate); it can't be changed from Settings — only by logging out and back in, or when a WMS ID ties to the device (which takes over). Empty warehouse or tab list = no limit on that dimension.</p>
-    <table><thead><tr><th>Profile</th><th>Warehouses</th><th>Tabs</th><th></th></tr></thead><tbody id="profileRows"></tbody></table>
+    <table><thead><tr><th>Profile</th><th>Warehouses</th><th>Role</th><th></th></tr></thead><tbody id="profileRows"></tbody></table>
     <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
       <div class="row">
         <div style="flex:1;min-width:160px"><label>Profile name</label><input type="text" id="profName" placeholder="e.g. Manila Floor Screen"></div>
@@ -169,8 +169,7 @@
       </div>
       <label style="margin-top:10px;display:block">Warehouses <span class="hint">(none = all)</span></label>
       <div id="profWhChecks" class="row" style="flex-wrap:wrap;gap:8px 16px"></div>
-      <label style="margin-top:10px;display:block">Tabs <span class="hint">(none = all)</span></label>
-      <div id="profTabChecks" class="tabchecks"></div>
+      <p class="hint" style="margin-top:10px">Visible tabs are determined by the profile's <b>Role</b> (configured in “Tabs each role can see”). No role = all tabs.</p>
       <div class="row" style="margin-top:12px"><button class="btn primary" onclick="saveProfile()">Save profile</button><button class="btn" onclick="resetProfileForm()">Clear</button><span class="msg" id="profMsg"></span></div>
     </div>
   </div>
@@ -385,22 +384,19 @@
     const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(s)));
     return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
   }
-  function renderProfileChecks(selWh, selTabs) {
-    const wset = new Set(selWh || []), tset = new Set(selTabs || []);
+  function renderProfileChecks(selWh) {
+    const wset = new Set(selWh || []);
     $('profWhChecks').innerHTML = _whList.map(w =>
       `<label style="display:flex;align-items:center;gap:6px;color:var(--text);white-space:nowrap"><input type="checkbox" value="${esc(w)}"${wset.has(w) ? ' checked' : ''}> ${esc(w)}</label>`).join('') || '<span class="hint">No warehouses in the data yet.</span>';
-    $('profTabChecks').innerHTML = APP_TABS.map(([k, n]) => `<label><input type="checkbox" value="${k}"${tset.has(k) ? ' checked' : ''}> ${n}</label>`).join('');
   }
   async function loadProfiles() {
     renderProfileChecks();
-    _profiles = await sbGet('/instance_profiles?select=id,name,username,role,warehouses,tabs,password_hash&order=name.asc');
+    _profiles = await sbGet('/instance_profiles?select=id,name,username,role,warehouses,password_hash&order=name.asc');
     $('profileRows').innerHTML = _profiles.map(p => {
       const nw = Array.isArray(p.warehouses) && p.warehouses.length ? p.warehouses.length : 'all';
-      const nt = Array.isArray(p.tabs) && p.tabs.length ? p.tabs.length : 'all';
       const lock = p.password_hash ? ' 🔒' : '';
-      const meta = [p.username ? 'login: ' + esc(p.username) : '', p.role ? 'role: ' + esc(p.role) : ''].filter(Boolean).join(' · ');
-      const metaHtml = meta ? `<div class="hint" style="margin-top:2px">${meta}</div>` : '';
-      return `<tr><td>${esc(p.name || p.id)}${lock}${metaHtml}</td><td>${nw}</td><td>${nt}</td>
+      const meta = p.username ? `<div class="hint" style="margin-top:2px">login: ${esc(p.username)}</div>` : '';
+      return `<tr><td>${esc(p.name || p.id)}${lock}${meta}</td><td>${nw}</td><td>${p.role ? esc(p.role) : '—'}</td>
         <td style="text-align:right;white-space:nowrap"><button class="btn" onclick="editProfile('${esc(p.id)}')">Edit</button> <button class="btn" onclick="delProfile('${esc(p.id)}')">✕</button></td></tr>`;
     }).join('') || '<tr><td colspan="4" class="hint">No profiles yet.</td></tr>';
   }
@@ -412,18 +408,18 @@
     $('profRole').value = p.role || '';
     $('profPass').value = ''; $('profPassClear').checked = false;
     const whs = (Array.isArray(p.warehouses) ? p.warehouses : []).map(x => (typeof x === 'string' ? x : (x && x.code))).filter(Boolean);
-    renderProfileChecks(whs, Array.isArray(p.tabs) ? p.tabs : []);
+    renderProfileChecks(whs);
     flash('profMsg', 'Editing "' + (p.name || p.id) + '"' + (p.password_hash ? ' · password set (blank keeps it)' : ''), true);
   }
-  function resetProfileForm() { $('profEditId').value = ''; $('profName').value = ''; $('profUser').value = ''; $('profRole').value = ''; $('profPass').value = ''; $('profPassClear').checked = false; renderProfileChecks([], []); }
+  function resetProfileForm() { $('profEditId').value = ''; $('profName').value = ''; $('profUser').value = ''; $('profRole').value = ''; $('profPass').value = ''; $('profPassClear').checked = false; renderProfileChecks([]); }
   async function saveProfile() {
     const name = $('profName').value.trim();
     if (!name) { flash('profMsg', 'Enter a name', false); return; }
     let id = $('profEditId').value;
     if (!id) id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) + '-' + Date.now().toString(36).slice(-4);
     const warehouses = [...$('profWhChecks').querySelectorAll('input:checked')].map(c => c.value);
-    const tabs = [...$('profTabChecks').querySelectorAll('input:checked')].map(c => c.value);
-    const row = { id, name, username: $('profUser').value.trim() || null, role: $('profRole').value || null, warehouses, tabs, updated_at: new Date().toISOString() };
+    // Tabs are governed by the role now — clear any legacy explicit tab list.
+    const row = { id, name, username: $('profUser').value.trim() || null, role: $('profRole').value || null, warehouses, tabs: [], updated_at: new Date().toISOString() };
     // Password: "Remove" clears it; a typed value (re)sets it; blank keeps the
     // existing hash (omitted from the partial upsert).
     const pass = $('profPass').value;

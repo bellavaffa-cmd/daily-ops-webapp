@@ -2935,7 +2935,7 @@
     let pid = null; try { pid = localStorage.getItem('instanceProfileId'); } catch (e) {}
     if (!pid) { _instanceProfile = null; return null; }
     try {
-      const rows = await fetch(SB_URL + '/instance_profiles?id=eq.' + encodeURIComponent(pid) + '&select=id,name,role,warehouses,tabs', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      const rows = await fetch(SB_URL + '/instance_profiles?id=eq.' + encodeURIComponent(pid) + '&select=id,name,role,warehouses', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
       _instanceProfile = (rows && rows[0]) || null;
     } catch (e) { _instanceProfile = null; }
     return _instanceProfile;
@@ -3507,9 +3507,8 @@
       const profile = await getInstanceProfile();
       if (profile) {
         hideProfileLogin();
-        _profileTabs = (Array.isArray(profile.tabs) && profile.tabs.length) ? new Set(profile.tabs) : null;
-        // A profile can carry a role → apply that role's tab access (role_tabs),
-        // which intersects with any explicit profile tabs.
+        _profileTabs = null;   // tabs are governed by the profile's role (role_tabs)
+        // Apply the profile role's tab access (role_tabs). No role → all tabs.
         _roleTabs = null;
         if (profile.role) {
           try {
