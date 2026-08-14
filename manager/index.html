@@ -84,14 +84,6 @@
     <select id="whSelect" onchange="onWhChange()"></select>
   </div>
 
-  <!-- Default scope for unidentified (phone / shared / no-extension) instances — only under ★ All warehouses -->
-  <div class="card" id="defScopeCard" style="display:none">
-    <h2>📱 Default view for shared &amp; phone instances</h2>
-    <p class="hint">Instances not signed in to a WMS account (phones, shared screens, browsers without the extension) are limited to these warehouses. Leave all unchecked to show every warehouse.</p>
-    <div id="defScopeChecks" class="row" style="flex-wrap:wrap;gap:8px 16px"></div>
-    <div class="row" style="margin-top:12px"><button class="btn primary" onclick="saveDefaultScope()">Save</button><span class="msg" id="defScopeMsg"></span></div>
-  </div>
-
   <!-- 1 + 3: Cut-offs & operating hours -->
   <div class="card">
     <h2>⏱️ Cut-offs &amp; operating hours</h2>
@@ -172,6 +164,9 @@
         <div style="flex:1;min-width:200px"><label>Password <span class="hint">(blank = keep existing / no password)</span></label><input type="password" id="profPass" placeholder="Set or change password" autocomplete="new-password"></div>
         <label style="display:flex;align-items:center;gap:6px;color:var(--text);align-self:flex-end;padding-bottom:8px;white-space:nowrap"><input type="checkbox" id="profPassClear"> Remove password</label>
       </div>
+      <div class="row" style="margin-top:8px">
+        <div style="flex:1;min-width:160px"><label>Role <span class="hint">(applies that role's tab access on top of the tabs below)</span></label><select id="profRole"></select></div>
+      </div>
       <label style="margin-top:10px;display:block">Warehouses <span class="hint">(none = all)</span></label>
       <div id="profWhChecks" class="row" style="flex-wrap:wrap;gap:8px 16px"></div>
       <label style="margin-top:10px;display:block">Tabs <span class="hint">(none = all)</span></label>
@@ -246,6 +241,7 @@
     // role dropdowns
     $('userRole').innerHTML = ROLES.map(r => `<option>${r}</option>`).join('');
     $('tabRole').innerHTML = ROLES.map(r => `<option>${r}</option>`).join('');
+    $('profRole').innerHTML = '<option value="">— none —</option>' + ROLES.map(r => `<option>${r}</option>`).join('');
     // tab checkboxes
     $('tabChecks').innerHTML = APP_TABS.map(([k, n]) => `<label><input type="checkbox" value="${k}"> ${n}</label>`).join('');
     // warehouses from b2c_data
@@ -257,22 +253,6 @@
   }
   let _whList = [];
 
-  // ── Default scope for unidentified instances (stored on the '*' config row) ──
-  async function loadDefaultScope() {
-    const row = (await sbGet('/warehouse_config?wh=eq.' + encodeURIComponent('*') + '&select=default_warehouses'))[0] || {};
-    const set = new Set((Array.isArray(row.default_warehouses) ? row.default_warehouses : []).map(x => (typeof x === 'string' ? x : (x && x.code))).filter(Boolean));
-    $('defScopeChecks').innerHTML = _whList.map(w =>
-      `<label style="display:flex;align-items:center;gap:6px;color:var(--text);white-space:nowrap"><input type="checkbox" value="${esc(w)}"${set.has(w) ? ' checked' : ''}> ${esc(w)}</label>`).join('') ||
-      '<span class="hint">No warehouses in the data yet.</span>';
-  }
-  async function saveDefaultScope() {
-    try {
-      const codes = [...document.querySelectorAll('#defScopeChecks input:checked')].map(c => c.value);
-      await sbSend('POST', '/warehouse_config?on_conflict=wh',
-        [{ wh: '*', default_warehouses: codes, updated_at: new Date().toISOString() }], 'resolution=merge-duplicates,return=minimal');
-      flash('defScopeMsg', codes.length ? ('Saved ✓ — ' + codes.length + ' warehouse' + (codes.length === 1 ? '' : 's')) : 'Saved ✓ — all warehouses (unrestricted)', true);
-    } catch (e) { flash('defScopeMsg', 'Save failed', false); }
-  }
   let _allUsers = [];
   let _users = [];
   function userHasWh(u, wh) {
@@ -303,10 +283,6 @@
   function onWhChange() {
     CURRENT_WH = $('whSelect').value;
     populateUserPicker();
-    // The default-instance scope is a global ('*') setting — only editable there.
-    const isAll = CURRENT_WH === '*';
-    $('defScopeCard').style.display = isAll ? '' : 'none';
-    if (isAll) loadDefaultScope();
     loadTiming(); loadCarriers(); loadWebhooks(); loadRoles(); loadRoleTabs();
   }
 
@@ -417,13 +393,14 @@
   }
   async function loadProfiles() {
     renderProfileChecks();
-    _profiles = await sbGet('/instance_profiles?select=id,name,username,warehouses,tabs,password_hash&order=name.asc');
+    _profiles = await sbGet('/instance_profiles?select=id,name,username,role,warehouses,tabs,password_hash&order=name.asc');
     $('profileRows').innerHTML = _profiles.map(p => {
       const nw = Array.isArray(p.warehouses) && p.warehouses.length ? p.warehouses.length : 'all';
       const nt = Array.isArray(p.tabs) && p.tabs.length ? p.tabs.length : 'all';
       const lock = p.password_hash ? ' 🔒' : '';
-      const user = p.username ? `<div class="hint" style="margin-top:2px">login: ${esc(p.username)}</div>` : '';
-      return `<tr><td>${esc(p.name || p.id)}${lock}${user}</td><td>${nw}</td><td>${nt}</td>
+      const meta = [p.username ? 'login: ' + esc(p.username) : '', p.role ? 'role: ' + esc(p.role) : ''].filter(Boolean).join(' · ');
+      const metaHtml = meta ? `<div class="hint" style="margin-top:2px">${meta}</div>` : '';
+      return `<tr><td>${esc(p.name || p.id)}${lock}${metaHtml}</td><td>${nw}</td><td>${nt}</td>
         <td style="text-align:right;white-space:nowrap"><button class="btn" onclick="editProfile('${esc(p.id)}')">Edit</button> <button class="btn" onclick="delProfile('${esc(p.id)}')">✕</button></td></tr>`;
     }).join('') || '<tr><td colspan="4" class="hint">No profiles yet.</td></tr>';
   }
@@ -432,12 +409,13 @@
     $('profEditId').value = p.id;
     $('profName').value = p.name || '';
     $('profUser').value = p.username || '';
+    $('profRole').value = p.role || '';
     $('profPass').value = ''; $('profPassClear').checked = false;
     const whs = (Array.isArray(p.warehouses) ? p.warehouses : []).map(x => (typeof x === 'string' ? x : (x && x.code))).filter(Boolean);
     renderProfileChecks(whs, Array.isArray(p.tabs) ? p.tabs : []);
     flash('profMsg', 'Editing "' + (p.name || p.id) + '"' + (p.password_hash ? ' · password set (blank keeps it)' : ''), true);
   }
-  function resetProfileForm() { $('profEditId').value = ''; $('profName').value = ''; $('profUser').value = ''; $('profPass').value = ''; $('profPassClear').checked = false; renderProfileChecks([], []); }
+  function resetProfileForm() { $('profEditId').value = ''; $('profName').value = ''; $('profUser').value = ''; $('profRole').value = ''; $('profPass').value = ''; $('profPassClear').checked = false; renderProfileChecks([], []); }
   async function saveProfile() {
     const name = $('profName').value.trim();
     if (!name) { flash('profMsg', 'Enter a name', false); return; }
@@ -445,7 +423,7 @@
     if (!id) id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) + '-' + Date.now().toString(36).slice(-4);
     const warehouses = [...$('profWhChecks').querySelectorAll('input:checked')].map(c => c.value);
     const tabs = [...$('profTabChecks').querySelectorAll('input:checked')].map(c => c.value);
-    const row = { id, name, username: $('profUser').value.trim() || null, warehouses, tabs, updated_at: new Date().toISOString() };
+    const row = { id, name, username: $('profUser').value.trim() || null, role: $('profRole').value || null, warehouses, tabs, updated_at: new Date().toISOString() };
     // Password: "Remove" clears it; a typed value (re)sets it; blank keeps the
     // existing hash (omitted from the partial upsert).
     const pass = $('profPass').value;

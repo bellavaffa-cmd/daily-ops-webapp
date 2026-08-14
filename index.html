@@ -2935,7 +2935,7 @@
     let pid = null; try { pid = localStorage.getItem('instanceProfileId'); } catch (e) {}
     if (!pid) { _instanceProfile = null; return null; }
     try {
-      const rows = await fetch(SB_URL + '/instance_profiles?id=eq.' + encodeURIComponent(pid) + '&select=id,name,warehouses,tabs', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      const rows = await fetch(SB_URL + '/instance_profiles?id=eq.' + encodeURIComponent(pid) + '&select=id,name,role,warehouses,tabs', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
       _instanceProfile = (rows && rows[0]) || null;
     } catch (e) { _instanceProfile = null; }
     return _instanceProfile;
@@ -3482,17 +3482,6 @@
     try { localStorage.removeItem('whAllowSet'); } catch (e) {}
     try { refreshFromCache(true); } catch (e) {}
   }
-  // Instances not tied to a WMS user (phone / shared screen / no extension) use
-  // the manager-configured default scope — warehouse_config['*'].default_warehouses.
-  // Empty/unset → unrestricted (all warehouses).
-  async function applyDefaultScope() {
-    try {
-      const rows = await fetch(SB_URL + '/warehouse_config?wh=eq.' + encodeURIComponent('*') + '&select=default_warehouses', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
-      const def = rows && rows[0] && rows[0].default_warehouses;
-      const codes = Array.isArray(def) ? def.map(x => (typeof x === 'string' ? x : (x && x.code))).filter(Boolean) : [];
-      if (codes.length) applyWhRestriction(codes); else clearWhRestriction();
-    } catch (e) { clearWhRestriction(); }
-  }
   const _whCodes = arr => (Array.isArray(arr) ? arr.map(x => (typeof x === 'string' ? x : (x && x.code))).filter(Boolean) : null);
   async function resolveWhAllow(id, bridgeWarehouses) {
     try {
@@ -3501,7 +3490,7 @@
       // "or when the instance syncs and has a WMS ID" path.
       if (id && String(id).indexOf('wms:') === 0) {
         hideProfileLogin();
-        _profileTabs = null; refreshTabVisibility();   // WMS uses role tabs (checkManagerAccess)
+        _profileTabs = null; _roleTabs = null; refreshTabVisibility();   // WMS uses role tabs (checkManagerAccess sets them)
         let userWhs = null;
         if (Array.isArray(bridgeWarehouses) && bridgeWarehouses.length) userWhs = _whCodes(bridgeWarehouses);
         else {
@@ -3519,6 +3508,15 @@
       if (profile) {
         hideProfileLogin();
         _profileTabs = (Array.isArray(profile.tabs) && profile.tabs.length) ? new Set(profile.tabs) : null;
+        // A profile can carry a role → apply that role's tab access (role_tabs),
+        // which intersects with any explicit profile tabs.
+        _roleTabs = null;
+        if (profile.role) {
+          try {
+            const rt = await fetch(SB_URL + '/role_tabs?role=eq.' + encodeURIComponent(profile.role) + '&wh=eq.' + encodeURIComponent('*') + '&select=tabs', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+            if (rt[0] && Array.isArray(rt[0].tabs)) _roleTabs = new Set(rt[0].tabs);
+          } catch (e) {}
+        }
         refreshTabVisibility();
         const profWhs = (Array.isArray(profile.warehouses) && profile.warehouses.length) ? _whCodes(profile.warehouses) : null;
         if (profWhs) applyWhRestriction(profWhs); else clearWhRestriction();
@@ -3527,7 +3525,7 @@
       }
       // 3) No WMS + no profile → block: show the login gate and hide all data
       // (empty allow-set) until someone signs in.
-      _profileTabs = null; refreshTabVisibility();
+      _profileTabs = null; _roleTabs = null; refreshTabVisibility();
       applyWhRestriction([], true);
       updateProfileStatusUI({});
       showProfileLogin();
