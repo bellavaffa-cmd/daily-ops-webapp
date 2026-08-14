@@ -2459,8 +2459,12 @@
         <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Customer Success</div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Today's B2C orders by brand · honors the operating cut-off (post-cut-off orders count for tomorrow)</div>
       </div>
-      <select id="csWarehouse" onchange="onCsWarehouseChange(this.value)"
-        style="font-size:.8rem;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;max-width:240px"></select>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <select id="csBrand" onchange="onCsBrandChange(this.value)"
+          style="font-size:.8rem;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;max-width:220px"></select>
+        <select id="csWarehouse" onchange="onCsWarehouseChange(this.value)"
+          style="font-size:.8rem;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;max-width:240px"></select>
+      </div>
     </div>
 
     <div id="csKpis" style="margin-bottom:16px"></div>
@@ -5093,13 +5097,26 @@
   // the operating cut-off (post-cut-off arrivals are day='tomorrow').
   let csData = [];
   function onCsWarehouseChange(v) { try { localStorage.setItem('csWarehouseFilter', v); } catch (e) {} renderCustomerSuccess(); }
+  function onCsBrandChange(v) { try { localStorage.setItem('csBrandFilter', v); } catch (e) {} renderCustomerSuccess(); }
   async function fetchCustomerSuccess() {
     try {
       const rows = await fetch(SB_URL + '/b2c_brand?day=eq.today&select=wh,status,brands', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
       csData = (rows || []).filter(r => whAllowed(r.wh));
     } catch (e) { csData = []; }
     populateCsWarehouseSelect();
+    populateCsBrandSelect();
     renderCustomerSuccess();
+  }
+  function populateCsBrandSelect() {
+    const el = document.getElementById('csBrand'); if (!el) return;
+    let sel = ''; try { sel = localStorage.getItem('csBrandFilter') || ''; } catch (e) {}
+    const set = new Set();
+    for (const r of csData) { const b = r.brands || {}; for (const k of Object.keys(b)) if (Number((b[k] || {}).total || 0) > 0) set.add(k); }
+    const brands = [...set].sort();
+    const html = '<option value="">All brands</option>' + brands.map(b => `<option value="${escHtml(b)}">${escHtml(b)}</option>`).join('');
+    if (el.dataset.opts !== html) { el.innerHTML = html; el.dataset.opts = html; }
+    el.value = brands.includes(sel) ? sel : '';
+    if (!brands.includes(sel)) { try { localStorage.setItem('csBrandFilter', el.value); } catch (e) {} }
   }
   function populateCsWarehouseSelect() {
     const el = document.getElementById('csWarehouse'); if (!el) return;
@@ -5131,7 +5148,9 @@
     const brandTotal = br => STAT.reduce((a, s) => a + (brandStatus[br][s] || 0), 0);
     const pendingOf = br => (brandStatus[br].new || 0) + (brandStatus[br].rfp || 0);
     const packingOf = br => (brandStatus[br].picked || 0) + (brandStatus[br].packing || 0);
-    const brands = Object.keys(brandStatus).sort((a, b) => brandTotal(b) - brandTotal(a));
+    let selBrand = ''; try { selBrand = localStorage.getItem('csBrandFilter') || ''; } catch (e) {}
+    const allBrands = Object.keys(brandStatus).sort((a, b) => brandTotal(b) - brandTotal(a));
+    const brands = selBrand ? (brandStatus[selBrand] ? [selBrand] : []) : allBrands;   // brand filter narrows every section + the KPIs
     const whs = [...whSet].sort();
 
     const totalToday = brands.reduce((a, br) => a + brandTotal(br), 0);
