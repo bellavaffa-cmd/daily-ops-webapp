@@ -2372,7 +2372,7 @@
 
     <!-- 30-day daily × hourly heatmap -->
     <div class="card" style="padding:0;overflow:hidden;margin-top:16px">
-      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Hourly by day — last 30 days · <span id="prodHeatMode">Picked</span> orders</div>
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Hourly by day — last 30 days</div>
       <div id="prodHeatmap" style="overflow-x:auto;padding:12px 18px"></div>
     </div>
 
@@ -4699,7 +4699,7 @@
       });
       hourlyDaily = r.ok ? await r.json() : [];
     } catch (e) { hourlyDaily = []; }
-    try { renderHourlyHeatmap((localStorage.getItem('prodMode') === 'packed') ? 'packed' : 'picked'); } catch (e) {}
+    try { renderHourlyHeatmap(); } catch (e) {}
   }
 
   function populateProdWarehouseSelect() {
@@ -4861,40 +4861,46 @@
     const dEl = document.getElementById('prodDailyTable');
     if (dEl) dEl.innerHTML = tableHtml(days, 'label');
 
-    renderHourlyHeatmap(mode);
+    renderHourlyHeatmap();
   }
 
-  // 30-day daily × hourly heatmap: rows = days (newest first), cols = hours,
+  // 30-day daily × hourly heatmaps (Picked + Packed): rows = days (newest first), cols = hours,
   // cell = pick/pack order count for that hour, shaded by intensity. Follows the
   // picked/packed toggle. Data from the daily_hourly_productivity RPC.
-  function renderHourlyHeatmap(mode) {
+  function renderHourlyHeatmap() {
     const el = document.getElementById('prodHeatmap'); if (!el) return;
-    const key = mode === 'packed' ? 'packed_orders' : 'picked_orders';
-    const color = mode === 'packed' ? '#5eead4' : '#86efac';
-    const lbl = document.getElementById('prodHeatMode'); if (lbl) lbl.textContent = mode === 'packed' ? 'Packed' : 'Picked';
-    const fmt = n => Number(n || 0).toLocaleString();
     const data = hourlyDaily || [];
     if (!data.length) { el.innerHTML = '<div style="color:var(--muted);font-size:.82rem;padding:8px 2px">Collecting hourly history… this fills in as the extension keeps snapshotting (up to 30 days).</div>'; return; }
+    const fmt = n => Number(n || 0).toLocaleString();
     const dayKeys = [...new Set(data.map(d => d.day))].sort((a, b) => String(b).localeCompare(String(a)));  // newest first
     let minH = 23, maxH = 0;
-    data.forEach(d => { if (Number(d[key] || 0) > 0) { minH = Math.min(minH, d.hour); maxH = Math.max(maxH, d.hour); } });
+    data.forEach(d => { if (Number(d.picked_orders || 0) + Number(d.packed_orders || 0) > 0) { minH = Math.min(minH, d.hour); maxH = Math.max(maxH, d.hour); } });
     if (minH > maxH) { minH = 6; maxH = 20; }
     const hours = []; for (let h = minH; h <= maxH; h++) hours.push(h);
-    const map = {}; data.forEach(d => { map[d.day + '|' + d.hour] = Number(d[key] || 0); });
-    const max = data.reduce((m, d) => Math.max(m, Number(d[key] || 0)), 0) || 1;
+    const map = {}; data.forEach(d => { map[d.day + '|' + d.hour] = { p: Number(d.picked_orders || 0), k: Number(d.packed_orders || 0) }; });
+    const maxT = data.reduce((m, d) => Math.max(m, Number(d.picked_orders || 0) + Number(d.packed_orders || 0)), 0) || 1;
     const hourLbl = h => (h % 12 || 12) + (h < 12 ? 'a' : 'p');
-    const cell = v => {
-      const pct = v > 0 ? Math.round((0.15 + 0.85 * (v / max)) * 100) : 0;
-      const bg = v > 0 ? `color-mix(in srgb, ${color} ${pct}%, transparent)` : 'transparent';
-      const txt = v > max * 0.55 ? '#06120a' : 'var(--text)';
-      return `<td style="padding:1px" title="${v}"><div style="width:36px;height:22px;line-height:22px;text-align:center;font-size:.62rem;color:${v > 0 ? txt : 'var(--muted)'};background:${bg};border-radius:3px">${v > 0 ? fmt(v) : ''}</div></td>`;
+    // One cell per day×hour showing BOTH: picked (green) / packed (teal), tinted
+    // by total activity so busy hours stand out.
+    const cell = (p, k) => {
+      const t = p + k;
+      const op = t > 0 ? (0.06 + 0.34 * (t / maxT)).toFixed(3) : 0;
+      const inner = t > 0
+        ? `<span style="color:#86efac;font-weight:600">${fmt(p)}</span><span style="color:var(--muted)">/</span><span style="color:#5eead4;font-weight:600">${fmt(k)}</span>`
+        : '<span style="color:var(--muted)">·</span>';
+      return `<td style="padding:1px" title="Picked ${fmt(p)} · Packed ${fmt(k)}"><div style="min-width:56px;height:22px;line-height:22px;text-align:center;font-size:.62rem;background:rgba(148,255,161,${op});border-radius:3px">${inner}</div></td>`;
     };
-    let html = '<table style="border-collapse:collapse"><thead><tr><th style="position:sticky;left:0;background:var(--surface);z-index:1"></th>';
-    hours.forEach(h => html += `<th style="font-size:.6rem;color:var(--muted);font-weight:600;text-align:center;padding:2px 0">${hourLbl(h)}</th>`);
+    const legend = `<div style="display:flex;gap:14px;font-size:.7rem;color:var(--muted);margin:2px 0 10px">
+      <span><span style="display:inline-block;width:9px;height:9px;background:#86efac;border-radius:2px;margin-right:4px"></span>Picked</span>
+      <span><span style="display:inline-block;width:9px;height:9px;background:#5eead4;border-radius:2px;margin-right:4px"></span>Packed</span>
+      <span style="margin-left:auto">Each cell: <b style="color:#86efac">picked</b> / <b style="color:#5eead4">packed</b> orders</span>
+    </div>`;
+    let html = legend + '<table style="border-collapse:collapse"><thead><tr><th style="position:sticky;left:0;background:var(--surface);z-index:1"></th>';
+    hours.forEach(hr => html += `<th style="font-size:.6rem;color:var(--muted);font-weight:600;text-align:center;padding:2px 0">${hourLbl(hr)}</th>`);
     html += '</tr></thead><tbody>';
     dayKeys.forEach(day => {
       html += `<tr><td style="position:sticky;left:0;background:var(--surface);font-size:.66rem;color:var(--muted);white-space:nowrap;padding:0 8px 0 0;text-align:right">${dayLabel(day)}</td>`;
-      hours.forEach(h => { html += cell(map[day + '|' + h] || 0); });
+      hours.forEach(hr => { const c = map[day + '|' + hr] || { p: 0, k: 0 }; html += cell(c.p, c.k); });
       html += '</tr>';
     });
     html += '</tbody></table>';
