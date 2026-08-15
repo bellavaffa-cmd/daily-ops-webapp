@@ -3080,12 +3080,18 @@
   }
   function whSelectAll() { setSelectedWhs([]); }
 
+  let _whSearch = '';
   function whPanelHTML() {
     const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
     const { byCountry, other } = whGroups();
     const sel = new Set(getSelectedWhs());
     const box = (checked, indet) => `<input type="checkbox" ${checked ? 'checked' : ''}${indet ? ' data-indet="1"' : ''}>`;
-    let h = `<div class="wh-opt" data-act="all">${box(sel.size === 0)}<span style="font-weight:700">All Warehouses</span></div>
+    let h = `<div style="position:sticky;top:0;background:var(--surface);padding:6px 6px 5px;z-index:1">
+        <input type="text" class="wh-search" placeholder="Search warehouse…" value="${esc(_whSearch)}" autocomplete="off" spellcheck="false"
+          oninput="onWhSearch(this.value)" onclick="event.stopPropagation()"
+          style="width:100%;box-sizing:border-box;font-size:.8rem;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
+      </div>
+      <div class="wh-opt" data-act="all">${box(sel.size === 0)}<span style="font-weight:700">All Warehouses</span></div>
       <div style="height:1px;background:var(--border);margin:4px 2px"></div>`;
     const section = (country, whs) => {
       const n = whs.filter(w => sel.has(w)).length;
@@ -3124,8 +3130,30 @@
       if (p) {
         p.innerHTML = panel;
         p.querySelectorAll('input[data-indet]').forEach(i => { i.indeterminate = true; });
+        if (_whSearch) filterWhPanel(p);   // keep the live search applied across rebuilds
       }
     });
+  }
+  // Live warehouse search inside the B2C/B2B/Shortage/Jobs filter panels: hide
+  // non-matching warehouse rows and any country header left with no matches.
+  function onWhSearch(v) {
+    _whSearch = v || '';
+    document.querySelectorAll('.wh-panel').forEach(p => { if (p.style.display === 'block') filterWhPanel(p); });
+  }
+  function filterWhPanel(p) {
+    const q = _whSearch.trim().toLowerCase();
+    let country = null, hit = false;
+    const flush = () => { if (country) country.style.display = hit ? '' : 'none'; };
+    p.querySelectorAll('.wh-opt').forEach(r => {
+      if (r.dataset.act === 'all') { r.style.display = q ? 'none' : ''; return; }
+      if (r.classList.contains('wh-country')) { flush(); country = r; hit = false; return; }
+      if (r.classList.contains('wh-wh')) {
+        const m = !q || (r.dataset.wh || '').toLowerCase().includes(q);
+        r.style.display = m ? '' : 'none';
+        if (m) hit = true;
+      }
+    });
+    flush();
   }
   // Back-compat alias — existing call sites rebuild the filter UI through this.
   function populateViewWarehouseSelects() { renderWarehouseFilters(); }
@@ -3136,7 +3164,16 @@
     if (!p) return;
     const open = p.style.display === 'block';
     closeAllWhPanels();
-    if (!open) { renderWarehouseFilters(); p.style.display = 'block'; }
+    if (!open) { _whSearch = ''; renderWarehouseFilters(); p.style.display = 'block'; clampWhPanel(p); }
+  }
+  // Keep the dropdown fully on-screen: it's anchored right:0 to its button, so on
+  // narrow screens a left-positioned button can push it off the left edge. Nudge
+  // it horizontally so it fits the viewport regardless of button position.
+  function clampWhPanel(p) {
+    p.style.left = ''; p.style.right = '0'; p.style.transform = '';
+    const m = 8, r = p.getBoundingClientRect(), vw = window.innerWidth || document.documentElement.clientWidth;
+    if (r.left < m) p.style.transform = 'translateX(' + Math.ceil(m - r.left) + 'px)';
+    else if (r.right > vw - m) p.style.transform = 'translateX(' + Math.floor((vw - m) - r.right) + 'px)';
   }
   function closeAllWhPanels() {
     document.querySelectorAll('.wh-panel').forEach(p => p.style.display = 'none');
