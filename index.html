@@ -5093,6 +5093,59 @@
   fetchProductivity();
   setInterval(fetchProductivity, 5 * 60 * 1000);
 
+  // Searchable dropdowns: enhance a native <select> into a type-to-filter combobox.
+  // The <select> stays the source of truth (value + change event); we overlay a
+  // text input + a filterable list. Reads options live, so it works with selects
+  // that are populated/re-populated later.
+  function enhanceSelectSearch(select) {
+    if (!select || select.dataset.enhanced) return;
+    select.dataset.enhanced = '1';
+    const s = select.style;
+    const wrap = document.createElement('span');
+    wrap.style.cssText = 'position:relative;display:inline-block;box-sizing:border-box;vertical-align:middle;'
+      + (s.flex ? 'flex:' + s.flex + ';' : '') + (s.minWidth ? 'min-width:' + s.minWidth + ';' : '')
+      + (s.maxWidth ? 'max-width:' + s.maxWidth + ';' : '') + (s.width ? 'width:' + s.width + ';' : 'min-width:150px;');
+    select.parentNode.insertBefore(wrap, select);
+    wrap.appendChild(select); select.style.display = 'none';
+    const input = document.createElement('input');
+    input.type = 'text'; input.autocomplete = 'off'; input.spellcheck = false;
+    input.setAttribute('style', (select.getAttribute('style') || '').replace(/display\s*:\s*none;?/i, '') + ';width:100%;box-sizing:border-box;cursor:text');
+    wrap.appendChild(input);
+    const list = document.createElement('div');
+    list.style.cssText = 'position:absolute;z-index:60;top:calc(100% + 3px);left:0;min-width:100%;max-height:260px;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.4);display:none;white-space:nowrap';
+    wrap.appendChild(list);
+    let open = false, active = -1, items = [];
+    const opts = () => [...select.options].map(o => ({ value: o.value, label: o.textContent }));
+    const curLabel = () => { const o = select.options[select.selectedIndex]; return o ? o.textContent : ''; };
+    function render(filter) {
+      const f = (filter || '').trim().toLowerCase();
+      items = opts().filter(o => !f || o.label.toLowerCase().includes(f));
+      active = items.findIndex(o => o.value === select.value); if (active < 0) active = items.length ? 0 : -1;
+      list.innerHTML = items.length
+        ? items.map((o, i) => `<div data-i="${i}" style="padding:7px 11px;font-size:.8rem;color:var(--text);cursor:pointer;${o.value === select.value ? 'font-weight:600;' : ''}${i === active ? 'background:var(--surface2);' : ''}">${escHtml(o.label)}</div>`).join('')
+        : '<div style="padding:8px 11px;font-size:.78rem;color:var(--muted)">No matches</div>';
+      [...list.children].forEach(el => { if (el.dataset.i == null) return; el.onmousedown = e => { e.preventDefault(); choose(+el.dataset.i); }; el.onmouseenter = () => { active = +el.dataset.i; paint(); }; });
+    }
+    function paint() { [...list.children].forEach(el => { if (el.dataset.i != null) el.style.background = (+el.dataset.i === active ? 'var(--surface2)' : ''); }); const a = list.querySelector('[data-i="' + active + '"]'); if (a) a.scrollIntoView({ block: 'nearest' }); }
+    function choose(i) { const o = items[i]; if (!o) return; select.value = o.value; select.dispatchEvent(new Event('change', { bubbles: true })); close(); }
+    function openList() { open = true; list.style.display = 'block'; input.placeholder = curLabel() || 'Search…'; input.value = ''; render(''); }
+    function close() { open = false; list.style.display = 'none'; input.value = curLabel(); }
+    input.addEventListener('focus', openList);
+    input.addEventListener('input', () => render(input.value));
+    input.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); if (!open) return openList(); if (active < items.length - 1) active++; paint(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); if (active > 0) active--; paint(); }
+      else if (e.key === 'Enter') { e.preventDefault(); if (open && active >= 0) choose(active); else openList(); }
+      else if (e.key === 'Escape') { if (open) { e.preventDefault(); close(); input.blur(); } }
+    });
+    document.addEventListener('click', e => { if (open && !wrap.contains(e.target)) close(); });
+    const sync = () => { if (!open) input.value = curLabel(); };
+    select.addEventListener('change', sync);
+    try { new MutationObserver(sync).observe(select, { childList: true }); } catch (e) {}
+    input.value = curLabel();
+  }
+  ['csWarehouse', 'csBrand', 'productivityViewWarehouse', 'prodPersonFilter'].forEach(id => { const el = document.getElementById(id); if (el) enhanceSelectSearch(el); });
+
   // ── Customer Success — today's B2C orders by brand (from b2c_brand) ──────
   // b2c_brand holds per-(wh,status,day,brand) counts; day='today' already honors
   // the operating cut-off (post-cut-off arrivals are day='tomorrow').
