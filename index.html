@@ -5097,7 +5097,7 @@
   // b2c_brand holds per-(wh,status,day,brand) counts; day='today' already honors
   // the operating cut-off (post-cut-off arrivals are day='tomorrow').
   let csData = [];
-  function onCsWarehouseChange(v) { try { localStorage.setItem('csWarehouseFilter', v); } catch (e) {} renderCustomerSuccess(); }
+  function onCsWarehouseChange(v) { try { localStorage.setItem('csWarehouseFilter', v); } catch (e) {} populateCsBrandSelect(); renderCustomerSuccess(); }
   function onCsBrandChange(v) { try { localStorage.setItem('csBrandFilter', v); } catch (e) {} renderCustomerSuccess(); }
   async function fetchCustomerSuccess() {
     try {
@@ -5111,8 +5111,13 @@
   function populateCsBrandSelect() {
     const el = document.getElementById('csBrand'); if (!el) return;
     let sel = ''; try { sel = localStorage.getItem('csBrandFilter') || ''; } catch (e) {}
+    let selWh = ''; try { selWh = localStorage.getItem('csWarehouseFilter') || ''; } catch (e) {}
     const set = new Set();
-    for (const r of csData) { const b = r.brands || {}; for (const k of Object.keys(b)) if (Number((b[k] || {}).total || 0) > 0) set.add(k); }
+    for (const r of csData) {
+      if (selWh && r.wh !== selWh) continue;   // only brands present in the filtered warehouse
+      const b = r.brands || {};
+      for (const k of Object.keys(b)) if (Number((b[k] || {}).total || 0) > 0) set.add(k);
+    }
     const brands = [...set].sort();
     const html = '<option value="">All brands</option>' + brands.map(b => `<option value="${escHtml(b)}">${escHtml(b)}</option>`).join('');
     if (el.dataset.opts !== html) { el.innerHTML = html; el.dataset.opts = html; }
