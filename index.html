@@ -3649,6 +3649,7 @@
   // user's accessible warehouses, so lock the view to them here too.
   window.addEventListener('message', function (e) {
     if (e.source === window && e.data && e.data.type === 'dash-device-id' && e.data.id && String(e.data.id).indexOf('wms:') === 0) {
+      try { localStorage.setItem('lastWmsId', String(e.data.id)); } catch (x) {}   // cache for bridge-gap resilience
       checkManagerAccess(String(e.data.id));
       resolveWhAllow(String(e.data.id), e.data.warehouses);
     }
@@ -7652,6 +7653,16 @@ function fail(error) {
     // Wait briefly for the extension's id; fall back to a local one if absent.
     await Promise.race([ _dashDeviceIdP, new Promise(function(res){ setTimeout(res, 1500); }) ]);
     if(_dashDeviceId) return _dashDeviceId;
+    // Resilience: if this device was a WMS user before but the extension bridge
+    // didn't post an identity this load (e.g. the app tab wasn't refreshed after
+    // an extension update), reuse the cached WMS identity instead of dropping to
+    // the login gate. A profile login (if any) takes precedence over this.
+    try {
+      if(!localStorage.getItem('instanceProfileId')){
+        var lw=localStorage.getItem('lastWmsId');
+        if(lw && lw.indexOf('wms:')===0){ _dashDeviceId=lw; _dashDeviceIdResolve(_dashDeviceId); return _dashDeviceId; }
+      }
+    }catch(_){ }
     var id=null; try{ id=localStorage.getItem('dashDeviceId'); }catch(_){ }
     if(!id){ id='loc-'+Math.random().toString(36).slice(2,10)+Date.now().toString(36); try{ localStorage.setItem('dashDeviceId', id); }catch(_){ } }
     _dashDeviceId=id; return id;
