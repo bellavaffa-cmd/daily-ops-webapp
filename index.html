@@ -3598,11 +3598,13 @@
         _profileTabs = null; _roleTabs = null; refreshTabVisibility();   // WMS uses role tabs (checkManagerAccess sets them)
         let userWhs = null;
         const uid = String(loggedInWms).slice(4);
-        const rows = await fetch(SB_URL + '/wms_users?user_id=eq.' + encodeURIComponent(uid) + '&select=warehouses', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+        const rows = await fetch(SB_URL + '/wms_users?user_id=eq.' + encodeURIComponent(uid) + '&select=warehouses,name', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
         const w = rows && rows[0] && rows[0].warehouses;
+        const nm = rows && rows[0] && rows[0].name;
+        if (nm) _liveWmsLabel = _liveWmsLabel || nm;
         userWhs = (Array.isArray(w) && w.length) ? _whCodes(w) : null;
         if (userWhs) applyWhRestriction(userWhs); else clearWhRestriction();
-        updateProfileStatusUI({ wms: true, id: loggedInWms, label: _liveWmsLabel });
+        updateProfileStatusUI({ wms: true, id: loggedInWms, label: nm || _liveWmsLabel });
         return;
       }
       // 2) No committed WMS identity → require a logged-in instance profile.
@@ -3694,9 +3696,9 @@
     const btn = document.getElementById('profileLogoutBtn');
     if (!nameEl) return;
     if (state.wms) {
-      // Signed in via WMS → show the WMS ID (label as secondary context).
-      nameEl.textContent = state.id || 'WMS';
-      if (subEl) subEl.textContent = state.label ? ('WMS · ' + state.label) : 'Signed in via WMS';
+      // Signed in via WMS → show the user's name (fall back to the ID if unknown).
+      nameEl.textContent = state.label || state.id || 'WMS';
+      if (subEl) subEl.textContent = 'Signed in via WMS';
       if (btn) btn.style.display = '';
     } else if (state.profile) {
       nameEl.textContent = state.profile.name || state.profile.username || state.profile.id;
