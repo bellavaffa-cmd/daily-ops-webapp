@@ -2198,8 +2198,6 @@
           <button type="button" id="prodModePicked" class="prod-seg-btn active" onclick="onProdModeChange('picked')">Picked</button>
           <button type="button" id="prodModePacked" class="prod-seg-btn" onclick="onProdModeChange('packed')">Packed</button>
         </div>
-        <select id="prodPersonFilter" onchange="onProdPersonChange(this.value)"
-          style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;flex:0 1 170px;min-width:110px;max-width:190px"></select>
         <select id="productivityViewWarehouse" onchange="onProdWarehouseChange(this.value)"
           style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;flex:0 1 180px;min-width:120px;max-width:200px"></select>
       </div>
@@ -2226,6 +2224,13 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Person filter — scopes the KPIs + By person table -->
+    <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;margin-bottom:12px">
+      <span style="font-size:.75rem;color:var(--muted)">Person</span>
+      <select id="prodPersonFilter" onchange="onProdPersonChange(this.value)"
+        style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;flex:0 1 200px;min-width:130px;max-width:230px"></select>
     </div>
 
     <!-- By person (today) -->
