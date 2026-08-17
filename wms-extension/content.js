@@ -350,6 +350,64 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }).catch(function () {});
     } catch (e) { /* ignore */ }
   }
+  // Map a Logiwa roleName (a comma-separated list of Logiwa roles) → the
+  // dashboard's role. Highest tier wins: Admin > Manager > CS > Packer > Picker.
+  function mapLogiwaRole(roleName) {
+    const s = String(roleName || '').toLowerCase();
+    const has = t => s.indexOf(t) >= 0;
+    if (has('superuser') || has('system administrator') || has('[lc] tech')) return 'Admin';
+    if (has('warehouse manager') || has('country ops manager') || has('country ops senior') || has('customer success manager') || has('analytics') || has('finance')) return 'Manager';
+    if (has('supervisor')) return 'Supervisor';   // broad access but NO Manager Console
+    if (has('customer success') || has('country ops junior')) return 'CS';
+    // Supervisors/managers are already handled above, so a bare outbound/inbound/
+    // etc. here is a floor operator. Outbound → Packer; the rest → Picker.
+    if (has('outbound')) return 'Packer';
+    if (has('picker') || has('inbound') || has('inventory') || has('returns')) return 'Picker';
+    return null;   // [CLIENT] Report, Client type, etc. → no dashboard role
+  }
+  // Pull all Logiwa users + roles, map them, and upsert into user_roles for every
+  // user we can key by the app's id (matched to wms_users by email) — plus the
+  // current user. Throttled per-browser so it doesn't run on every WMS pageview.
+  function syncRolesFromLogiwa(tok, myUid, myEmail) {
+    const SB = 'https://hmpkjmnxoidesnnoecfm.supabase.co/rest/v1';
+    const KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
+    const SBH = { apikey: KEY, Authorization: 'Bearer ' + KEY };
+    chrome.storage.local.get(['roleSyncAt'], function (r) {
+      if (Date.now() - ((r && r.roleSyncAt) || 0) < 3 * 60 * 60 * 1000) return;   // at most every 3h
+      (async function () {
+        try {
+          const lr = await fetch('https://mywmsquery.logiwa.com/api/user/list/i/0/s/5000', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: '{}' });
+          if (!lr.ok) return;
+          const users = ((await lr.json()).data) || [];
+          if (!users.length) return;
+          const roleByEmail = {};
+          for (const u of users) {
+            if (String(u.userStatusName || '') !== 'Active') continue;   // skip inactive
+            const em = String(u.email || '').toLowerCase(); if (!em) continue;
+            const role = mapLogiwaRole(u.roleName);
+            if (role) roleByEmail[em] = role;   // duplicate email → last wins
+          }
+          const wr = await fetch(SB + '/wms_users?select=user_id,email', { headers: SBH });
+          const wu = wr.ok ? (await wr.json()) : [];
+          const now = new Date().toISOString();
+          const rows = [], seen = {};
+          for (const w of wu) {
+            const em = String(w.email || '').toLowerCase();
+            const role = em && roleByEmail[em];
+            if (role && w.user_id && !seen[w.user_id]) { seen[w.user_id] = 1; rows.push({ user_id: w.user_id, wh: '*', role: role, updated_at: now }); }
+          }
+          if (myUid && myEmail) {   // ensure the current user is covered even if not yet in wms_users
+            const role = roleByEmail[String(myEmail).toLowerCase()];
+            if (role && !seen[myUid]) rows.push({ user_id: myUid, wh: '*', role: role, updated_at: now });
+          }
+          if (rows.length) {
+            await fetch(SB + '/user_roles?on_conflict=user_id,wh', { method: 'POST', headers: Object.assign({}, SBH, { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(rows) });
+          }
+          chrome.storage.local.set({ roleSyncAt: Date.now() });
+        } catch (e) { /* ignore */ }
+      })();
+    });
+  }
   try {
     const tok = localStorage.getItem('token');
     const p = tok && decodePayload(tok);
@@ -370,6 +428,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           body: JSON.stringify([{ user_id: uid, name: cust.name, email: cust.email || null, updated_at: new Date().toISOString() }])
         }).catch(function () {});
       } catch (e) {}
+      try { syncRolesFromLogiwa(tok, uid, cust.email); } catch (e) {}   // WMS → dashboard role sync (throttled)
       return;                                // captured + registered — done
     }
   } catch (e) { /* ignore */ }

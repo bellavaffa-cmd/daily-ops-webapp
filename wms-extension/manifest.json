@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WMS → Report Error",
-  "version": "3.9",
+  "version": "3.10",
   "description": "Auto-detects WMS packing orders and opens the Daily Ops report form. Auto-triggers when a carrier/AWB error appears.",
   "content_scripts": [
     {
