@@ -619,6 +619,9 @@
       justify-content: center;
     }
     .modal-overlay.open { display: flex; }
+    /* Settings opens near the top rather than vertically centered (can be tall). */
+    #settingsModal { align-items: flex-start; overflow-y: auto; }
+    #settingsModal .modal { margin-top: 5vh; }
 
     /* ── Extension mode: full-page report form (no dashboard behind it) ── */
     body.ext-mode .modal-overlay {
