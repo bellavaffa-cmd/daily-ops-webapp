@@ -2986,6 +2986,14 @@
     return _instanceProfile;
   }
   let b2cFlow = [];       // b2c_flow_snapshot rows — B2C new-orders inflow (inflow_1h)
+  let b2cMpNextday = {};  // b2c_brand rollup: [day][wh][status] = count of Priority-MP orders also tagged Next Day
+  // Sum the MP+Next-Day count over a set of warehouses per status, for a given day.
+  function mpNextdayForStatuses(day, whList) {
+    const out = { new: 0, rfp: 0, picking: 0, picked: 0, packing: 0 };
+    const dm = b2cMpNextday[day] || {};
+    (whList || []).forEach(wh => { const sm = dm[wh]; if (!sm) return; for (const k in out) out[k] += Number(sm[k] || 0); });
+    return out;
+  }
   let b2cPackSnaps = [];  // productivity_snapshot rows — cumulative packed_orders for the hourly packing rate
 
   // ── Exclude-from-total toggles (B2C / B2B KPI status boxes) ─────────────
@@ -3213,9 +3221,11 @@
     const pct   = (n, d) => d ? (n / d * 100).toFixed(1) + '%' : '—';
 
     const tagSum   = c => filtered.reduce((a, r) => a + (r[c] || 0), 0);
-    const mpOf     = k => ({ nonmp: tagSum(k + '_nonmp'), prioritymp: tagSum(k + '_prioritymp') });
+    const mpN      = opts.mpNextday || {};   // { status: count of MP orders also tagged Next Day }
+    const mpOf     = k => ({ nonmp: tagSum(k + '_nonmp'), prioritymp: tagSum(k + '_prioritymp'), mpNextday: Number(mpN[k] || 0) });
     const totNonmp = B2C_KEYS.reduce((a, k) => b2cExcl.has(k) ? a : a + tagSum(k + '_nonmp'), 0);
     const totPrio  = B2C_KEYS.reduce((a, k) => b2cExcl.has(k) ? a : a + tagSum(k + '_prioritymp'), 0);
+    const totMpN   = B2C_KEYS.reduce((a, k) => b2cExcl.has(k) ? a : a + Number(mpN[k] || 0), 0);
 
     const statuses = [
       { key: 'new',     label: 'Open',            count: tot.new,     color: '#fb923c', ...mpOf('new') },
@@ -3223,7 +3233,7 @@
       { key: 'picking', label: 'Picking Started', count: tot.picking, color: '#93c5fd', ...mpOf('picking') },
       { key: 'picked',  label: 'Ready to Pack',   count: tot.picked,  color: '#86efac', ...mpOf('picked') },
       { key: 'packing', label: 'Packing Started', count: tot.packing, color: '#c4b5fd', ...mpOf('packing') },
-      { key: 'total',   label: 'Total Orders',    count: total,       color: 'var(--text)', nonmp: totNonmp, prioritymp: totPrio },
+      { key: 'total',   label: 'Total Orders',    count: total,       color: 'var(--text)', nonmp: totNonmp, prioritymp: totPrio, mpNextday: totMpN },
     ];
 
     // WMS deep-link options: warehouse filter + created-date range. The caller
@@ -3257,6 +3267,7 @@
           ${subtitle ? `<div style="font-size:.72rem;color:var(--muted);margin-top:5px">${subtitle}</div>` : ''}
           <div style="font-size:.82rem;margin-top:6px;display:flex;flex-direction:column;gap:2px;color:var(--muted)">
             <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Priority MP', { ..._whOpts, ..._cdMp })}" target="_blank" title="Open Priority MP in WMS" style="text-decoration:none;color:inherit;width:fit-content">MP <b style="color:#c084fc">${fmt(s.prioritymp || 0)}</b></a>
+            <span title="Priority MP orders also tagged Next Day" style="width:fit-content;padding-left:12px">↳ Next Day <b style="color:#f0abfc">${fmt(s.mpNextday || 0)}</b></span>
             <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Non-MP', { ..._whOpts, ..._cdNon })}" target="_blank" title="Open Non-MP in WMS" style="text-decoration:none;color:inherit;width:fit-content">Non-MP <b style="color:var(--text)">${fmt(s.nonmp || 0)}</b></a>
             <span title="Orders tagged with neither MP nor Non-MP (WMS has no filter for this — its tag filter is include-only)" style="width:fit-content">Others <b style="color:#94a3b8">${fmt(Math.max(0, (s.count || 0) - (s.nonmp || 0) - (s.prioritymp || 0)))}</b></span>
           </div>
@@ -3374,7 +3385,7 @@
     const fmt   = n => n.toLocaleString();
 
     renderB2CRiskBanner(filtered);
-    document.getElementById('b2cKpis').innerHTML = b2cKpiCardsHtml(filtered, { interactive: true, day: 'today', wms: { ...b2cWmsWhOpts(), range: 'pre' } });
+    document.getElementById('b2cKpis').innerHTML = b2cKpiCardsHtml(filtered, { interactive: true, day: 'today', mpNextday: mpNextdayForStatuses('today', filtered.map(r => r.wh)), wms: { ...b2cWmsWhOpts(), range: 'pre' } });
 
     // Table helpers
     const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color||'var(--text)'};font-size:.82rem">${fmt(n)}</td>`;
@@ -3456,7 +3467,7 @@
     const nm = document.getElementById('tmrNonmpCut'); if (nm) nm.textContent = opsConfig.nonmp_cutoff || '14:09';
     const sel = getSelectedWhs();
     const filtered = tomorrowRows().filter(r => inWhFilter(r.wh));
-    kEl.innerHTML = b2cKpiCardsHtml(filtered, { interactive: false, day: 'tomorrow', wms: { ...b2cWmsWhOpts(), range: 'post' } });
+    kEl.innerHTML = b2cKpiCardsHtml(filtered, { interactive: false, day: 'tomorrow', mpNextday: mpNextdayForStatuses('tomorrow', filtered.map(r => r.wh)), wms: { ...b2cWmsWhOpts(), range: 'post' } });
 
     const fmt = n => n.toLocaleString();
     const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color || 'var(--text)'};font-size:.82rem">${fmt(n || 0)}</td>`;
@@ -3774,9 +3785,21 @@
     const modeEl = document.getElementById('b2cDataMode');
     if (modeEl && !silent) { modeEl.textContent = 'Loading…'; modeEl.style.color = 'var(--muted)'; }
     try {
-      const res = await fetch(SB_URL + '/b2c_data?select=*&order=country.asc,wh.asc', { headers: SB_HDR });
+      const [res, brandRes] = await Promise.all([
+        fetch(SB_URL + '/b2c_data?select=*&order=country.asc,wh.asc', { headers: SB_HDR }),
+        fetch(SB_URL + '/b2c_brand?select=wh,status,day,brands', { headers: SB_HDR }).catch(() => null)
+      ]);
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const rows = await res.json();
+      // Build the MP+Next-Day per-(day,wh,status) map from b2c_brand.
+      try {
+        const brandRows = brandRes && brandRes.ok ? await brandRes.json() : [];
+        b2cMpNextday = {};
+        for (const r of brandRows) {
+          let n = 0; const b = r.brands || {}; for (const k in b) n += Number((b[k] || {}).mp_nextday || 0);
+          ((b2cMpNextday[r.day] = b2cMpNextday[r.day] || {})[r.wh] = b2cMpNextday[r.day][r.wh] || {})[r.status] = n;
+        }
+      } catch (e) { b2cMpNextday = {}; }
       if (rows && rows.length) {
         // Split each status into TODAY (open − tomorrow) and TOMORROW (orders
         // that dropped after their cut-off, computed by the sync). The primary
