@@ -1414,6 +1414,42 @@
 <div class="modal-overlay" id="settingsModal">
   <div class="modal">
     <h3>⚙️ Settings</h3>
+    <!-- Signed-in banner (below the title): user name + log out to its right -->
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:-6px 0 16px;padding-bottom:14px;border-bottom:1px solid var(--border)">
+      <div style="min-width:0">
+        <div style="font-size:.72rem;color:var(--muted)">Signed in as</div>
+        <div id="profileStatusName" style="font-size:.95rem;font-weight:700;color:var(--primary);word-break:break-word"></div>
+        <div id="profileStatusSub" style="font-size:.72rem;color:var(--muted);margin-top:1px">—</div>
+      </div>
+      <button id="profileLogoutBtn" onclick="logoutProfile()" class="btn btn-sm" style="font-size:.78rem;padding:6px 14px;display:none;flex-shrink:0">Log out</button>
+    </div>
+    <!-- Profile (non-collapsible, above Looks) -->
+    <div class="settings-group open" id="sg-profile">
+      <div class="settings-group-header" style="cursor:default">Profile</div>
+      <div class="settings-group-body">
+        <div id="sg-profile-content">
+          <!-- Default Warehouse -->
+          <div class="theme-toggle-row" style="align-items:center">
+            <div>
+              <div style="font-size:.85rem;color:var(--text);font-weight:500">Default Warehouse</div>
+              <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Pre-fills the warehouse field on error reports</div>
+            </div>
+            <select id="settingsDefaultWarehouse" onchange="localStorage.setItem('defaultWarehouse', this.value)" style="font-size:.8rem;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
+              <option value="">None</option>
+              <option value="LOCAD Bekasi FC">LOCAD Bekasi FC</option>
+              <option value="LOCAD Cabuyao (LISP) FC">LOCAD Cabuyao (LISP) FC</option>
+              <option value="LOCAD Hicom FC">LOCAD Hicom FC</option>
+              <option value="LOCAD Joo Koon FC (SG-JOO)">LOCAD Joo Koon FC (SG-JOO)</option>
+              <option value="LOCAD Lat Krabang FC">LOCAD Lat Krabang FC</option>
+              <option value="LOCAD Mesquite (TX-015) FC">LOCAD Mesquite (TX-015) FC</option>
+              <option value="LOCAD Santa Fe Springs FC (US-SAN)">LOCAD Santa Fe Springs FC</option>
+              <option value="LOCAD Umm Ramool FC">LOCAD Umm Ramool FC</option>
+            </select>
+          </div>
+
+        </div>
+      </div>
+    </div>
     <div class="settings-group" id="sg-looks">
       <div class="settings-group-header" onclick="toggleSettingsGroup('sg-looks')">
         Looks
@@ -1445,127 +1481,6 @@
               <span class="toggle-track"></span>
             </label>
           </div>
-        </div>
-      </div>
-    </div>
-    <div class="settings-group" id="sg-profile">
-      <div class="settings-group-header" onclick="openProfileSettings()">
-        Profile
-        <svg class="settings-group-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="settings-group-body">
-        <div id="sg-profile-content">
-          <!-- Instance session — shows whether this device is signed in via a WMS
-               ID (shows the ID) or an instance profile (shows the profile name).
-               Log out here to switch. -->
-          <div class="theme-toggle-row" style="align-items:center">
-            <div>
-              <div style="font-size:.85rem;color:var(--text);font-weight:500">Signed in as</div>
-              <div id="profileStatusSub" style="font-size:.75rem;color:var(--muted);margin-top:2px">—</div>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <span id="profileStatusName" style="font-size:.82rem;font-weight:600;color:var(--primary);word-break:break-all;text-align:right"></span>
-              <button id="profileLogoutBtn" onclick="logoutProfile()" class="btn btn-sm" style="font-size:.78rem;padding:6px 12px;display:none">Log out</button>
-            </div>
-          </div>
-          <!-- Default Warehouse -->
-          <div class="theme-toggle-row" style="align-items:center">
-            <div>
-              <div style="font-size:.85rem;color:var(--text);font-weight:500">Default Warehouse</div>
-              <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Pre-fills the warehouse field on error reports</div>
-            </div>
-            <select id="settingsDefaultWarehouse" onchange="localStorage.setItem('defaultWarehouse', this.value)" style="font-size:.8rem;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
-              <option value="">None</option>
-              <option value="LOCAD Bekasi FC">LOCAD Bekasi FC</option>
-              <option value="LOCAD Cabuyao (LISP) FC">LOCAD Cabuyao (LISP) FC</option>
-              <option value="LOCAD Hicom FC">LOCAD Hicom FC</option>
-              <option value="LOCAD Joo Koon FC (SG-JOO)">LOCAD Joo Koon FC (SG-JOO)</option>
-              <option value="LOCAD Lat Krabang FC">LOCAD Lat Krabang FC</option>
-              <option value="LOCAD Mesquite (TX-015) FC">LOCAD Mesquite (TX-015) FC</option>
-              <option value="LOCAD Santa Fe Springs FC (US-SAN)">LOCAD Santa Fe Springs FC</option>
-              <option value="LOCAD Umm Ramool FC">LOCAD Umm Ramool FC</option>
-            </select>
-          </div>
-          <!-- Visible Tabs (collapsible) -->
-          <div style="margin-top:16px">
-            <div onclick="toggleTabsSection()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;font-size:.72rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:2px 0;user-select:none">
-              <span>Visible Tabs</span>
-              <svg id="tabsSectionChevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition:transform .15s"><polyline points="6 9 12 15 18 9"/></svg>
-            </div>
-            <div id="tabsSectionBody" style="display:none;margin-top:4px">
-              <div class="theme-toggle-row">
-                <div style="font-size:.85rem;color:var(--text);font-weight:500">Error Dashboard</div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="tabToggleDash" onchange="applyTabVisibility()" />
-                  <span class="toggle-track"></span>
-                </label>
-              </div>
-              <div class="theme-toggle-row">
-                <div style="font-size:.85rem;color:var(--text);font-weight:500">Today's Order</div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="tabToggleB2c" onchange="applyTabVisibility()" checked />
-                  <span class="toggle-track"></span>
-                </label>
-              </div>
-              <div class="theme-toggle-row">
-                <div style="font-size:.85rem;color:var(--text);font-weight:500">Tomorrow's Order</div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="tabToggleTomorrow" onchange="applyTabVisibility()" checked />
-                  <span class="toggle-track"></span>
-                </label>
-              </div>
-              <div class="theme-toggle-row">
-                <div style="font-size:.85rem;color:var(--text);font-weight:500">B2B Dashboard</div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="tabToggleB2b" onchange="applyTabVisibility()" checked />
-                  <span class="toggle-track"></span>
-                </label>
-              </div>
-              <div class="theme-toggle-row">
-                <div style="font-size:.85rem;color:var(--text);font-weight:500">Shortage</div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="tabToggleShortage" onchange="applyTabVisibility()" checked />
-                  <span class="toggle-track"></span>
-                </label>
-              </div>
-              <div class="theme-toggle-row">
-                <div style="font-size:.85rem;color:var(--text);font-weight:500">Productivity</div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="tabToggleProductivity" onchange="applyTabVisibility()" checked />
-                  <span class="toggle-track"></span>
-                </label>
-              </div>
-              <div class="theme-toggle-row">
-                <div style="font-size:.85rem;color:var(--text);font-weight:500">Jobs</div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="tabToggleJobs" onchange="applyTabVisibility()" checked />
-                  <span class="toggle-track"></span>
-                </label>
-              </div>
-              <div class="theme-toggle-row">
-                <div style="font-size:.85rem;color:var(--text);font-weight:500">Customer Success</div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="tabToggleCs" onchange="applyTabVisibility()" checked />
-                  <span class="toggle-track"></span>
-                </label>
-              </div>
-              <div class="theme-toggle-row">
-                <div style="font-size:.85rem;color:var(--text);font-weight:500">Label Printer</div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="tabToggleLabels" onchange="applyTabVisibility()" checked />
-                  <span class="toggle-track"></span>
-                </label>
-              </div>
-              <div class="theme-toggle-row">
-                <div style="font-size:.85rem;color:var(--text);font-weight:500">Help</div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="tabToggleHelp" onchange="applyTabVisibility()" checked />
-                  <span class="toggle-track"></span>
-                </label>
-              </div>
-            </div>
-          </div>
-
         </div>
       </div>
     </div>
@@ -2863,14 +2778,17 @@
     }
   }
   function applyTabVisibility() {
-    // Count how many are checked — prevent hiding all tabs
-    const checked = TAB_KEYS.map(t => document.getElementById(t.toggleId)?.checked ?? true);
-    if (checked.filter(Boolean).length === 0) {
-      TAB_KEYS.forEach((t, i) => { if (!checked[i]) document.getElementById(t.toggleId).checked = true; });
-      return;
-    }
-    TAB_KEYS.forEach((t, i) => { localStorage.setItem(t.key, checked[i] ? '1' : '0'); });
-    refreshTabVisibility();   // final visibility ANDs the toggle with the profile/role gate
+    // Read each tab's desired state from its toggle if present, else from the
+    // stored preference — the Visible Tabs toggles were removed from Settings, so
+    // tab access is governed by the role/profile gate (refreshTabVisibility ANDs
+    // the stored preference with that gate).
+    const want = TAB_KEYS.map(t => {
+      const el = document.getElementById(t.toggleId);
+      return el ? el.checked : (localStorage.getItem(t.key) ?? '1') !== '0';
+    });
+    if (want.filter(Boolean).length === 0) { refreshTabVisibility(); return; }   // never hide everything
+    TAB_KEYS.forEach((t, i) => { localStorage.setItem(t.key, want[i] ? '1' : '0'); });
+    refreshTabVisibility();
   }
 
   function initTabVisibility() {
@@ -6014,9 +5932,7 @@
 
   function closeSettings() {
     document.getElementById('settingsModal').classList.remove('open');
-    const group = document.getElementById('sg-profile');
-    if (group) group.classList.remove('open');
-    // Collapse the Visible Tabs sub-section again
+    // Profile group is non-collapsible (stays open). Collapse the Visible Tabs sub-section again
     const tabsBody = document.getElementById('tabsSectionBody');
     const tabsChev = document.getElementById('tabsSectionChevron');
     if (tabsBody) tabsBody.style.display = 'none';
