@@ -37,8 +37,29 @@ try {
 } catch (e) { /* storage unavailable — app falls back to a local id */ }
 
 window.addEventListener('message', (e) => {
-  if (!e.data || e.data.type !== 'wms-ext-close') return;
+  if (!e.data) return;
 
+  // Dashboard asks: is a logged-in WMS tab currently open (and who)? Relay to the
+  // background service worker, which polls the open wms.golocad.com tabs, and hand
+  // the answer back to the page. This gates "Sign in with WMS" on a live login.
+  if (e.data.type === 'wms-live-check-request') {
+    try {
+      chrome.runtime.sendMessage({ action: 'wmsLiveCheck' }, (resp) => {
+        const ok = !chrome.runtime.lastError && resp && resp.id;
+        window.postMessage({
+          type: 'wms-live-check-result',
+          id: ok ? resp.id : null,
+          label: ok ? (resp.label || null) : null,
+          warehouses: ok ? (resp.warehouses || null) : null
+        }, '*');
+      });
+    } catch (err) {
+      window.postMessage({ type: 'wms-live-check-result', id: null }, '*');
+    }
+    return;
+  }
+
+  if (e.data.type !== 'wms-ext-close') return;
   if (window.parent !== window) {
     // We're inside an iframe — signal the WMS page to close the overlay
     window.parent.postMessage({ type: 'wms-close-overlay' }, '*');

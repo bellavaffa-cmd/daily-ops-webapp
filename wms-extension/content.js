@@ -298,6 +298,33 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return { name: c.name ? String(c.name).trim() : '', email: c.email ? String(c.email).trim() : '' };
     } catch (e) { return {}; }
   }
+  // Read the CURRENT logged-in WMS identity straight from the live auth token.
+  // A valid, unexpired token in this tab's localStorage IS proof of a live login;
+  // no token (or expired) → not logged in. This backs the dashboard's requirement
+  // that "Sign in with WMS" only works with a logged-in WMS tab actually open.
+  function liveWmsIdentity() {
+    try {
+      const tok = localStorage.getItem('token');
+      if (!tok) return null;
+      const p = decodePayload(tok);
+      if (!p) return null;
+      if (p.exp && (Date.now() / 1000) >= Number(p.exp)) return null;   // expired session
+      const uid = p.idtfr || p.id;
+      if (!uid) return null;
+      const cust = readCustomer();
+      return { id: 'wms:' + uid, label: (cust && cust.name) || null };
+    } catch (e) { return null; }
+  }
+  // The dashboard (via background) asks "is a logged-in WMS tab open, and who?"
+  chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
+    if (!msg || msg.action !== 'wmsIdentity') return;
+    const idn = liveWmsIdentity();
+    if (!idn) { sendResponse({ id: null }); return false; }
+    chrome.storage.local.get(['wmsWarehouses'], function (res) {
+      sendResponse({ id: idn.id, label: idn.label, warehouses: (res && res.wmsWarehouses) || null });
+    });
+    return true;   // async sendResponse
+  });
   // Capture the warehouses this account can access. Logiwa scopes this list to
   // the user's permissions, so it IS the user's warehouse access. Same host +
   // token as the sync; the WMS page origin is allowed by the API's CORS. We

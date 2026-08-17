@@ -1583,28 +1583,22 @@
   <div style="width:100%;max-width:360px;text-align:center">
     <img src="icons/locad-logo.png" alt="" style="height:30px;margin-bottom:18px;opacity:.9" onerror="this.style.display='none'">
     <div style="font-size:1.15rem;font-weight:700;color:var(--text);margin-bottom:4px">Sign in to this device</div>
-    <div style="font-size:.8rem;color:var(--muted);margin-bottom:20px">Sign in with WMS, or with the profile username and password provided by your manager.</div>
+    <div style="font-size:.8rem;color:var(--muted);margin-bottom:20px">Sign in with a logged-in WMS tab, or with the profile username and password provided by your manager.</div>
 
-    <!-- WMS one-tap: shown only when the extension is reporting an active WMS session -->
+    <!-- WMS one-tap: shown only when a logged-in WMS tab is currently open -->
     <div id="gateWmsDetected" style="display:none;margin-bottom:16px">
       <button onclick="signInWithDetectedWms()" class="btn btn-primary" style="width:100%;padding:11px;font-size:.9rem">Sign in with WMS</button>
       <div id="gateWmsDetectedSub" style="font-size:.72rem;color:var(--muted);margin-top:6px"></div>
+    </div>
+    <!-- Shown when no logged-in WMS tab is open -->
+    <div id="gateWmsNoTab" style="margin-bottom:16px;padding:11px 12px;border-radius:8px;border:1px dashed var(--border);background:var(--surface2);font-size:.76rem;color:var(--muted);line-height:1.4">
+      Open a <b style="color:var(--text)">logged-in WMS tab</b> in this browser to sign in with WMS. This page checks automatically.
     </div>
 
     <input id="profileLoginUser" type="text" placeholder="Profile username" autocomplete="username" style="width:100%;font-size:.9rem;padding:11px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);margin-bottom:10px">
     <input id="profileLoginPass" type="password" placeholder="Password" autocomplete="current-password" style="width:100%;font-size:.9rem;padding:11px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
     <div id="profileLoginErr" style="font-size:.78rem;color:var(--danger);margin-top:8px;display:none;min-height:16px"></div>
     <button onclick="doProfileLogin()" class="btn btn-primary" style="width:100%;margin-top:16px;padding:11px;font-size:.9rem">Sign in with profile</button>
-
-    <!-- Manual WMS ID entry (fallback) -->
-    <div style="margin-top:18px">
-      <a onclick="toggleWmsIdEntry()" style="font-size:.75rem;color:var(--primary);cursor:pointer;text-decoration:none">Sign in with a WMS ID instead</a>
-      <div id="gateWmsIdBox" style="display:none;margin-top:10px">
-        <input id="gateWmsIdInput" type="text" placeholder="WMS ID" autocomplete="off" onkeydown="if(event.key==='Enter') signInWithWmsId()" style="width:100%;font-size:.9rem;padding:11px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
-        <div id="gateWmsIdErr" style="font-size:.78rem;color:var(--danger);margin-top:8px;display:none;min-height:16px"></div>
-        <button onclick="signInWithWmsId()" class="btn btn-primary" style="width:100%;margin-top:10px;padding:10px;font-size:.88rem">Sign in with WMS ID</button>
-      </div>
-    </div>
   </div>
 </div>
 
@@ -2839,12 +2833,12 @@
   let _roleTabs = null;              // Set<viewKey> from the WMS role, or null
   let _instanceProfile = undefined;  // cached instance_profiles row; null = none chosen
   // WMS session state. `loggedInWmsId` (localStorage) is the WMS identity this
-  // instance is committed to; `_detectedWmsId` is what the extension bridge is
-  // currently reporting (may differ → instant logout, see resolveWhAllow).
-  let _detectedWmsId = null;          // latest wms:<id> from the bridge (for the gate one-tap + mismatch check)
-  let _detectedWmsLabel = null;       // readable name that came with it
-  let _detectedWmsWarehouses = null;  // accessible warehouses that came with it
-  let _blockAutoWms = false;          // after a mismatch logout: don't silently re-adopt a *different* WMS id
+  // instance is committed to. `_liveWmsId` is the identity of a currently-open,
+  // logged-in WMS tab as reported by the extension's live check — the ONLY thing
+  // that enables "Sign in with WMS". No live tab ⇒ no WMS sign-in possible.
+  let _liveWmsId = null;              // wms:<id> of a live logged-in WMS tab, or null
+  let _liveWmsLabel = null;           // readable name from the live check
+  let _liveWmsWarehouses = null;      // accessible warehouses from the live check
   // A tab's own user toggle (Settings checkbox if open, else the saved pref).
   function tabToggledOn(t) {
     const chk = document.getElementById(t.toggleId);
@@ -3588,54 +3582,26 @@
     try { refreshFromCache(true); } catch (e) {}
   }
   const _whCodes = arr => (Array.isArray(arr) ? arr.map(x => (typeof x === 'string' ? x : (x && x.code))).filter(Boolean) : null);
-  async function resolveWhAllow(id, bridgeWarehouses) {
+  // Resolve the app's access scope from the COMMITTED session only (localStorage).
+  // There is no silent auto-adopt: a WMS session exists only after an explicit
+  // "Sign in with WMS" (which requires a live logged-in WMS tab), and a profile
+  // session only after a profile login. Anything else → the login gate.
+  async function resolveWhAllow() {
     try {
-      const isWms = id && String(id).indexOf('wms:') === 0;
-      if (isWms) {   // remember the live session for the gate one-tap + mismatch check
-        _detectedWmsId = id;
-        if (_dashDeviceLabel) _detectedWmsLabel = _dashDeviceLabel;
-        if (Array.isArray(bridgeWarehouses) && bridgeWarehouses.length) _detectedWmsWarehouses = bridgeWarehouses;
-      }
       let loggedInWms = null;
       try { loggedInWms = localStorage.getItem('loggedInWmsId'); } catch (e) {}
-      let hasProfileId = false;
-      try { hasProfileId = !!localStorage.getItem('instanceProfileId'); } catch (e) {}
-      // Explicit logout is sticky: stay on the gate even while the extension keeps
-      // reporting a live WMS session, until the user signs in again.
-      let loggedOutFlag = false;
-      try { loggedOutFlag = localStorage.getItem('wmsLoggedOut') === '1'; } catch (e) {}
-      const blockAuto = _blockAutoWms || loggedOutFlag;
 
-      // 1a) Mismatch guard: this instance is committed to WMS id X but the live
-      // session is a *different* WMS user Y → instant logout. Drop the committed
-      // identity (WMS + any profile), require an explicit re-auth for Y, and fall
-      // through to the login gate (which offers a one-tap sign-in for Y).
-      if (isWms && loggedInWms && loggedInWms !== id) {
-        try { localStorage.removeItem('loggedInWmsId'); } catch (e) {}
-        try { localStorage.removeItem('instanceProfileId'); } catch (e) {}
-        _instanceProfile = undefined; _profileTabs = null; _roleTabs = null;
-        _blockAutoWms = true;               // don't silently adopt the new id
-        loggedInWms = null; hasProfileId = false;
-      }
-
-      // 1b) A committed / adoptable WMS identity scopes the device to that user's
-      // own access (+ role tabs). Adopt automatically on first detect, unless a
-      // profile is already signed in or we're blocking after a mismatch.
-      if (isWms && (loggedInWms === id || (!loggedInWms && !hasProfileId && !blockAuto))) {
-        try { localStorage.setItem('loggedInWmsId', id); } catch (e) {}
-        _blockAutoWms = false;
+      // 1) Committed WMS identity → scope to that user's own warehouse access.
+      if (loggedInWms && String(loggedInWms).indexOf('wms:') === 0) {
         hideProfileLogin();
         _profileTabs = null; _roleTabs = null; refreshTabVisibility();   // WMS uses role tabs (checkManagerAccess sets them)
         let userWhs = null;
-        if (Array.isArray(bridgeWarehouses) && bridgeWarehouses.length) userWhs = _whCodes(bridgeWarehouses);
-        else {
-          const uid = String(id).slice(4);
-          const rows = await fetch(SB_URL + '/wms_users?user_id=eq.' + encodeURIComponent(uid) + '&select=warehouses', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
-          const w = rows && rows[0] && rows[0].warehouses;
-          userWhs = (Array.isArray(w) && w.length) ? _whCodes(w) : null;
-        }
+        const uid = String(loggedInWms).slice(4);
+        const rows = await fetch(SB_URL + '/wms_users?user_id=eq.' + encodeURIComponent(uid) + '&select=warehouses', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+        const w = rows && rows[0] && rows[0].warehouses;
+        userWhs = (Array.isArray(w) && w.length) ? _whCodes(w) : null;
         if (userWhs) applyWhRestriction(userWhs); else clearWhRestriction();
-        updateProfileStatusUI({ wms: true, id, label: _detectedWmsLabel });
+        updateProfileStatusUI({ wms: true, id: loggedInWms, label: _liveWmsLabel });
         return;
       }
       // 2) No committed WMS identity → require a logged-in instance profile.
@@ -3679,21 +3645,31 @@
   }
   function showProfileLogin() {
     const g = document.getElementById('profileLoginGate');
-    if (g) { g.style.display = 'flex'; refreshGateWms(); const u = document.getElementById('profileLoginUser'); if (u) setTimeout(() => u.focus(), 30); }
+    if (g) { g.style.display = 'flex'; requestWmsLiveCheck(); startGateLivePoll(); const u = document.getElementById('profileLoginUser'); if (u) setTimeout(() => u.focus(), 30); }
   }
-  function hideProfileLogin() { const g = document.getElementById('profileLoginGate'); if (g) g.style.display = 'none'; }
-  // Reflect the currently-detected WMS session in the gate's one-tap button.
+  function hideProfileLogin() { const g = document.getElementById('profileLoginGate'); if (g) g.style.display = 'none'; stopGateLivePoll(); }
+  // Reflect the live logged-in WMS tab (if any) in the gate's one-tap button.
+  // No live tab → the button is hidden and a hint tells the user to open one.
   function refreshGateWms() {
     const box = document.getElementById('gateWmsDetected');
     const sub = document.getElementById('gateWmsDetectedSub');
+    const noTab = document.getElementById('gateWmsNoTab');
     if (!box) return;
-    if (_detectedWmsId) {
+    if (_liveWmsId) {
       box.style.display = '';
-      if (sub) sub.textContent = _detectedWmsLabel ? (_detectedWmsLabel + ' · ' + _detectedWmsId) : _detectedWmsId;
+      if (noTab) noTab.style.display = 'none';
+      if (sub) sub.textContent = _liveWmsLabel ? (_liveWmsLabel + ' · ' + _liveWmsId) : _liveWmsId;
     } else {
       box.style.display = 'none';
+      if (noTab) noTab.style.display = '';
     }
   }
+  // Ask the extension whether a logged-in WMS tab is currently open. The reply
+  // arrives asynchronously as a 'wms-live-check-result' message (see listener).
+  function requestWmsLiveCheck() { try { window.postMessage({ type: 'wms-live-check-request' }, '*'); } catch (e) {} }
+  let _gateLivePoll = null;
+  function startGateLivePoll() { if (_gateLivePoll) return; _gateLivePoll = setInterval(() => { const g = document.getElementById('profileLoginGate'); if (!g || getComputedStyle(g).display === 'none') { stopGateLivePoll(); return; } requestWmsLiveCheck(); }, 4000); }
+  function stopGateLivePoll() { if (_gateLivePoll) { clearInterval(_gateLivePoll); _gateLivePoll = null; } }
   function updateProfileStatusUI(state) {
     const nameEl = document.getElementById('profileStatusName');
     const subEl = document.getElementById('profileStatusSub');
@@ -3701,9 +3677,9 @@
     if (!nameEl) return;
     if (state.wms) {
       // Signed in via WMS → show the WMS ID (label as secondary context).
-      nameEl.textContent = state.id || _detectedWmsId || 'WMS';
+      nameEl.textContent = state.id || 'WMS';
       if (subEl) subEl.textContent = state.label ? ('WMS · ' + state.label) : 'Signed in via WMS';
-      if (btn) btn.style.display = '';                     // #3: always allow log out
+      if (btn) btn.style.display = '';
     } else if (state.profile) {
       nameEl.textContent = state.profile.name || state.profile.username || state.profile.id;
       if (subEl) subEl.textContent = 'Instance profile — log out to switch';
@@ -3714,49 +3690,30 @@
       if (btn) btn.style.display = 'none';
     }
   }
-  // Commit a WMS identity chosen from the login gate (one-tap or manual ID entry).
-  async function signInWithWms(id, bridgeWarehouses) {
+  // Commit a WMS identity. Only ever called with the id of a live logged-in WMS
+  // tab (from the live check) — there is no cached / manual sign-in path.
+  async function signInWithWms(id, liveWarehouses) {
     id = String(id || '').trim();
-    if (id.indexOf('wms:') !== 0) id = 'wms:' + id.replace(/^wms:/, '');
+    if (id.indexOf('wms:') !== 0) return { ok: false, msg: 'No live WMS session' };
     const uid = id.slice(4);
-    if (!uid) return { ok: false, msg: 'Enter a WMS ID' };
-    // Validate the ID exists (and pull its warehouse scope) unless the bridge already supplied it.
-    let whs = (Array.isArray(bridgeWarehouses) && bridgeWarehouses.length) ? bridgeWarehouses : null;
+    let whs = (Array.isArray(liveWarehouses) && liveWarehouses.length) ? liveWarehouses : null;
     if (!whs) {
       let rows = [];
       try { rows = await fetch(SB_URL + '/wms_users?user_id=eq.' + encodeURIComponent(uid) + '&select=user_id,warehouses', { headers: SB_HDR }).then(r => r.ok ? r.json() : []); } catch (e) {}
-      if (!rows || !rows.length) return { ok: false, msg: 'Unknown WMS ID' };
-      const w = rows[0].warehouses; whs = (Array.isArray(w) && w.length) ? w : null;
+      const w = rows && rows[0] && rows[0].warehouses; whs = (Array.isArray(w) && w.length) ? w : null;
     }
-    try { localStorage.setItem('loggedInWmsId', id); localStorage.setItem('lastWmsId', id); localStorage.removeItem('wmsLoggedOut'); } catch (e) {}
+    try { localStorage.setItem('loggedInWmsId', id); localStorage.setItem('lastWmsId', id); } catch (e) {}
     try { localStorage.removeItem('instanceProfileId'); } catch (e) {}
-    _instanceProfile = undefined; _profileTabs = null; _blockAutoWms = false;
-    _detectedWmsId = id;
+    _instanceProfile = undefined; _profileTabs = null;
     hideProfileLogin();
     checkManagerAccess(id);
-    await resolveWhAllow(id, whs);
+    await resolveWhAllow();
     return { ok: true };
   }
+  // The gate's "Sign in with WMS" tap — requires a live logged-in WMS tab.
   function signInWithDetectedWms() {
-    if (!_detectedWmsId) return;
-    signInWithWms(_detectedWmsId, _detectedWmsWarehouses);
-  }
-  function toggleWmsIdEntry() {
-    const box = document.getElementById('gateWmsIdBox');
-    if (!box) return;
-    const show = box.style.display === 'none';
-    box.style.display = show ? '' : 'none';
-    if (show) { const i = document.getElementById('gateWmsIdInput'); if (i) setTimeout(() => i.focus(), 30); }
-  }
-  async function signInWithWmsId() {
-    const iEl = document.getElementById('gateWmsIdInput'), errEl = document.getElementById('gateWmsIdErr');
-    const fail = m => { if (errEl) { errEl.textContent = m; errEl.style.display = ''; } };
-    const v = (iEl && iEl.value || '').trim();
-    if (!v) return fail('Enter a WMS ID');
-    if (errEl) errEl.style.display = 'none';
-    const r = await signInWithWms(v);
-    if (!r.ok) return fail(r.msg || 'Sign-in failed');
-    if (iEl) iEl.value = '';
+    if (!_liveWmsId) { requestWmsLiveCheck(); return; }   // re-check in case a tab just opened
+    signInWithWms(_liveWmsId, _liveWmsWarehouses);
   }
   async function doProfileLogin() {
     const uEl = document.getElementById('profileLoginUser'), pEl = document.getElementById('profileLoginPass'), errEl = document.getElementById('profileLoginErr');
@@ -3771,37 +3728,51 @@
       const h = await sha256Hex(p);
       if (h !== prof.password_hash) return fail('Incorrect password');
     }
-    try { localStorage.setItem('instanceProfileId', prof.id); localStorage.removeItem('loggedInWmsId'); localStorage.removeItem('wmsLoggedOut'); } catch (e) {}
-    _instanceProfile = undefined; _profileTabs = null; _blockAutoWms = true;   // a profile login means don't auto-adopt the live WMS session
+    try { localStorage.setItem('instanceProfileId', prof.id); localStorage.removeItem('loggedInWmsId'); } catch (e) {}
+    _instanceProfile = undefined; _profileTabs = null;
     if (errEl) errEl.style.display = 'none';
     if (pEl) pEl.value = '';
     hideProfileLogin();
-    resolveWhAllow(null);   // resolve as a profile session (ignore any live WMS id)
+    resolveWhAllow();
   }
   async function logoutProfile() {
-    // Drop both the profile and the committed WMS identity, and set the sticky
-    // logout flag so we don't silently re-adopt the still-live WMS session. The
-    // gate still offers a one-tap sign-in for that session.
-    try { localStorage.removeItem('instanceProfileId'); localStorage.removeItem('loggedInWmsId'); localStorage.setItem('wmsLoggedOut', '1'); } catch (e) {}
-    _instanceProfile = undefined; _profileTabs = null; _blockAutoWms = true;
+    // Drop the committed session. There is no auto-adopt, so this is final until
+    // the user explicitly signs in again (WMS one-tap or a profile login).
+    try { localStorage.removeItem('instanceProfileId'); localStorage.removeItem('loggedInWmsId'); localStorage.removeItem('lastWmsId'); } catch (e) {}
+    _instanceProfile = undefined; _profileTabs = null;
     try { closeSettings(); } catch (e) {}
-    resolveWhAllow(null);   // → login gate
+    resolveWhAllow();   // → login gate
+  }
+  // Hard logout used when the live WMS tab is a *different* user than the one
+  // this instance is committed to (mismatch guard).
+  async function forceWmsLogout() {
+    try { localStorage.removeItem('instanceProfileId'); localStorage.removeItem('loggedInWmsId'); localStorage.removeItem('lastWmsId'); } catch (e) {}
+    _instanceProfile = undefined; _profileTabs = null;
+    await resolveWhAllow();   // → gate; the one-tap will offer the live (new) user
+    refreshGateWms();
   }
 
   checkManagerAccess();
-  dashGetDeviceId().then(id => resolveWhAllow(id));
+  resolveWhAllow();               // scope from the committed session (localStorage)
+  dashGetDeviceId();              // resolve the device id for layout/reporter (no access role)
+  requestWmsLiveCheck();          // enable the gate one-tap if a live tab exists; drives mismatch logout
   fetchWarehouseCarriers();
   ['profileLoginUser', 'profileLoginPass'].forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') doProfileLogin(); }); });
-  // Re-check when the WMS identity arrives from the extension bridge — it can land
-  // after dashGetDeviceId() already fell back to a local id, which would otherwise
-  // leave the console link hidden for an Admin. The same message carries the
-  // user's accessible warehouses, so lock the view to them here too.
+  window.addEventListener('focus', () => { const g = document.getElementById('profileLoginGate'); if (g && getComputedStyle(g).display !== 'none') requestWmsLiveCheck(); });
+  // The extension's live check reports whether a logged-in WMS tab is currently
+  // open (and who). This is the ONLY source that enables "Sign in with WMS", and
+  // it also drives the mismatch guard for an already-committed session.
   window.addEventListener('message', function (e) {
-    if (e.source === window && e.data && e.data.type === 'dash-device-id' && e.data.id && String(e.data.id).indexOf('wms:') === 0) {
-      try { localStorage.setItem('lastWmsId', String(e.data.id)); } catch (x) {}   // cache for bridge-gap resilience
-      checkManagerAccess(String(e.data.id));
-      resolveWhAllow(String(e.data.id), e.data.warehouses);
-    }
+    if (e.source !== window || !e.data || e.data.type !== 'wms-live-check-result') return;
+    const id = (e.data.id && String(e.data.id).indexOf('wms:') === 0) ? String(e.data.id) : null;
+    _liveWmsId = id;
+    _liveWmsLabel = id ? (e.data.label || null) : null;
+    _liveWmsWarehouses = id && Array.isArray(e.data.warehouses) ? e.data.warehouses : null;
+    let committed = null;
+    try { committed = localStorage.getItem('loggedInWmsId'); } catch (x) {}
+    if (committed && id && id !== committed) { forceWmsLogout(); return; }   // different WMS user now live → log out
+    if (id) checkManagerAccess(id);
+    refreshGateWms();
   });
 
   // Open the console, handing it the WMS identity the app already detected so it

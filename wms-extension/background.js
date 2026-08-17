@@ -74,6 +74,38 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     performSync(msg.action === 'triggerLogiwaB2BSync').finally(() => sendResponse({}));
     return true;
   }
+
+  // Live WMS check: is a logged-in WMS tab currently open in this browser, and
+  // who is it? The dashboard requires this before it will let anyone "Sign in
+  // with WMS" — a cached identity alone must NOT grant access. We ask every open
+  // wms.golocad.com tab's content script for its live token identity and return
+  // the first valid one (null if no tab is open / none is logged in).
+  if (msg.action === 'wmsLiveCheck') {
+    (async () => {
+      let tabs = [];
+      try { tabs = await chrome.tabs.query({ url: 'https://wms.golocad.com/*' }); } catch (e) {}
+      if (!tabs || !tabs.length) { sendResponse({ id: null }); return; }
+      let answered = false, pending = tabs.length;
+      const finish = (r) => { if (answered) return; answered = true; sendResponse(r); };
+      tabs.forEach((t) => {
+        let settled = false;
+        const settle = (r) => {
+          if (settled) return; settled = true;
+          pending--;
+          if (r && r.id) finish(r);
+          else if (pending === 0) finish({ id: null });
+        };
+        try {
+          chrome.tabs.sendMessage(t.id, { action: 'wmsIdentity' }, (r) => {
+            if (chrome.runtime.lastError) return settle({ id: null });
+            settle(r || { id: null });
+          });
+        } catch (e) { settle({ id: null }); }
+        setTimeout(() => settle({ id: null }), 1500);   // tab never replied
+      });
+    })();
+    return true;   // async sendResponse
+  }
 });
 
 // ── Shared Logiwa sync ──────────────────────────────────────────────────────
