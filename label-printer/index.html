@@ -667,6 +667,19 @@
   body { background: transparent !important; }
 </style>
 <script>try { document.documentElement.setAttribute('data-theme', 'dark'); } catch (e) {}</script>
+<script>
+  // No service worker is used. Proactively unregister any stale registration and
+  // drop its caches so a previously-cached (possibly blank) shell can't keep
+  // being served — this app runs in the dashboard's nested iframe.
+  try {
+    if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
+      navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
+    }
+    if (window.caches && caches.keys) {
+      caches.keys().then(keys => keys.forEach(k => { if (/qr-label/i.test(k)) caches.delete(k); })).catch(() => {});
+    }
+  } catch (e) {}
+</script>
 </head>
 <body>
 <button type="button" id="panelToggleBtn" title="Show or hide the input panel">Hide</button>

@@ -6255,7 +6255,17 @@
     const fab = document.getElementById('fabReport');
     if (fab) fab.classList.toggle('visible', v === 'b2c');
     if (v === 'cs') { try { fetchCustomerSuccess(); } catch(e){} }
-    if (v === 'labels') { const f = document.getElementById('toolsLabelFrame'); if (f && f.dataset.src && f.src !== f.dataset.src) f.src = f.dataset.src; }
+    if (v === 'labels') {
+      // Load the label printer once per session with a cache-buster. The side
+      // panel reloads the app fresh but NOT this nested iframe, so without the
+      // buster it can keep serving a stale/blank cached copy. Loading once (not
+      // on every tab switch) preserves any in-progress label.
+      const f = document.getElementById('toolsLabelFrame');
+      if (f && f.dataset.src && f.dataset.loaded !== '1') {
+        f.src = f.dataset.src + (f.dataset.src.indexOf('?') >= 0 ? '&' : '?') + 'v=' + Date.now();
+        f.dataset.loaded = '1';
+      }
+    }
     if (v === 'dash') { try { renderStats(); } catch(e){} try { initWarehouseFilter(); renderTable(); } catch(e){} }
     if (v === 'jobs') {
       try { renderJobs(); } catch(e){}
