@@ -1593,6 +1593,7 @@
     <!-- Shown when no logged-in WMS tab is open -->
     <div id="gateWmsNoTab" style="margin-bottom:16px;padding:11px 12px;border-radius:8px;border:1px dashed var(--border);background:var(--surface2);font-size:.76rem;color:var(--muted);line-height:1.4">
       Open a <b style="color:var(--text)">logged-in WMS tab</b> in this browser to sign in with WMS. This page checks automatically.
+      <button onclick="openWmsTab()" class="btn btn-primary" style="width:100%;margin-top:10px;padding:10px;font-size:.88rem">Open WMS</button>
     </div>
 
     <input id="profileLoginUser" type="text" placeholder="Profile username" autocomplete="username" style="width:100%;font-size:.9rem;padding:11px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);margin-bottom:10px">
@@ -3667,6 +3668,23 @@
   // Ask the extension whether a logged-in WMS tab is currently open. The reply
   // arrives asynchronously as a 'wms-live-check-result' message (see listener).
   function requestWmsLiveCheck() { try { window.postMessage({ type: 'wms-live-check-request' }, '*'); } catch (e) {} }
+  // Open WMS so the user can log in, then re-check shortly after (the gate also polls).
+  function openWmsTab() {
+    try { window.open('https://wms.golocad.com/', '_blank', 'noopener'); } catch (e) {}
+    setTimeout(requestWmsLiveCheck, 1500);
+  }
+  // Sessions expire 15 days after sign-in — the app auto-logs-out on next check.
+  const SESSION_MAX_MS = 15 * 24 * 60 * 60 * 1000;
+  function enforceSessionExpiry() {
+    let committed = null;
+    try { committed = localStorage.getItem('loggedInWmsId') || localStorage.getItem('instanceProfileId'); } catch (e) {}
+    if (!committed) return false;
+    let started = 0;
+    try { started = Number(localStorage.getItem('sessionStartAt') || 0); } catch (e) {}
+    if (!started) { try { localStorage.setItem('sessionStartAt', String(Date.now())); } catch (e) {} return false; }  // seed for pre-existing sessions
+    if (Date.now() - started >= SESSION_MAX_MS) { logoutProfile(); return true; }
+    return false;
+  }
   let _gateLivePoll = null;
   function startGateLivePoll() { if (_gateLivePoll) return; _gateLivePoll = setInterval(() => { const g = document.getElementById('profileLoginGate'); if (!g || getComputedStyle(g).display === 'none') { stopGateLivePoll(); return; } requestWmsLiveCheck(); }, 4000); }
   function stopGateLivePoll() { if (_gateLivePoll) { clearInterval(_gateLivePoll); _gateLivePoll = null; } }
@@ -3702,7 +3720,7 @@
       try { rows = await fetch(SB_URL + '/wms_users?user_id=eq.' + encodeURIComponent(uid) + '&select=user_id,warehouses', { headers: SB_HDR }).then(r => r.ok ? r.json() : []); } catch (e) {}
       const w = rows && rows[0] && rows[0].warehouses; whs = (Array.isArray(w) && w.length) ? w : null;
     }
-    try { localStorage.setItem('loggedInWmsId', id); localStorage.setItem('lastWmsId', id); } catch (e) {}
+    try { localStorage.setItem('loggedInWmsId', id); localStorage.setItem('lastWmsId', id); localStorage.setItem('sessionStartAt', String(Date.now())); } catch (e) {}
     try { localStorage.removeItem('instanceProfileId'); } catch (e) {}
     _instanceProfile = undefined; _profileTabs = null;
     hideProfileLogin();
@@ -3728,7 +3746,7 @@
       const h = await sha256Hex(p);
       if (h !== prof.password_hash) return fail('Incorrect password');
     }
-    try { localStorage.setItem('instanceProfileId', prof.id); localStorage.removeItem('loggedInWmsId'); } catch (e) {}
+    try { localStorage.setItem('instanceProfileId', prof.id); localStorage.removeItem('loggedInWmsId'); localStorage.setItem('sessionStartAt', String(Date.now())); } catch (e) {}
     _instanceProfile = undefined; _profileTabs = null;
     if (errEl) errEl.style.display = 'none';
     if (pEl) pEl.value = '';
@@ -3738,7 +3756,7 @@
   async function logoutProfile() {
     // Drop the committed session. There is no auto-adopt, so this is final until
     // the user explicitly signs in again (WMS one-tap or a profile login).
-    try { localStorage.removeItem('instanceProfileId'); localStorage.removeItem('loggedInWmsId'); localStorage.removeItem('lastWmsId'); } catch (e) {}
+    try { localStorage.removeItem('instanceProfileId'); localStorage.removeItem('loggedInWmsId'); localStorage.removeItem('lastWmsId'); localStorage.removeItem('sessionStartAt'); } catch (e) {}
     _instanceProfile = undefined; _profileTabs = null;
     try { closeSettings(); } catch (e) {}
     resolveWhAllow();   // → login gate
@@ -3746,17 +3764,19 @@
   // Hard logout used when the live WMS tab is a *different* user than the one
   // this instance is committed to (mismatch guard).
   async function forceWmsLogout() {
-    try { localStorage.removeItem('instanceProfileId'); localStorage.removeItem('loggedInWmsId'); localStorage.removeItem('lastWmsId'); } catch (e) {}
+    try { localStorage.removeItem('instanceProfileId'); localStorage.removeItem('loggedInWmsId'); localStorage.removeItem('lastWmsId'); localStorage.removeItem('sessionStartAt'); } catch (e) {}
     _instanceProfile = undefined; _profileTabs = null;
     await resolveWhAllow();   // → gate; the one-tap will offer the live (new) user
     refreshGateWms();
   }
 
   checkManagerAccess();
-  resolveWhAllow();               // scope from the committed session (localStorage)
+  if (!enforceSessionExpiry()) resolveWhAllow();   // 15-day expiry, else scope from the committed session
   dashGetDeviceId();              // resolve the device id for layout/reporter (no access role)
   requestWmsLiveCheck();          // enable the gate one-tap if a live tab exists; drives mismatch logout
   fetchWarehouseCarriers();
+  setInterval(enforceSessionExpiry, 30 * 60 * 1000);   // re-check the 15-day window periodically
+  window.addEventListener('focus', enforceSessionExpiry);
   ['profileLoginUser', 'profileLoginPass'].forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') doProfileLogin(); }); });
   window.addEventListener('focus', () => { const g = document.getElementById('profileLoginGate'); if (g && getComputedStyle(g).display !== 'none') requestWmsLiveCheck(); });
   // The extension's live check reports whether a logged-in WMS tab is currently
