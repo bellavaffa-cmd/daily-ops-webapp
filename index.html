@@ -3267,7 +3267,7 @@
           ${subtitle ? `<div style="font-size:.72rem;color:var(--muted);margin-top:5px">${subtitle}</div>` : ''}
           <div style="font-size:.82rem;margin-top:6px;display:flex;flex-direction:column;gap:2px;color:var(--muted)">
             <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Priority MP', { ..._whOpts, ..._cdMp })}" target="_blank" title="Open Priority MP in WMS" style="text-decoration:none;color:inherit;width:fit-content">MP <b style="color:#c084fc">${fmt(s.prioritymp || 0)}</b></a>
-            <span title="Priority MP orders also tagged Next Day" style="width:fit-content;padding-left:12px">↳ Next Day <b style="color:#f0abfc">${fmt(s.mpNextday || 0)}</b></span>
+            <span title="Priority MP orders also tagged Next Day" style="width:fit-content">Next Day <b style="color:#f0abfc">${fmt(s.mpNextday || 0)}</b></span>
             <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Non-MP', { ..._whOpts, ..._cdNon })}" target="_blank" title="Open Non-MP in WMS" style="text-decoration:none;color:inherit;width:fit-content">Non-MP <b style="color:var(--text)">${fmt(s.nonmp || 0)}</b></a>
             <span title="Orders tagged with neither MP nor Non-MP (WMS has no filter for this — its tag filter is include-only)" style="width:fit-content">Others <b style="color:#94a3b8">${fmt(Math.max(0, (s.count || 0) - (s.nonmp || 0) - (s.prioritymp || 0)))}</b></span>
           </div>
