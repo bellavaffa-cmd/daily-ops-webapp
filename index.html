@@ -2912,9 +2912,15 @@
     const uniq = [...new Set(arr)];
     localStorage.setItem('whFilterSet', JSON.stringify(uniq));
     localStorage.setItem('b2cWarehousePicked', '1');
+    // Mirror onto the Productivity tab's single-warehouse filter: exactly one
+    // warehouse → scope to it; all or multiple → all warehouses.
+    localStorage.setItem('prodWarehouseFilter', uniq.length === 1 ? uniq[0] : '');
     renderWarehouseFilters();
     renderB2C(); renderB2B(); renderB2BOrders(); renderShortage(); renderShortageOrders();
     if (typeof renderJobs === 'function') renderJobs();
+    if (typeof userPerf !== 'undefined' && userPerf && userPerf.length) {
+      try { populateProdWarehouseSelect(); renderProductivity(); fetchHourlyDaily(); } catch (e) {}
+    }
   }
   // Default Warehouse (Settings) drives ALL warehouse filters (one shared filter)
   // and pre-fills error reports. Options are the REAL warehouse names so the value
@@ -2949,6 +2955,9 @@
     } catch (e) {}
   }
   seedDefaultWhFilter();
+  // Keep the Productivity single-warehouse filter in step with the shared filter
+  // on load (one → that warehouse, all/multiple → all), so it follows the default.
+  try { const _s = getSelectedWhs(); localStorage.setItem('prodWarehouseFilter', _s.length === 1 ? _s[0] : ''); } catch (e) {}
   // Warehouses were renamed in WMS to embed a country code in the name, e.g.
   // "LOCAD DIP FC (AE-DIP)", "LOCAD Al Sulay FC (KSA-AL)". When the sync doesn't
   // supply a country, derive it from that leading "(XX-…)" code so the warehouse
