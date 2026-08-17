@@ -3600,6 +3600,11 @@
       try { loggedInWms = localStorage.getItem('loggedInWmsId'); } catch (e) {}
       let hasProfileId = false;
       try { hasProfileId = !!localStorage.getItem('instanceProfileId'); } catch (e) {}
+      // Explicit logout is sticky: stay on the gate even while the extension keeps
+      // reporting a live WMS session, until the user signs in again.
+      let loggedOutFlag = false;
+      try { loggedOutFlag = localStorage.getItem('wmsLoggedOut') === '1'; } catch (e) {}
+      const blockAuto = _blockAutoWms || loggedOutFlag;
 
       // 1a) Mismatch guard: this instance is committed to WMS id X but the live
       // session is a *different* WMS user Y → instant logout. Drop the committed
@@ -3616,7 +3621,7 @@
       // 1b) A committed / adoptable WMS identity scopes the device to that user's
       // own access (+ role tabs). Adopt automatically on first detect, unless a
       // profile is already signed in or we're blocking after a mismatch.
-      if (isWms && (loggedInWms === id || (!loggedInWms && !hasProfileId && !_blockAutoWms))) {
+      if (isWms && (loggedInWms === id || (!loggedInWms && !hasProfileId && !blockAuto))) {
         try { localStorage.setItem('loggedInWmsId', id); } catch (e) {}
         _blockAutoWms = false;
         hideProfileLogin();
@@ -3723,7 +3728,7 @@
       if (!rows || !rows.length) return { ok: false, msg: 'Unknown WMS ID' };
       const w = rows[0].warehouses; whs = (Array.isArray(w) && w.length) ? w : null;
     }
-    try { localStorage.setItem('loggedInWmsId', id); localStorage.setItem('lastWmsId', id); } catch (e) {}
+    try { localStorage.setItem('loggedInWmsId', id); localStorage.setItem('lastWmsId', id); localStorage.removeItem('wmsLoggedOut'); } catch (e) {}
     try { localStorage.removeItem('instanceProfileId'); } catch (e) {}
     _instanceProfile = undefined; _profileTabs = null; _blockAutoWms = false;
     _detectedWmsId = id;
@@ -3766,7 +3771,7 @@
       const h = await sha256Hex(p);
       if (h !== prof.password_hash) return fail('Incorrect password');
     }
-    try { localStorage.setItem('instanceProfileId', prof.id); localStorage.removeItem('loggedInWmsId'); } catch (e) {}
+    try { localStorage.setItem('instanceProfileId', prof.id); localStorage.removeItem('loggedInWmsId'); localStorage.removeItem('wmsLoggedOut'); } catch (e) {}
     _instanceProfile = undefined; _profileTabs = null; _blockAutoWms = true;   // a profile login means don't auto-adopt the live WMS session
     if (errEl) errEl.style.display = 'none';
     if (pEl) pEl.value = '';
@@ -3774,14 +3779,13 @@
     resolveWhAllow(null);   // resolve as a profile session (ignore any live WMS id)
   }
   async function logoutProfile() {
-    // Drop both the profile and the committed WMS identity. Q: "re-adopt if still
-    // active" — if the extension is still reporting the same WMS session, the
-    // resolve below adopts it again; otherwise the login gate shows.
-    try { localStorage.removeItem('instanceProfileId'); localStorage.removeItem('loggedInWmsId'); } catch (e) {}
-    _instanceProfile = undefined; _profileTabs = null; _blockAutoWms = false;
+    // Drop both the profile and the committed WMS identity, and set the sticky
+    // logout flag so we don't silently re-adopt the still-live WMS session. The
+    // gate still offers a one-tap sign-in for that session.
+    try { localStorage.removeItem('instanceProfileId'); localStorage.removeItem('loggedInWmsId'); localStorage.setItem('wmsLoggedOut', '1'); } catch (e) {}
+    _instanceProfile = undefined; _profileTabs = null; _blockAutoWms = true;
     try { closeSettings(); } catch (e) {}
-    const id = _detectedWmsId || _dashDeviceId || await dashGetDeviceId();
-    resolveWhAllow(id);
+    resolveWhAllow(null);   // → login gate
   }
 
   checkManagerAccess();
