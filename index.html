@@ -1454,28 +1454,17 @@
         <svg class="settings-group-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="settings-group-body">
-        <!-- PIN screen -->
-        <div id="sg-profile-pin" style="text-align:center;padding:12px 0 4px">
-          <div style="font-size:.78rem;color:var(--muted);margin-bottom:12px">Enter PIN to edit profile settings</div>
-          <div style="display:flex;gap:8px;justify-content:center;align-items:center">
-            <input type="password" id="profilePinInput" placeholder="•••••" maxlength="5" inputmode="numeric"
-                   style="width:90px;text-align:center;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:.9rem;letter-spacing:4px"
-                   onkeydown="if(event.key==='Enter') verifyProfilePin()" />
-            <button onclick="verifyProfilePin()" class="btn btn-primary" style="padding:7px 14px;font-size:.82rem">Unlock</button>
-          </div>
-          <div id="profilePinError" style="font-size:.72rem;color:var(--danger);margin-top:8px;display:none">Incorrect PIN</div>
-        </div>
-        <!-- Profile content (unlocked) -->
-        <div id="sg-profile-content" style="display:none">
-          <!-- Instance profile — read-only. Changed only by logging out / back in
-               with a different profile login, or when a WMS ID is tied to the device. -->
+        <div id="sg-profile-content">
+          <!-- Instance session — shows whether this device is signed in via a WMS
+               ID (shows the ID) or an instance profile (shows the profile name).
+               Log out here to switch. -->
           <div class="theme-toggle-row" style="align-items:center">
             <div>
-              <div style="font-size:.85rem;color:var(--text);font-weight:500">Instance profile</div>
-              <div id="profileStatusSub" style="font-size:.75rem;color:var(--muted);margin-top:2px">Signed in via your profile login</div>
+              <div style="font-size:.85rem;color:var(--text);font-weight:500">Signed in as</div>
+              <div id="profileStatusSub" style="font-size:.75rem;color:var(--muted);margin-top:2px">—</div>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
-              <span id="profileStatusName" style="font-size:.82rem;font-weight:600;color:var(--primary)"></span>
+              <span id="profileStatusName" style="font-size:.82rem;font-weight:600;color:var(--primary);word-break:break-all;text-align:right"></span>
               <button id="profileLogoutBtn" onclick="logoutProfile()" class="btn btn-sm" style="font-size:.78rem;padding:6px 12px;display:none">Log out</button>
             </div>
           </div>
@@ -1594,12 +1583,28 @@
   <div style="width:100%;max-width:360px;text-align:center">
     <img src="icons/locad-logo.png" alt="" style="height:30px;margin-bottom:18px;opacity:.9" onerror="this.style.display='none'">
     <div style="font-size:1.15rem;font-weight:700;color:var(--text);margin-bottom:4px">Sign in to this device</div>
-    <div style="font-size:.8rem;color:var(--muted);margin-bottom:20px">Enter the profile username and password provided by your manager.</div>
+    <div style="font-size:.8rem;color:var(--muted);margin-bottom:20px">Sign in with WMS, or with the profile username and password provided by your manager.</div>
+
+    <!-- WMS one-tap: shown only when the extension is reporting an active WMS session -->
+    <div id="gateWmsDetected" style="display:none;margin-bottom:16px">
+      <button onclick="signInWithDetectedWms()" class="btn btn-primary" style="width:100%;padding:11px;font-size:.9rem">Sign in with WMS</button>
+      <div id="gateWmsDetectedSub" style="font-size:.72rem;color:var(--muted);margin-top:6px"></div>
+    </div>
+
     <input id="profileLoginUser" type="text" placeholder="Profile username" autocomplete="username" style="width:100%;font-size:.9rem;padding:11px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);margin-bottom:10px">
     <input id="profileLoginPass" type="password" placeholder="Password" autocomplete="current-password" style="width:100%;font-size:.9rem;padding:11px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
     <div id="profileLoginErr" style="font-size:.78rem;color:var(--danger);margin-top:8px;display:none;min-height:16px"></div>
-    <button onclick="doProfileLogin()" class="btn btn-primary" style="width:100%;margin-top:16px;padding:11px;font-size:.9rem">Sign in</button>
-    <div style="font-size:.72rem;color:var(--muted);margin-top:16px">Devices signed in to WMS via the extension are scoped automatically — no login needed.</div>
+    <button onclick="doProfileLogin()" class="btn btn-primary" style="width:100%;margin-top:16px;padding:11px;font-size:.9rem">Sign in with profile</button>
+
+    <!-- Manual WMS ID entry (fallback) -->
+    <div style="margin-top:18px">
+      <a onclick="toggleWmsIdEntry()" style="font-size:.75rem;color:var(--primary);cursor:pointer;text-decoration:none">Sign in with a WMS ID instead</a>
+      <div id="gateWmsIdBox" style="display:none;margin-top:10px">
+        <input id="gateWmsIdInput" type="text" placeholder="WMS ID" autocomplete="off" onkeydown="if(event.key==='Enter') signInWithWmsId()" style="width:100%;font-size:.9rem;padding:11px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
+        <div id="gateWmsIdErr" style="font-size:.78rem;color:var(--danger);margin-top:8px;display:none;min-height:16px"></div>
+        <button onclick="signInWithWmsId()" class="btn btn-primary" style="width:100%;margin-top:10px;padding:10px;font-size:.88rem">Sign in with WMS ID</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -2833,6 +2838,13 @@
   let _profileTabs = null;           // Set<viewKey> from the instance profile, or null
   let _roleTabs = null;              // Set<viewKey> from the WMS role, or null
   let _instanceProfile = undefined;  // cached instance_profiles row; null = none chosen
+  // WMS session state. `loggedInWmsId` (localStorage) is the WMS identity this
+  // instance is committed to; `_detectedWmsId` is what the extension bridge is
+  // currently reporting (may differ → instant logout, see resolveWhAllow).
+  let _detectedWmsId = null;          // latest wms:<id> from the bridge (for the gate one-tap + mismatch check)
+  let _detectedWmsLabel = null;       // readable name that came with it
+  let _detectedWmsWarehouses = null;  // accessible warehouses that came with it
+  let _blockAutoWms = false;          // after a mismatch logout: don't silently re-adopt a *different* WMS id
   // A tab's own user toggle (Settings checkbox if open, else the saved pref).
   function tabToggledOn(t) {
     const chk = document.getElementById(t.toggleId);
@@ -3578,10 +3590,35 @@
   const _whCodes = arr => (Array.isArray(arr) ? arr.map(x => (typeof x === 'string' ? x : (x && x.code))).filter(Boolean) : null);
   async function resolveWhAllow(id, bridgeWarehouses) {
     try {
-      // 1) A tied WMS identity always wins — the device is scoped to that user's
-      // own access (+ role tabs), and any profile login is ignored. This is the
-      // "or when the instance syncs and has a WMS ID" path.
-      if (id && String(id).indexOf('wms:') === 0) {
+      const isWms = id && String(id).indexOf('wms:') === 0;
+      if (isWms) {   // remember the live session for the gate one-tap + mismatch check
+        _detectedWmsId = id;
+        if (_dashDeviceLabel) _detectedWmsLabel = _dashDeviceLabel;
+        if (Array.isArray(bridgeWarehouses) && bridgeWarehouses.length) _detectedWmsWarehouses = bridgeWarehouses;
+      }
+      let loggedInWms = null;
+      try { loggedInWms = localStorage.getItem('loggedInWmsId'); } catch (e) {}
+      let hasProfileId = false;
+      try { hasProfileId = !!localStorage.getItem('instanceProfileId'); } catch (e) {}
+
+      // 1a) Mismatch guard: this instance is committed to WMS id X but the live
+      // session is a *different* WMS user Y → instant logout. Drop the committed
+      // identity (WMS + any profile), require an explicit re-auth for Y, and fall
+      // through to the login gate (which offers a one-tap sign-in for Y).
+      if (isWms && loggedInWms && loggedInWms !== id) {
+        try { localStorage.removeItem('loggedInWmsId'); } catch (e) {}
+        try { localStorage.removeItem('instanceProfileId'); } catch (e) {}
+        _instanceProfile = undefined; _profileTabs = null; _roleTabs = null;
+        _blockAutoWms = true;               // don't silently adopt the new id
+        loggedInWms = null; hasProfileId = false;
+      }
+
+      // 1b) A committed / adoptable WMS identity scopes the device to that user's
+      // own access (+ role tabs). Adopt automatically on first detect, unless a
+      // profile is already signed in or we're blocking after a mismatch.
+      if (isWms && (loggedInWms === id || (!loggedInWms && !hasProfileId && !_blockAutoWms))) {
+        try { localStorage.setItem('loggedInWmsId', id); } catch (e) {}
+        _blockAutoWms = false;
         hideProfileLogin();
         _profileTabs = null; _roleTabs = null; refreshTabVisibility();   // WMS uses role tabs (checkManagerAccess sets them)
         let userWhs = null;
@@ -3593,10 +3630,10 @@
           userWhs = (Array.isArray(w) && w.length) ? _whCodes(w) : null;
         }
         if (userWhs) applyWhRestriction(userWhs); else clearWhRestriction();
-        updateProfileStatusUI({ wms: true, label: _dashDeviceLabel });
+        updateProfileStatusUI({ wms: true, id, label: _detectedWmsLabel });
         return;
       }
-      // 2) No WMS identity → require a logged-in instance profile.
+      // 2) No committed WMS identity → require a logged-in instance profile.
       const profile = await getInstanceProfile();
       if (profile) {
         hideProfileLogin();
@@ -3637,27 +3674,84 @@
   }
   function showProfileLogin() {
     const g = document.getElementById('profileLoginGate');
-    if (g) { g.style.display = 'flex'; const u = document.getElementById('profileLoginUser'); if (u) setTimeout(() => u.focus(), 30); }
+    if (g) { g.style.display = 'flex'; refreshGateWms(); const u = document.getElementById('profileLoginUser'); if (u) setTimeout(() => u.focus(), 30); }
   }
   function hideProfileLogin() { const g = document.getElementById('profileLoginGate'); if (g) g.style.display = 'none'; }
+  // Reflect the currently-detected WMS session in the gate's one-tap button.
+  function refreshGateWms() {
+    const box = document.getElementById('gateWmsDetected');
+    const sub = document.getElementById('gateWmsDetectedSub');
+    if (!box) return;
+    if (_detectedWmsId) {
+      box.style.display = '';
+      if (sub) sub.textContent = _detectedWmsLabel ? (_detectedWmsLabel + ' · ' + _detectedWmsId) : _detectedWmsId;
+    } else {
+      box.style.display = 'none';
+    }
+  }
   function updateProfileStatusUI(state) {
     const nameEl = document.getElementById('profileStatusName');
     const subEl = document.getElementById('profileStatusSub');
     const btn = document.getElementById('profileLogoutBtn');
     if (!nameEl) return;
     if (state.wms) {
-      nameEl.textContent = state.label || 'WMS user';
-      if (subEl) subEl.textContent = 'Signed in via WMS — scope from your account';
-      if (btn) btn.style.display = 'none';                 // WMS scope, nothing to log out of
+      // Signed in via WMS → show the WMS ID (label as secondary context).
+      nameEl.textContent = state.id || _detectedWmsId || 'WMS';
+      if (subEl) subEl.textContent = state.label ? ('WMS · ' + state.label) : 'Signed in via WMS';
+      if (btn) btn.style.display = '';                     // #3: always allow log out
     } else if (state.profile) {
       nameEl.textContent = state.profile.name || state.profile.username || state.profile.id;
-      if (subEl) subEl.textContent = 'Log out to switch to a different profile';
+      if (subEl) subEl.textContent = 'Instance profile — log out to switch';
       if (btn) btn.style.display = '';
     } else {
       nameEl.textContent = 'Not signed in';
-      if (subEl) subEl.textContent = 'Sign in with a profile to view data';
+      if (subEl) subEl.textContent = 'Sign in with WMS or a profile to view data';
       if (btn) btn.style.display = 'none';
     }
+  }
+  // Commit a WMS identity chosen from the login gate (one-tap or manual ID entry).
+  async function signInWithWms(id, bridgeWarehouses) {
+    id = String(id || '').trim();
+    if (id.indexOf('wms:') !== 0) id = 'wms:' + id.replace(/^wms:/, '');
+    const uid = id.slice(4);
+    if (!uid) return { ok: false, msg: 'Enter a WMS ID' };
+    // Validate the ID exists (and pull its warehouse scope) unless the bridge already supplied it.
+    let whs = (Array.isArray(bridgeWarehouses) && bridgeWarehouses.length) ? bridgeWarehouses : null;
+    if (!whs) {
+      let rows = [];
+      try { rows = await fetch(SB_URL + '/wms_users?user_id=eq.' + encodeURIComponent(uid) + '&select=user_id,warehouses', { headers: SB_HDR }).then(r => r.ok ? r.json() : []); } catch (e) {}
+      if (!rows || !rows.length) return { ok: false, msg: 'Unknown WMS ID' };
+      const w = rows[0].warehouses; whs = (Array.isArray(w) && w.length) ? w : null;
+    }
+    try { localStorage.setItem('loggedInWmsId', id); localStorage.setItem('lastWmsId', id); } catch (e) {}
+    try { localStorage.removeItem('instanceProfileId'); } catch (e) {}
+    _instanceProfile = undefined; _profileTabs = null; _blockAutoWms = false;
+    _detectedWmsId = id;
+    hideProfileLogin();
+    checkManagerAccess(id);
+    await resolveWhAllow(id, whs);
+    return { ok: true };
+  }
+  function signInWithDetectedWms() {
+    if (!_detectedWmsId) return;
+    signInWithWms(_detectedWmsId, _detectedWmsWarehouses);
+  }
+  function toggleWmsIdEntry() {
+    const box = document.getElementById('gateWmsIdBox');
+    if (!box) return;
+    const show = box.style.display === 'none';
+    box.style.display = show ? '' : 'none';
+    if (show) { const i = document.getElementById('gateWmsIdInput'); if (i) setTimeout(() => i.focus(), 30); }
+  }
+  async function signInWithWmsId() {
+    const iEl = document.getElementById('gateWmsIdInput'), errEl = document.getElementById('gateWmsIdErr');
+    const fail = m => { if (errEl) { errEl.textContent = m; errEl.style.display = ''; } };
+    const v = (iEl && iEl.value || '').trim();
+    if (!v) return fail('Enter a WMS ID');
+    if (errEl) errEl.style.display = 'none';
+    const r = await signInWithWms(v);
+    if (!r.ok) return fail(r.msg || 'Sign-in failed');
+    if (iEl) iEl.value = '';
   }
   async function doProfileLogin() {
     const uEl = document.getElementById('profileLoginUser'), pEl = document.getElementById('profileLoginPass'), errEl = document.getElementById('profileLoginErr');
@@ -3672,19 +3766,22 @@
       const h = await sha256Hex(p);
       if (h !== prof.password_hash) return fail('Incorrect password');
     }
-    try { localStorage.setItem('instanceProfileId', prof.id); } catch (e) {}
-    _instanceProfile = undefined; _profileTabs = null;
+    try { localStorage.setItem('instanceProfileId', prof.id); localStorage.removeItem('loggedInWmsId'); } catch (e) {}
+    _instanceProfile = undefined; _profileTabs = null; _blockAutoWms = true;   // a profile login means don't auto-adopt the live WMS session
     if (errEl) errEl.style.display = 'none';
     if (pEl) pEl.value = '';
     hideProfileLogin();
-    const id = _dashDeviceId || await dashGetDeviceId();
-    resolveWhAllow(id);
+    resolveWhAllow(null);   // resolve as a profile session (ignore any live WMS id)
   }
   async function logoutProfile() {
-    try { localStorage.removeItem('instanceProfileId'); } catch (e) {}
-    _instanceProfile = undefined; _profileTabs = null;
-    const id = _dashDeviceId || await dashGetDeviceId();
-    resolveWhAllow(id);   // → login gate when there's no WMS identity
+    // Drop both the profile and the committed WMS identity. Q: "re-adopt if still
+    // active" — if the extension is still reporting the same WMS session, the
+    // resolve below adopts it again; otherwise the login gate shows.
+    try { localStorage.removeItem('instanceProfileId'); localStorage.removeItem('loggedInWmsId'); } catch (e) {}
+    _instanceProfile = undefined; _profileTabs = null; _blockAutoWms = false;
+    try { closeSettings(); } catch (e) {}
+    const id = _detectedWmsId || _dashDeviceId || await dashGetDeviceId();
+    resolveWhAllow(id);
   }
 
   checkManagerAccess();
@@ -5920,16 +6017,7 @@
 
   function closeSettings() {
     document.getElementById('settingsModal').classList.remove('open');
-    // Re-lock profile on close
-    const pinScreen = document.getElementById('sg-profile-pin');
-    const content = document.getElementById('sg-profile-content');
-    const pinInput = document.getElementById('profilePinInput');
-    const pinErr = document.getElementById('profilePinError');
     const group = document.getElementById('sg-profile');
-    if (pinScreen) pinScreen.style.display = '';
-    if (content) content.style.display = 'none';
-    if (pinInput) pinInput.value = '';
-    if (pinErr) pinErr.style.display = 'none';
     if (group) group.classList.remove('open');
     // Collapse the Visible Tabs sub-section again
     const tabsBody = document.getElementById('tabsSectionBody');
@@ -5940,30 +6028,7 @@
 
   function openProfileSettings() {
     const group = document.getElementById('sg-profile');
-    if (group.classList.contains('open')) {
-      group.classList.remove('open');
-      // Re-lock
-      document.getElementById('sg-profile-pin').style.display = '';
-      document.getElementById('sg-profile-content').style.display = 'none';
-      document.getElementById('profilePinInput').value = '';
-      document.getElementById('profilePinError').style.display = 'none';
-    } else {
-      group.classList.add('open');
-    }
-  }
-
-  function verifyProfilePin() {
-    const input = document.getElementById('profilePinInput');
-    const errEl = document.getElementById('profilePinError');
-    if (input.value === '12345') {
-      document.getElementById('sg-profile-pin').style.display = 'none';
-      document.getElementById('sg-profile-content').style.display = '';
-      errEl.style.display = 'none';
-    } else {
-      errEl.style.display = '';
-      input.value = '';
-      input.focus();
-    }
+    group.classList.toggle('open');
   }
 
   function applyRoleVisibility(role) {
