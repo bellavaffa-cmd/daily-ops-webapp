@@ -1425,18 +1425,10 @@
           <div class="theme-toggle-row" style="align-items:center">
             <div>
               <div style="font-size:.85rem;color:var(--text);font-weight:500">Default Warehouse</div>
-              <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Pre-fills the warehouse field on error reports</div>
+              <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Filters every tab to this warehouse (and pre-fills error reports)</div>
             </div>
-            <select id="settingsDefaultWarehouse" onchange="localStorage.setItem('defaultWarehouse', this.value)" style="font-size:.8rem;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
-              <option value="">None</option>
-              <option value="LOCAD Bekasi FC">LOCAD Bekasi FC</option>
-              <option value="LOCAD Cabuyao (LISP) FC">LOCAD Cabuyao (LISP) FC</option>
-              <option value="LOCAD Hicom FC">LOCAD Hicom FC</option>
-              <option value="LOCAD Joo Koon FC (SG-JOO)">LOCAD Joo Koon FC (SG-JOO)</option>
-              <option value="LOCAD Lat Krabang FC">LOCAD Lat Krabang FC</option>
-              <option value="LOCAD Mesquite (TX-015) FC">LOCAD Mesquite (TX-015) FC</option>
-              <option value="LOCAD Santa Fe Springs FC (US-SAN)">LOCAD Santa Fe Springs FC</option>
-              <option value="LOCAD Umm Ramool FC">LOCAD Umm Ramool FC</option>
+            <select id="settingsDefaultWarehouse" onchange="setDefaultWarehouse(this.value)" style="font-size:.8rem;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;max-width:200px">
+              <option value="">All Warehouses</option>
             </select>
           </div>
 
@@ -2924,6 +2916,39 @@
     renderB2C(); renderB2B(); renderB2BOrders(); renderShortage(); renderShortageOrders();
     if (typeof renderJobs === 'function') renderJobs();
   }
+  // Default Warehouse (Settings) drives ALL warehouse filters (one shared filter)
+  // and pre-fills error reports. Options are the REAL warehouse names so the value
+  // matches what the filters compare against; only warehouses the user may see.
+  function populateDefaultWarehouseSelect() {
+    const sel = document.getElementById('settingsDefaultWarehouse');
+    if (!sel) return;
+    const cur = localStorage.getItem('defaultWarehouse') || '';
+    const { byCountry, other } = whGroups();
+    const opt = w => `<option value="${escHtml(w)}">${escHtml(w)}</option>`;
+    let html = '<option value="">All Warehouses</option>';
+    Object.keys(byCountry).sort().forEach(c => {
+      const whs = byCountry[c].filter(whAllowed);
+      if (whs.length) html += `<optgroup label="${escHtml(c)}">${whs.map(opt).join('')}</optgroup>`;
+    });
+    const os = other.filter(whAllowed);
+    if (os.length) html += `<optgroup label="Other">${os.map(opt).join('')}</optgroup>`;
+    sel.innerHTML = html;
+    sel.value = cur;
+  }
+  function setDefaultWarehouse(v) {
+    try { localStorage.setItem('defaultWarehouse', v || ''); } catch (e) {}
+    setSelectedWhs(v ? [v] : []);   // apply to every warehouse filter (shared global filter)
+  }
+  // On first load, seed the shared filter from the default warehouse so every tab
+  // opens scoped to it — only when the user hasn't chosen a filter yet.
+  function seedDefaultWhFilter() {
+    try {
+      if (localStorage.getItem('whFilterSet') !== null) return;
+      const d = localStorage.getItem('defaultWarehouse');
+      if (d) { localStorage.setItem('whFilterSet', JSON.stringify([d])); localStorage.setItem('b2cWarehousePicked', '1'); }
+    } catch (e) {}
+  }
+  seedDefaultWhFilter();
   // Warehouses were renamed in WMS to embed a country code in the name, e.g.
   // "LOCAD DIP FC (AE-DIP)", "LOCAD Al Sulay FC (KSA-AL)". When the sync doesn't
   // supply a country, derive it from that leading "(XX-…)" code so the warehouse
@@ -5853,9 +5878,8 @@
       const el = document.getElementById(t.toggleId);
       if (el) el.checked = (localStorage.getItem(t.key) ?? '1') !== '0';
     });
-    // Populate default warehouse and role (profile section — values pre-loaded even if PIN-locked)
-    const wfEl = document.getElementById('settingsDefaultWarehouse');
-    if (wfEl) wfEl.value = localStorage.getItem('defaultWarehouse') || '';
+    // Populate default warehouse (real warehouse names) and role.
+    populateDefaultWarehouseSelect();
     const roleEl = document.getElementById('profileRole');
     if (roleEl) roleEl.value = localStorage.getItem('userRole') || 'picker';
     // Carriers list + Slack webhook (both now live under Profile)
