@@ -7,9 +7,9 @@ chrome.sidePanel
 
 // ── Hourly auto-sync, aligned to the top of the clock hour ──────────────────
 // Fire at the next :00 and every 60 min after (1:00, 2:00, 3:00…). Chrome
-// persists alarms, so recreate on install and browser startup. A background
-// sync still needs an open wms.golocad.com tab for the token; if none is open
-// it logs and no-ops until the next tick.
+// persists alarms, so recreate on install and browser startup. The token comes
+// from an open wms.golocad.com tab if there is one, else the stored token (JWT,
+// ~30 days) captured at the last WMS login — so sync works with no tab open.
 function scheduleHourlySync() {
   const now = Date.now();
   const nextHour = new Date(now);
@@ -22,6 +22,7 @@ chrome.runtime.onStartup.addListener(scheduleHourlySync);
 chrome.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === 'hourlySync') {
     performSync(false).catch(e => console.error('[WMS bg] hourly sync:', e.message));
+    syncRolesFromLogiwa().catch(() => {});   // WMS → dashboard role sync (throttled, no tab needed)
   }
 });
 
@@ -84,9 +85,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     (async () => {
       let tabs = [];
       try { tabs = await chrome.tabs.query({ url: 'https://wms.golocad.com/*' }); } catch (e) {}
-      if (!tabs || !tabs.length) { sendResponse({ id: null }); return; }
+      // No open tab → fall back to the stored token identity (valid ~30 days).
+      if (!tabs || !tabs.length) { sendResponse(await storedWmsIdentity()); return; }
       let answered = false, pending = tabs.length;
-      const finish = (r) => { if (answered) return; answered = true; sendResponse(r); };
+      // A live tab wins; otherwise fall back to the stored token identity.
+      const finish = async (r) => { if (answered) return; answered = true; sendResponse(r && r.id ? r : await storedWmsIdentity()); };
       tabs.forEach((t) => {
         let settled = false;
         const settle = (r) => {
@@ -106,7 +109,91 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     })();
     return true;   // async sendResponse
   }
+
+  // Run the WMS → dashboard role sync (triggered by content.js on WMS login).
+  if (msg.action === 'syncRoles') { syncRolesFromLogiwa().catch(() => {}); sendResponse({ ok: true }); return false; }
 });
+
+// ── WMS session token + stored identity ─────────────────────────────────────
+// Prefer a live open WMS tab; else use the token/identity captured at the last
+// WMS login (JWT valid ~30 days), so sign-in and sync work with no tab open.
+async function getWmsToken() {
+  try {
+    const tabs = await chrome.tabs.query({ url: 'https://wms.golocad.com/*' });
+    if (tabs && tabs.length) {
+      const r = await new Promise((res) => { chrome.tabs.sendMessage(tabs[0].id, { action: 'getLogiwaToken' }, (x) => { void chrome.runtime.lastError; res(x); }); });
+      if (r && r.token) return r.token;
+    }
+  } catch (e) {}
+  try {
+    const s = await chrome.storage.local.get(['wmsToken', 'wmsTokenExp']);
+    if (s && s.wmsToken && (!s.wmsTokenExp || Number(s.wmsTokenExp) * 1000 > Date.now())) return s.wmsToken;
+  } catch (e) {}
+  return null;
+}
+async function storedWmsIdentity() {
+  try {
+    const s = await chrome.storage.local.get(['wmsToken', 'wmsTokenExp', 'wmsUser', 'wmsUserLabel', 'wmsWarehouses']);
+    if (s && s.wmsToken && s.wmsUser && (!s.wmsTokenExp || Number(s.wmsTokenExp) * 1000 > Date.now())) {
+      return { id: s.wmsUser, label: s.wmsUserLabel || null, warehouses: s.wmsWarehouses || null };
+    }
+  } catch (e) {}
+  return { id: null };
+}
+
+// ── WMS → dashboard role sync (moved here so it runs with or without a tab) ──
+function mapLogiwaRole(roleName) {
+  const s = String(roleName || '').toLowerCase();
+  const has = (t) => s.indexOf(t) >= 0;
+  if (has('superuser') || has('system administrator') || has('[lc] tech')) return 'Admin';
+  if (has('warehouse manager') || has('country ops manager') || has('country ops senior') || has('customer success manager') || has('analytics') || has('finance')) return 'Manager';
+  if (has('supervisor')) return 'Supervisor';
+  if (has('customer success') || has('country ops junior')) return 'CS';
+  if (has('outbound')) return 'Packer';
+  if (has('picker') || has('inbound') || has('inventory') || has('returns')) return 'Picker';
+  return null;
+}
+async function syncRolesFromLogiwa() {
+  const SB = 'https://hmpkjmnxoidesnnoecfm.supabase.co/rest/v1';
+  const KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
+  const SBH = { apikey: KEY, Authorization: 'Bearer ' + KEY };
+  try {
+    const st = await chrome.storage.local.get(['roleSyncAt', 'wmsUser', 'wmsUserEmail']);
+    if (Date.now() - ((st && st.roleSyncAt) || 0) < 3 * 60 * 60 * 1000) return;   // at most every 3h
+    const token = await getWmsToken();
+    if (!token) return;
+    const lr = await fetch('https://mywmsquery.logiwa.com/api/user/list/i/0/s/5000', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: '{}' });
+    if (!lr.ok) return;
+    const users = ((await lr.json()).data) || [];
+    if (!users.length) return;
+    const roleByEmail = {};
+    for (const u of users) {
+      if (String(u.userStatusName || '') !== 'Active') continue;
+      const em = String(u.email || '').toLowerCase(); if (!em) continue;
+      const role = mapLogiwaRole(u.roleName);
+      if (role) roleByEmail[em] = role;   // duplicate email → last wins
+    }
+    const wr = await fetch(SB + '/wms_users?select=user_id,email', { headers: SBH });
+    const wu = wr.ok ? (await wr.json()) : [];
+    const now = new Date().toISOString();
+    const rows = [], seen = {};
+    for (const w of wu) {
+      const em = String(w.email || '').toLowerCase();
+      const role = em && roleByEmail[em];
+      if (role && w.user_id && !seen[w.user_id]) { seen[w.user_id] = 1; rows.push({ user_id: w.user_id, wh: '*', role: role, updated_at: now }); }
+    }
+    // Ensure the current (stored) user is covered even if the wms_users write raced.
+    if (st && st.wmsUser && st.wmsUserEmail) {
+      const uid = String(st.wmsUser).indexOf('wms:') === 0 ? String(st.wmsUser).slice(4) : String(st.wmsUser);
+      const role = roleByEmail[String(st.wmsUserEmail).toLowerCase()];
+      if (role && uid && !seen[uid]) rows.push({ user_id: uid, wh: '*', role: role, updated_at: now });
+    }
+    if (rows.length) {
+      await fetch(SB + '/user_roles?on_conflict=user_id,wh', { method: 'POST', headers: Object.assign({}, SBH, { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(rows) });
+    }
+    await chrome.storage.local.set({ roleSyncAt: Date.now() });
+  } catch (e) { /* ignore */ }
+}
 
 // ── Shared Logiwa sync ──────────────────────────────────────────────────────
 // One Logiwa fetch returns ALL order types, so every sync computes both the B2C
@@ -125,19 +212,11 @@ async function performSync(isB2B) {
   };
 
   try {
-    // 1. Find a WMS tab with the content script running
-    const tabs = await chrome.tabs.query({ url: 'https://wms.golocad.com/*' });
-    if (!tabs || !tabs.length) throw new Error('WMS tab not found — open wms.golocad.com first.');
-
-    // 2. Get the Logiwa session token from the page's localStorage
-    const tokenResp = await new Promise((resolve) => {
-      chrome.tabs.sendMessage(tabs[0].id, { action: 'getLogiwaToken' }, (r) => {
-        void chrome.runtime.lastError;
-        resolve(r);
-      });
-    });
-    if (!tokenResp || !tokenResp.token) throw new Error('Reload the wms.golocad.com tab and try again.');
-    const token = tokenResp.token;
+    // 1-2. Logiwa session token — from an open WMS tab if there is one, else the
+    // stored token (JWT, valid ~30 days) captured at the last WMS login. This lets
+    // the sync run with no WMS tab open.
+    const token = await getWmsToken();
+    if (!token) throw new Error('No WMS session — open wms.golocad.com and log in once.');
 
     // 3. Fetch orders + user-performance + jobs from Logiwa concurrently, and
     // each list's pages in parallel batches (instead of one page at a time).

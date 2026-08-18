@@ -3634,10 +3634,11 @@
     await resolveWhAllow();
     return { ok: true };
   }
-  // The gate's "Sign in with WMS" tap — requires a live logged-in WMS tab.
+  // The gate's "Sign in with WMS" tap (SSO-style). A live WMS tab → sign in now;
+  // no tab → open WMS and let auto sign-in complete once the user logs in there.
   function signInWithDetectedWms() {
-    if (!_liveWmsId) { requestWmsLiveCheck(); return; }   // re-check in case a tab just opened
-    signInWithWms(_liveWmsId, _liveWmsWarehouses);
+    if (_liveWmsId) { signInWithWms(_liveWmsId, _liveWmsWarehouses); return; }
+    openWmsTab();
   }
   async function doProfileLogin() {
     const uEl = document.getElementById('profileLoginUser'), pEl = document.getElementById('profileLoginPass'), errEl = document.getElementById('profileLoginErr');
@@ -3660,8 +3661,8 @@
     resolveWhAllow();
   }
   async function logoutProfile() {
-    // Drop the committed session. There is no auto-adopt, so this is final until
-    // the user explicitly signs in again (WMS one-tap or a profile login).
+    // Drop the committed session. There is no auto sign-in, so this is final until
+    // the user explicitly taps "Sign in with WMS" or signs in with a profile.
     try { localStorage.removeItem('instanceProfileId'); localStorage.removeItem('loggedInWmsId'); localStorage.removeItem('lastWmsId'); localStorage.removeItem('sessionStartAt'); } catch (e) {}
     _instanceProfile = undefined; _profileTabs = null;
     try { closeSettings(); } catch (e) {}
@@ -3698,7 +3699,7 @@
     try { committed = localStorage.getItem('loggedInWmsId'); } catch (x) {}
     if (committed && id && id !== committed) { forceWmsLogout(); return; }   // different WMS user now live → log out
     if (id) checkManagerAccess(id);
-    refreshGateWms();
+    refreshGateWms();   // enable "Sign in with WMS" when a session is available (no auto sign-in)
   });
 
   // Open the console, handing it the WMS identity the app already detected so it
