@@ -3600,10 +3600,28 @@
   // Ask the extension's content script to announce itself (it also announces on load).
   function requestExtPing() { try { window.postMessage({ type: 'wms-ext-ping' }, '*'); } catch (e) {} }
   function markExtInstalled(version) { const first = !_extInstalled; _extInstalled = true; if (version) _extVersion = version; if (first) refreshGateWms(); }
-  // Open WMS so the user can log in, then re-check shortly after (the gate also polls).
+  // Open WMS in a small popup window (not a tab) so the user can log in without
+  // leaving the app. WMS loads top-level (no embedding issue). We poll for the
+  // session and auto-close the popup once it's detected. Falls back to a tab if
+  // the popup is blocked.
+  let _wmsPopup = null, _wmsPopupPoll = null;
+  function closeWmsPopup() { try { if (_wmsPopup && !_wmsPopup.closed) _wmsPopup.close(); } catch (e) {} _wmsPopup = null; if (_wmsPopupPoll) { clearInterval(_wmsPopupPoll); _wmsPopupPoll = null; } }
   function openWmsTab() {
-    try { window.open('https://wms.golocad.com/', '_blank', 'noopener'); } catch (e) {}
-    setTimeout(requestWmsLiveCheck, 1500);
+    try {
+      const w = 480, h = 640;
+      const y = (window.top && window.top.outerHeight ? Math.max(0, ((window.top.outerHeight - h) / 2) + (window.top.screenY || 0)) : 80);
+      const x = (window.top && window.top.outerWidth ? Math.max(0, ((window.top.outerWidth - w) / 2) + (window.top.screenX || 0)) : 80);
+      _wmsPopup = window.open('https://wms.golocad.com/', 'wmsLogin', 'width=' + w + ',height=' + h + ',left=' + Math.round(x) + ',top=' + Math.round(y) + ',menubar=no,toolbar=no');
+    } catch (e) { _wmsPopup = null; }
+    if (!_wmsPopup) { try { window.open('https://wms.golocad.com/', '_blank', 'noopener'); } catch (e) {} }   // popup blocked → tab
+    // Poll for the WMS session; the live-check handler closes the popup on detect.
+    if (_wmsPopupPoll) clearInterval(_wmsPopupPoll);
+    let ticks = 0;
+    _wmsPopupPoll = setInterval(() => {
+      ticks++;
+      if (_liveWmsId || (_wmsPopup && _wmsPopup.closed) || ticks > 80) { if (_wmsPopupPoll) { clearInterval(_wmsPopupPoll); _wmsPopupPoll = null; } return; }
+      requestWmsLiveCheck();
+    }, 1500);
   }
   // Sessions expire 15 days after sign-in — the app auto-logs-out on next check.
   const SESSION_MAX_MS = 15 * 24 * 60 * 60 * 1000;
@@ -3730,6 +3748,7 @@
     _liveWmsWarehouses = id && Array.isArray(e.data.warehouses) ? e.data.warehouses : null;
     let committed = null;
     try { committed = localStorage.getItem('loggedInWmsId'); } catch (x) {}
+    if (id && _wmsPopup) closeWmsPopup();   // logged in via the popup → close it
     if (committed && id && id !== committed) { forceWmsLogout(); return; }   // different WMS user now live → log out
     if (id) checkManagerAccess(id);
     refreshGateWms();   // enable "Sign in with WMS" when a session is available (no auto sign-in)
