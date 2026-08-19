@@ -1509,6 +1509,13 @@
   </div>
 </div>
 
+<!-- One-time tip: pin the extension (shown once, only when the extension is installed) -->
+<div id="extPinHint" style="display:none;position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:11000;max-width:min(430px,92vw);background:var(--surface);border:1px solid var(--primary);border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.35);padding:12px 14px;align-items:flex-start;gap:10px;font-size:.82rem;color:var(--text)">
+  <div style="flex:none;font-size:1.15rem;line-height:1.2">📌</div>
+  <div style="flex:1;line-height:1.45"><b>Tip:</b> Pin the WMS extension for quick access — click the <b>puzzle-piece</b> icon in your browser toolbar, then the pin next to <b>“WMS → Report Error”</b>.</div>
+  <button onclick="dismissExtPinHint()" class="btn btn-sm" style="flex:none;font-size:.75rem;padding:5px 11px">Got it</button>
+</div>
+
 <main>
   <!-- ── WAREHOUSE PICKER MODAL ── -->
   <div class="modal-overlay" id="warehousePickerModal">
@@ -3567,7 +3574,7 @@
     const g = document.getElementById('profileLoginGate');
     if (g) { g.style.display = 'flex'; refreshGateWms(); requestWmsLiveCheck(); requestExtPing(); startGateLivePoll(); const u = document.getElementById('profileLoginUser'); if (u) setTimeout(() => u.focus(), 30); }
   }
-  function hideProfileLogin() { const g = document.getElementById('profileLoginGate'); if (g) g.style.display = 'none'; stopGateLivePoll(); }
+  function hideProfileLogin() { const g = document.getElementById('profileLoginGate'); if (g) g.style.display = 'none'; stopGateLivePoll(); maybeShowExtPinHint(); }
   // Reflect the live logged-in WMS tab (if any) in the gate's one-tap button.
   // No live tab → the button is hidden and a hint tells the user to open one.
   function refreshGateWms() {
@@ -3599,7 +3606,20 @@
   function requestWmsLiveCheck() { try { window.postMessage({ type: 'wms-live-check-request' }, '*'); } catch (e) {} }
   // Ask the extension's content script to announce itself (it also announces on load).
   function requestExtPing() { try { window.postMessage({ type: 'wms-ext-ping' }, '*'); } catch (e) {} }
-  function markExtInstalled(version) { const first = !_extInstalled; _extInstalled = true; if (version) _extVersion = version; if (first) refreshGateWms(); }
+  function markExtInstalled(version) { const first = !_extInstalled; _extInstalled = true; if (version) _extVersion = version; if (first) refreshGateWms(); maybeShowExtPinHint(); }
+  // One-time "pin the extension" tip — shown once, only when the extension is
+  // installed and the user is past the login gate (not while signing in).
+  function maybeShowExtPinHint() {
+    try { if (localStorage.getItem('extPinHintSeen') === '1') return; } catch (e) {}
+    if (!_extInstalled) return;
+    const gate = document.getElementById('profileLoginGate');
+    if (gate && getComputedStyle(gate).display !== 'none') return;
+    const el = document.getElementById('extPinHint');
+    if (!el) return;
+    el.style.display = 'flex';
+    try { localStorage.setItem('extPinHintSeen', '1'); } catch (e) {}   // truly one-time
+  }
+  function dismissExtPinHint() { const el = document.getElementById('extPinHint'); if (el) el.style.display = 'none'; }
   // Open WMS in a small popup window (not a tab) so the user can log in without
   // leaving the app. WMS loads top-level (no embedding issue). We poll for the
   // session and auto-close the popup once it's detected. Falls back to a tab if
@@ -3727,7 +3747,7 @@
   requestWmsLiveCheck();          // enable the gate one-tap if a live tab exists; drives mismatch logout
   requestExtPing();               // detect the extension; refreshGateWms shows the install prompt if absent
   // No response within a short window → extension not installed → show the prompt.
-  setTimeout(() => { if (!_extInstalled) refreshGateWms(); }, 2000);
+  setTimeout(() => { if (!_extInstalled) refreshGateWms(); else maybeShowExtPinHint(); }, 2000);
   fetchWarehouseCarriers();
   setInterval(enforceSessionExpiry, 30 * 60 * 1000);   // re-check the 15-day window periodically
   window.addEventListener('focus', enforceSessionExpiry);
