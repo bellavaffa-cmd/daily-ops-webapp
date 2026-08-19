@@ -6,6 +6,14 @@
 //  2. Loaded as a standalone tab (opened by the old flow or direct link) →
 //     ask the background service worker to close the tab.
 
+// Announce the extension (and its version) to the webapp so it can detect that
+// the extension is installed. The app also pings (wms-ext-ping) in case it
+// started listening after this fired.
+try {
+  const _extV = (chrome.runtime.getManifest && chrome.runtime.getManifest().version) || '';
+  window.postMessage({ type: 'wms-ext-hello', version: _extV }, '*');
+} catch (e) {}
+
 // Provide a stable per-device id to the webapp. This content script runs in
 // every Daily Ops frame — the side-panel iframe AND normal tabs — which have
 // SEPARATE (partitioned) localStorage, so the page can't share an id between
@@ -38,6 +46,12 @@ try {
 
 window.addEventListener('message', (e) => {
   if (!e.data) return;
+
+  // Dashboard asks whether the extension is installed → reply with our version.
+  if (e.data.type === 'wms-ext-ping') {
+    try { window.postMessage({ type: 'wms-ext-hello', version: (chrome.runtime.getManifest && chrome.runtime.getManifest().version) || '' }, '*'); } catch (err) {}
+    return;
+  }
 
   // Dashboard asks: is a logged-in WMS tab currently open (and who)? Relay to the
   // background service worker, which polls the open wms.golocad.com tabs, and hand

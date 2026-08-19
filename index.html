@@ -1483,7 +1483,13 @@
   <div style="width:100%;max-width:360px;text-align:center">
     <img src="icons/locad-logo.png" alt="" style="height:30px;margin-bottom:18px;opacity:.9" onerror="this.style.display='none'">
     <div style="font-size:1.15rem;font-weight:700;color:var(--text);margin-bottom:4px">Sign in to this device</div>
-    <div style="font-size:.8rem;color:var(--muted);margin-bottom:20px">Sign in with a logged-in WMS tab, or with the profile username and password provided by your manager.</div>
+    <div style="font-size:.8rem;color:var(--muted);margin-bottom:20px">Sign in with WMS (needs the browser extension), or with the profile username and password provided by your manager.</div>
+
+    <!-- Shown when the WMS extension isn't installed — hides the WMS sign-in path -->
+    <div id="gateExtInstall" style="display:none;margin-bottom:16px;padding:12px 13px;border-radius:8px;border:1px solid var(--primary);background:var(--surface2);font-size:.8rem;color:var(--text);line-height:1.45">
+      The <b>WMS browser extension</b> isn't installed, so signing in with WMS isn't available here. Install it, then reload — or sign in with a profile below.
+      <button onclick="openExtStore()" class="btn btn-primary" style="width:100%;margin-top:10px;padding:10px;font-size:.88rem">Install the WMS extension</button>
+    </div>
 
     <!-- WMS one-tap: shown only when a logged-in WMS tab is currently open -->
     <div id="gateWmsDetected" style="display:none;margin-bottom:16px">
@@ -2709,6 +2715,13 @@
   let _liveWmsId = null;              // wms:<id> of a live logged-in WMS tab, or null
   let _liveWmsLabel = null;           // readable name from the live check
   let _liveWmsWarehouses = null;      // accessible warehouses from the live check
+  // Is the WMS browser extension installed? Detected via its content script
+  // (closer.js) announcing itself, or any live-check reply. Without it, WMS
+  // sign-in is impossible, so the gate shows an "Install the extension" prompt.
+  let _extInstalled = false;
+  let _extVersion = null;
+  const WMS_EXT_STORE_URL = 'https://chromewebstore.google.com/detail/wms-%E2%86%92-report-error/aaicnmndjpfenmniilhjdofolgkkknfa';
+  function openExtStore() { try { window.open(WMS_EXT_STORE_URL, '_blank', 'noopener'); } catch (e) {} }
   // A tab's own user toggle (Settings checkbox if open, else the saved pref).
   function tabToggledOn(t) {
     const chk = document.getElementById(t.toggleId);
@@ -3552,7 +3565,7 @@
   }
   function showProfileLogin() {
     const g = document.getElementById('profileLoginGate');
-    if (g) { g.style.display = 'flex'; requestWmsLiveCheck(); startGateLivePoll(); const u = document.getElementById('profileLoginUser'); if (u) setTimeout(() => u.focus(), 30); }
+    if (g) { g.style.display = 'flex'; refreshGateWms(); requestWmsLiveCheck(); requestExtPing(); startGateLivePoll(); const u = document.getElementById('profileLoginUser'); if (u) setTimeout(() => u.focus(), 30); }
   }
   function hideProfileLogin() { const g = document.getElementById('profileLoginGate'); if (g) g.style.display = 'none'; stopGateLivePoll(); }
   // Reflect the live logged-in WMS tab (if any) in the gate's one-tap button.
@@ -3561,7 +3574,17 @@
     const box = document.getElementById('gateWmsDetected');
     const sub = document.getElementById('gateWmsDetectedSub');
     const noTab = document.getElementById('gateWmsNoTab');
+    const install = document.getElementById('gateExtInstall');
     if (!box) return;
+    // No extension → WMS sign-in is impossible: show the install prompt, hide the
+    // WMS buttons (profile login stays). Stays until the extension is detected.
+    if (!_extInstalled) {
+      if (install) install.style.display = '';
+      box.style.display = 'none';
+      if (noTab) noTab.style.display = 'none';
+      return;
+    }
+    if (install) install.style.display = 'none';
     if (_liveWmsId) {
       box.style.display = '';
       if (noTab) noTab.style.display = 'none';
@@ -3574,6 +3597,9 @@
   // Ask the extension whether a logged-in WMS tab is currently open. The reply
   // arrives asynchronously as a 'wms-live-check-result' message (see listener).
   function requestWmsLiveCheck() { try { window.postMessage({ type: 'wms-live-check-request' }, '*'); } catch (e) {} }
+  // Ask the extension's content script to announce itself (it also announces on load).
+  function requestExtPing() { try { window.postMessage({ type: 'wms-ext-ping' }, '*'); } catch (e) {} }
+  function markExtInstalled(version) { const first = !_extInstalled; _extInstalled = true; if (version) _extVersion = version; if (first) refreshGateWms(); }
   // Open WMS so the user can log in, then re-check shortly after (the gate also polls).
   function openWmsTab() {
     try { window.open('https://wms.golocad.com/', '_blank', 'noopener'); } catch (e) {}
@@ -3681,6 +3707,9 @@
   if (!enforceSessionExpiry()) resolveWhAllow();   // 15-day expiry, else scope from the committed session
   dashGetDeviceId();              // resolve the device id for layout/reporter (no access role)
   requestWmsLiveCheck();          // enable the gate one-tap if a live tab exists; drives mismatch logout
+  requestExtPing();               // detect the extension; refreshGateWms shows the install prompt if absent
+  // No response within a short window → extension not installed → show the prompt.
+  setTimeout(() => { if (!_extInstalled) refreshGateWms(); }, 2000);
   fetchWarehouseCarriers();
   setInterval(enforceSessionExpiry, 30 * 60 * 1000);   // re-check the 15-day window periodically
   window.addEventListener('focus', enforceSessionExpiry);
@@ -3690,7 +3719,11 @@
   // open (and who). This is the ONLY source that enables "Sign in with WMS", and
   // it also drives the mismatch guard for an already-committed session.
   window.addEventListener('message', function (e) {
-    if (e.source !== window || !e.data || e.data.type !== 'wms-live-check-result') return;
+    if (e.source !== window || !e.data) return;
+    // The extension announcing itself (on load or in reply to our ping).
+    if (e.data.type === 'wms-ext-hello') { markExtInstalled(e.data.version); return; }
+    if (e.data.type !== 'wms-live-check-result') return;
+    markExtInstalled();   // any reply means the extension is present
     const id = (e.data.id && String(e.data.id).indexOf('wms:') === 0) ? String(e.data.id) : null;
     _liveWmsId = id;
     _liveWmsLabel = id ? (e.data.label || null) : null;
