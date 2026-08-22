@@ -115,16 +115,6 @@
     <div class="row" style="margin-top:12px;gap:8px"><button class="btn" onclick="addBreakRow()">+ Add break</button><button class="btn primary" onclick="saveBreaks()">Save</button><span class="msg" id="breaksMsg"></span></div>
   </div>
 
-  <!-- 4: Carriers -->
-  <div class="card">
-    <h2>🚚 Carriers</h2>
-    <p class="hint">Carriers available for this warehouse (used by the error-report form).</p>
-    <table><tbody id="carrierRows"></tbody></table>
-    <div class="row" style="margin-top:12px">
-      <div style="flex:1;min-width:180px"><label>Add carrier</label><input type="text" id="carrierInput" placeholder="e.g. Aramex" onkeydown="if(event.key==='Enter')addCarrier()"></div>
-      <button class="btn" onclick="addCarrier()">Add</button>
-    </div>
-  </div>
 
   <!-- 5: Webhooks -->
   <div class="card">
@@ -367,7 +357,7 @@
   function onWhChange() {
     CURRENT_WH = $('whSelect').value;
     populateUserPicker();
-    loadTiming(); loadCarriers(); loadWebhooks(); loadRoles(); loadRoleTabs();
+    loadTiming(); loadWebhooks(); loadRoles(); loadRoleTabs();
   }
 
   // ── 1 + 3: Timing ──────────────────────────────────────────────────────────
@@ -448,19 +438,6 @@
       flash('breaksMsg', 'Saved ✓', true);
     } catch (e) { flash('breaksMsg', 'Save failed', false); }
   }
-
-  // ── 4: Carriers ─────────────────────────────────────────────────────────────
-  async function loadCarriers() {
-    const rows = await sbGet('/warehouse_carriers?wh=eq.' + encodeURIComponent(CURRENT_WH) + '&select=id,carrier&order=carrier.asc');
-    $('carrierRows').innerHTML = rows.length ? rows.map(r =>
-      `<tr><td>${esc(r.carrier)}</td><td style="text-align:right"><button class="btn icon" title="Remove" onclick="delCarrier(${r.id})">✕</button></td></tr>`
-    ).join('') : '<tr><td style="color:var(--muted)">No carriers yet.</td></tr>';
-  }
-  async function addCarrier() {
-    const v = $('carrierInput').value.trim(); if (!v) return;
-    try { await sbSend('POST', '/warehouse_carriers?on_conflict=wh,carrier', [{ wh: CURRENT_WH, carrier: v }], 'resolution=merge-duplicates,return=minimal'); $('carrierInput').value = ''; loadCarriers(); } catch (e) {}
-  }
-  async function delCarrier(id) { try { await sbSend('DELETE', '/warehouse_carriers?id=eq.' + id); loadCarriers(); } catch (e) {} }
 
   // ── 5: Webhooks ──────────────────────────────────────────────────────────────
   async function loadWebhooks() {

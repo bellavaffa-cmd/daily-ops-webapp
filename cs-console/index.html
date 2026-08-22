@@ -24,10 +24,13 @@
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 16px; }
   .card > h2 { font-size: .95rem; margin: 0 0 3px; }
   .card .hint { color: var(--muted); font-size: .76rem; margin: 0 0 14px; }
-  input { width: 100%; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-family: inherit; font-size: .88rem; }
+  input, select { width: 100%; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-family: inherit; font-size: .88rem; }
   input[type=checkbox] { width: auto; }
-  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-family: inherit; font-weight: 600; font-size: .84rem; cursor: pointer; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 8px 2px; border-bottom: 1px solid var(--border); font-size: .86rem; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-family: inherit; font-weight: 600; font-size: .84rem; cursor: pointer; white-space: nowrap; }
   .btn:hover { border-color: var(--primary); }
+  .btn.icon { padding: 4px 10px; }
   .btn.primary { background: var(--primary); color: #06210b; border-color: var(--primary); }
   .msg { font-size: .78rem; margin-left: 12px; min-height: 14px; }
   .msg.ok { color: var(--primary); } .msg.err { color: var(--danger); }
@@ -73,6 +76,18 @@
       <button class="btn primary" onclick="saveAssignments()">Save my brands</button>
       <span class="msg" id="saveMsg"></span>
     </div>
+  </div>
+
+  <div class="card">
+    <h2>🚚 Carriers</h2>
+    <div class="hint">Carriers available at a warehouse for the error-report form. Pick a warehouse, then add or remove.</div>
+    <select id="whSelect" onchange="loadCarriers()"></select>
+    <table style="margin-top:12px"><tbody id="carrierRows"></tbody></table>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <input id="carrierInput" type="text" placeholder="e.g. Aramex" autocomplete="off" onkeydown="if(event.key==='Enter')addCarrier()">
+      <button class="btn" onclick="addCarrier()">Add</button>
+    </div>
+    <div style="min-height:14px;margin-top:6px"><span class="msg" id="carrierMsg" style="margin-left:0"></span></div>
   </div>
 </div>
 
@@ -148,7 +163,32 @@
     assigned = new Set((mine || []).map(r => r.brand));
     initialAssigned = new Set(assigned);
     renderBrands();
+    populateWh(rows);
   }
+
+  // ── Carriers (per warehouse; feed the error-report form) ───────────────────
+  function populateWh(rows) {
+    const whs = [...new Set((rows || []).map(r => r.wh).filter(Boolean))].sort();
+    $('whSelect').innerHTML = whs.map(w => `<option value="${esc(w)}">${esc(w)}</option>`).join('');
+    loadCarriers();
+  }
+  async function loadCarriers() {
+    const wh = $('whSelect').value;
+    if (!wh) { $('carrierRows').innerHTML = ''; return; }
+    const rows = await sbGet('/warehouse_carriers?wh=eq.' + encodeURIComponent(wh) + '&select=id,carrier&order=carrier.asc');
+    $('carrierRows').innerHTML = rows.length ? rows.map(r =>
+      `<tr><td>${esc(r.carrier)}</td><td style="text-align:right"><button class="btn icon" title="Remove" onclick="delCarrier(${r.id})">✕</button></td></tr>`
+    ).join('') : '<tr><td style="color:var(--muted)">No carriers yet.</td></tr>';
+  }
+  async function addCarrier() {
+    const wh = $('whSelect').value, v = $('carrierInput').value.trim();
+    if (!wh || !v) return;
+    try {
+      await sbSend('POST', '/warehouse_carriers?on_conflict=wh,carrier', [{ wh, carrier: v }], 'resolution=merge-duplicates,return=minimal');
+      $('carrierInput').value = ''; loadCarriers(); flash('carrierMsg', 'Added ✓', true);
+    } catch (e) { flash('carrierMsg', 'Failed', false); }
+  }
+  async function delCarrier(id) { try { await sbSend('DELETE', '/warehouse_carriers?id=eq.' + id); loadCarriers(); } catch (e) {} }
 
   function renderBrands() {
     const q = ($('brandSearch').value || '').trim().toLowerCase();
