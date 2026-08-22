@@ -146,8 +146,8 @@ function mapLogiwaRole(roleName) {
   const s = String(roleName || '').toLowerCase();
   const has = (t) => s.indexOf(t) >= 0;
   if (has('superuser') || has('system administrator') || has('[lc] tech')) return 'Admin';
-  if (has('warehouse manager') || has('country ops manager') || has('country ops senior') || has('customer success manager') || has('analytics') || has('finance')) return 'Manager';
-  if (has('supervisor')) return 'Supervisor';
+  if (has('warehouse manager') || has('country ops manager') || has('country ops senior') || has('customer success manager') || has('analytics') || has('finance') || has('ops - director')) return 'Manager';
+  if (has('supervisor') || has('ops - supply')) return 'Supervisor';
   if (has('customer success') || has('country ops junior')) return 'CS';
   if (has('outbound')) return 'Packer';
   if (has('picker') || has('inbound') || has('inventory') || has('returns')) return 'Picker';
@@ -158,9 +158,10 @@ function mapLogiwaRole(roleName) {
 // won't match what content.js writes when the person actually logs in.
 function isUserGuid(s) { return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(String(s || '')); }
 function pickUserGuid(u) {
-  const cands = [u.userIdentifier, u.userGuid, u.identifier, u.idtfr, u.guid, u.userId, u.id];
-  for (const c of cands) if (isUserGuid(c)) return String(c);
-  return null;
+  // Confirmed: Logiwa's userIdentifier is the same GUID as the JWT idtfr that
+  // content.js stores as wms_users.user_id. (u.identifier is a DIFFERENT,
+  // account-scoped GUID — never use it, or rows won't match the login identity.)
+  return isUserGuid(u && u.userIdentifier) ? String(u.userIdentifier) : null;
 }
 async function syncRolesFromLogiwa() {
   const SB = 'https://hmpkjmnxoidesnnoecfm.supabase.co/rest/v1';
@@ -199,8 +200,8 @@ async function syncRolesFromLogiwa() {
       newRows.push({ user_id: a.guid, name: a.name, email: a.email, updated_at: now });
       wu.push({ user_id: a.guid, email: a.email });   // include in the role-join below
     }
-    if (newRows.length) {
-      await fetch(SB + '/wms_users?on_conflict=user_id', { method: 'POST', headers: Object.assign({}, SBH, { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(newRows) });
+    for (let i = 0; i < newRows.length; i += 500) {   // batch: the directory can be thousands of users
+      await fetch(SB + '/wms_users?on_conflict=user_id', { method: 'POST', headers: Object.assign({}, SBH, { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(newRows.slice(i, i + 500)) });
     }
     const rows = [], seen = {};
     for (const w of wu) {
@@ -214,8 +215,8 @@ async function syncRolesFromLogiwa() {
       const role = roleByEmail[String(st.wmsUserEmail).toLowerCase()];
       if (role && uid && !seen[uid]) rows.push({ user_id: uid, wh: '*', role: role, updated_at: now });
     }
-    if (rows.length) {
-      await fetch(SB + '/user_roles?on_conflict=user_id,wh', { method: 'POST', headers: Object.assign({}, SBH, { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(rows) });
+    for (let i = 0; i < rows.length; i += 500) {   // batch: roles can now cover the whole directory
+      await fetch(SB + '/user_roles?on_conflict=user_id,wh', { method: 'POST', headers: Object.assign({}, SBH, { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(rows.slice(i, i + 500)) });
     }
     await chrome.storage.local.set({ roleSyncAt: Date.now() });
   } catch (e) { /* ignore */ }
