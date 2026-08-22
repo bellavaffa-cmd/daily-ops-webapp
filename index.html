@@ -2031,6 +2031,11 @@
             <div style="font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px">Net Depletion / hr</div>
             <div id="b2cFlowNet" style="font-size:1.8rem;font-weight:700;color:var(--text);line-height:1">—</div>
           </div>
+          <div class="card" style="padding:14px 16px" title="Estimated time to clear all open B2C orders at the current net packing rate (packing minus new-order inflow)">
+            <div style="font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#fbbf24;margin-bottom:4px">Est. all done</div>
+            <div id="b2cFlowEta" style="font-size:1.8rem;font-weight:700;color:var(--text);line-height:1">—</div>
+            <div id="b2cFlowEtaSub" style="font-size:.62rem;color:var(--muted);margin-top:4px;min-height:12px"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -4005,11 +4010,37 @@
           netEl.style.color = net > 0 ? '#86efac' : (net < 0 ? '#f87171' : 'var(--text)');
         } else { netEl.textContent = '—'; netEl.style.color = 'var(--text)'; }
       }
+      // Estimated completion: time to clear all open orders at the current NET
+      // packing rate (packing − inflow); picking must keep up, so take the slower.
+      const etaEl = document.getElementById('b2cFlowEta'), etaSub = document.getElementById('b2cFlowEtaSub');
+      if (etaEl) {
+        const whRows = b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh && inWhFilter(r.wh));
+        const sumK = k => whRows.reduce((a, r) => a + Number(r[k] || 0), 0);
+        const unpicked = sumK('new') + sumK('rfp') + sumK('picking');
+        const unpacked = unpicked + sumK('picked') + sumK('packing');
+        const pickRate = Math.max(0, latest.picked - prev.picked), packRate = packVal, inflow = newVal || 0;
+        const netPack = packRate - inflow, netPick = pickRate - inflow;
+        const setEta = (txt, sub, color) => { etaEl.textContent = txt; etaEl.style.color = color || 'var(--text)'; if (etaSub) etaSub.textContent = sub || ''; };
+        const fmtDur = h => { const m = Math.round(h * 60); if (m < 60) return '~' + m + 'm'; return '~' + Math.floor(m / 60) + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : ''); };
+        if (unpacked === 0) setEta('All clear', 'no open orders', '#86efac');
+        else if (packRate === 0) setEta('—', 'need packing activity');
+        else if (netPack <= 0) setEta('Not clearing', 'inflow ≥ packing (' + fmt(inflow) + '/hr in)', '#f87171');
+        else {
+          const hPack = unpacked / netPack, hPick = netPick > 0 ? unpicked / netPick : (unpicked > 0 ? Infinity : 0);
+          const hrs = Math.max(hPack, hPick);
+          if (!isFinite(hrs)) setEta('Not clearing', 'picking can’t keep up', '#f87171');
+          else if (hrs > 14) setEta('14h+', 'at net ' + fmt(netPack) + '/hr', '#fbbf24');
+          else setEta(tStr(Date.now() + hrs * 3600 * 1000), fmtDur(hrs) + ' · ' + (hPick > hPack ? 'picking-bound' : 'packing-bound'), '#fbbf24');
+        }
+      }
       wEl.textContent = `${opsStatusLabel()} · ${tStr(prev.t)} → ${tStr(latest.t)} · picking & packing count all order types`;
     } else {
       if (pkEl) pkEl.textContent = '—';
       clEl.textContent = '—';
       if (netEl) { netEl.textContent = '—'; netEl.style.color = 'var(--text)'; }
+      const etaEl = document.getElementById('b2cFlowEta'), etaSub = document.getElementById('b2cFlowEtaSub');
+      if (etaEl) { etaEl.textContent = '—'; etaEl.style.color = 'var(--text)'; }
+      if (etaSub) etaSub.textContent = 'collecting rate…';
       wEl.textContent = opsStatusLabel() + ' · ' + (latest
         ? `Collecting… need ~1h of picking/packing history (last sync ${tStr(latest.t)})`
         : (inflowArr[0] ? 'New orders shown; picking/packing needs the productivity sync' : 'Collecting data… (waiting for the first hourly sync)'));
