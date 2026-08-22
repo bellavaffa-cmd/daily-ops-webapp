@@ -1435,6 +1435,25 @@
             </select>
           </div>
 
+          <!-- Phone login setup — only when signed in via WMS on this device -->
+          <div id="phoneLoginSetup" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+            <div style="font-size:.85rem;color:var(--text);font-weight:500">📱 Phone login</div>
+            <div style="font-size:.75rem;color:var(--muted);margin:2px 0 10px">Set a password to sign in on your phone with your WMS email — no extension needed.</div>
+            <div style="font-size:.72rem;color:var(--muted);margin-bottom:4px">Username — your WMS email</div>
+            <input id="phoneLoginUser" type="text" readonly placeholder="—" style="width:100%;font-size:.85rem;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:not-allowed">
+            <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+              <button id="phoneLoginPwBtn" onclick="togglePhonePwField()" class="btn btn-sm" style="font-size:.8rem;padding:7px 14px">Add password</button>
+              <span id="phoneLoginMsg" style="font-size:.75rem;color:var(--muted)"></span>
+            </div>
+            <div id="phoneLoginPwWrap" style="display:none;margin-top:10px">
+              <input id="phoneLoginPass" type="password" placeholder="New password" autocomplete="new-password" style="width:100%;font-size:.85rem;padding:9px 11px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
+              <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+                <button onclick="saveWmsPhoneLogin()" class="btn btn-primary btn-sm" style="font-size:.8rem;padding:7px 14px">Save password</button>
+                <button onclick="cancelPhonePwField()" class="btn btn-sm" style="font-size:.8rem;padding:7px 14px">Cancel</button>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
@@ -1486,7 +1505,7 @@
   <div style="width:100%;max-width:360px;text-align:center">
     <img src="icons/locad-logo.png" alt="" style="height:30px;margin-bottom:18px;opacity:.9" onerror="this.style.display='none'">
     <div style="font-size:1.15rem;font-weight:700;color:var(--text);margin-bottom:4px">Sign in to this device</div>
-    <div style="font-size:.8rem;color:var(--muted);margin-bottom:20px">Sign in with WMS (needs the browser extension), or with the profile username and password provided by your manager.</div>
+    <div style="font-size:.8rem;color:var(--muted);margin-bottom:20px">Sign in with WMS (needs the browser extension), with your <b>phone login</b> (your WMS email + a password you set on desktop under Settings), or with a profile username and password from your manager.</div>
 
     <!-- Shown when the WMS extension isn't installed — hides the WMS sign-in path -->
     <div id="gateExtInstall" style="display:none;margin-bottom:16px;padding:12px 13px;border-radius:8px;border:1px solid var(--primary);background:var(--surface2);font-size:.8rem;color:var(--text);line-height:1.45">
@@ -1505,10 +1524,10 @@
       <button onclick="openWmsTab()" class="btn btn-primary" style="width:100%;margin-top:10px;padding:10px;font-size:.88rem">Open WMS</button>
     </div>
 
-    <input id="profileLoginUser" type="text" placeholder="Profile username" autocomplete="username" style="width:100%;font-size:.9rem;padding:11px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);margin-bottom:10px">
+    <input id="profileLoginUser" type="text" placeholder="Email or username" autocomplete="username" style="width:100%;font-size:.9rem;padding:11px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);margin-bottom:10px">
     <input id="profileLoginPass" type="password" placeholder="Password" autocomplete="current-password" style="width:100%;font-size:.9rem;padding:11px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
     <div id="profileLoginErr" style="font-size:.78rem;color:var(--danger);margin-top:8px;display:none;min-height:16px"></div>
-    <button onclick="doProfileLogin()" class="btn btn-primary" style="width:100%;margin-top:16px;padding:11px;font-size:.9rem">Sign in with profile</button>
+    <button onclick="doProfileLogin()" class="btn btn-primary" style="width:100%;margin-top:16px;padding:11px;font-size:.9rem">Sign in</button>
   </div>
 </div>
 
@@ -3718,21 +3737,37 @@
     const uEl = document.getElementById('profileLoginUser'), pEl = document.getElementById('profileLoginPass'), errEl = document.getElementById('profileLoginErr');
     const u = (uEl && uEl.value || '').trim(), p = (pEl && pEl.value) || '';
     const fail = m => { if (errEl) { errEl.textContent = m; errEl.style.display = ''; } };
-    if (!u) return fail('Enter your profile username');
+    if (!u) return fail('Enter your username');
+    // 1) Instance profile (shared/kiosk credential from a manager).
     let rows = [];
     try { rows = await fetch(SB_URL + '/instance_profiles?username=ilike.' + encodeURIComponent(u) + '&select=id,name,username,password_hash,warehouses,tabs', { headers: SB_HDR }).then(r => r.ok ? r.json() : []); } catch (e) {}
     const prof = (rows || []).find(x => String(x.username || '').toLowerCase() === u.toLowerCase());
-    if (!prof) return fail('Unknown username');
-    if (prof.password_hash) {
-      const h = await sha256Hex(p);
-      if (h !== prof.password_hash) return fail('Incorrect password');
+    if (prof) {
+      if (prof.password_hash) {
+        const h = await sha256Hex(p);
+        if (h !== prof.password_hash) return fail('Incorrect password');
+      }
+      try { localStorage.setItem('instanceProfileId', prof.id); localStorage.removeItem('loggedInWmsId'); localStorage.setItem('sessionStartAt', String(Date.now())); } catch (e) {}
+      _instanceProfile = undefined; _profileTabs = null;
+      if (errEl) errEl.style.display = 'none';
+      if (pEl) pEl.value = '';
+      hideProfileLogin();
+      resolveWhAllow();
+      return;
     }
-    try { localStorage.setItem('instanceProfileId', prof.id); localStorage.removeItem('loggedInWmsId'); localStorage.setItem('sessionStartAt', String(Date.now())); } catch (e) {}
-    _instanceProfile = undefined; _profileTabs = null;
-    if (errEl) errEl.style.display = 'none';
-    if (pEl) pEl.value = '';
-    hideProfileLogin();
-    resolveWhAllow();
+    // 2) WMS phone login (self-created on desktop) → commit the real WMS identity.
+    let creds = [];
+    try { creds = await fetch(SB_URL + '/wms_credentials?username=ilike.' + encodeURIComponent(u) + '&select=wms_id,username,password_hash', { headers: SB_HDR }).then(r => r.ok ? r.json() : []); } catch (e) {}
+    const cred = (creds || []).find(x => String(x.username || '').toLowerCase() === u.toLowerCase());
+    if (cred) {
+      const h = await sha256Hex(p);
+      if (!cred.password_hash || h !== cred.password_hash) return fail('Incorrect password');
+      if (errEl) errEl.style.display = 'none';
+      if (pEl) pEl.value = '';
+      await signInWithWms('wms:' + cred.wms_id);
+      return;
+    }
+    return fail('Unknown username');
   }
   async function logoutProfile() {
     // Drop the committed session. There is no auto sign-in, so this is final until
@@ -6147,7 +6182,96 @@
     if (layoutNote) layoutNote.textContent = savedLayout
       ? 'Wider layout (1200px vs 600px)'
       : 'Auto-detected (' + (isDesktopNow ? 'desktop' : 'mobile') + ')';
+    loadWmsPhoneLogin();
     document.getElementById('settingsModal').classList.add('open');
+  }
+
+  // Phone login (option B) — a WMS user, signed in on desktop via the extension,
+  // sets a username + password so they can sign in on their phone (which can't run
+  // the extension). The credential maps a username → their real WMS id; role and
+  // warehouses are still resolved live at login, never snapshotted here.
+  // The phone-login username is the user's WMS email (from wms_users) — they only
+  // set a password. If WMS has no email on file, enrollment is disabled.
+  async function fetchWmsEmail(uid) {
+    try {
+      const rows = await fetch(SB_URL + '/wms_users?user_id=eq.' + encodeURIComponent(uid) + '&select=email', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      const e = rows[0] && rows[0].email; return (e && String(e).trim()) || null;
+    } catch (e) { return null; }
+  }
+  async function loadWmsPhoneLogin() {
+    const box = document.getElementById('phoneLoginSetup'); if (!box) return;
+    let wms = null; try { wms = localStorage.getItem('loggedInWmsId'); } catch (e) {}
+    if (!wms || String(wms).indexOf('wms:') !== 0) { box.style.display = 'none'; return; }
+    box.style.display = '';
+    const uid = String(wms).slice(4);
+    const uEl = document.getElementById('phoneLoginUser'), pEl = document.getElementById('phoneLoginPass'),
+      msg = document.getElementById('phoneLoginMsg'), btn = document.getElementById('phoneLoginPwBtn'),
+      wrap = document.getElementById('phoneLoginPwWrap');
+    if (wrap) wrap.style.display = 'none';
+    if (pEl) pEl.value = '';
+    if (msg) { msg.textContent = ''; msg.style.color = 'var(--muted)'; }
+    if (uEl) uEl.value = '';
+    const [email, crows] = await Promise.all([
+      fetchWmsEmail(uid),
+      fetch(SB_URL + '/wms_credentials?wms_id=eq.' + encodeURIComponent(uid) + '&select=username', { headers: SB_HDR }).then(r => r.ok ? r.json() : []).catch(() => []),
+    ]);
+    if (uEl) uEl.value = email || '';
+    if (!email) {
+      if (btn) { btn.disabled = true; btn.textContent = 'Add password'; btn.style.display = ''; }
+      if (msg) { msg.textContent = 'No WMS email on file — ask an admin to add one.'; msg.style.color = 'var(--danger)'; }
+      return;
+    }
+    // Button says "Add password" until one exists, then "Change password".
+    if (btn) { btn.disabled = false; btn.style.display = ''; btn.textContent = crows[0] ? 'Change password' : 'Add password'; }
+    if (crows[0] && msg) msg.textContent = 'Phone login is set up ✓';
+  }
+  function togglePhonePwField() {
+    const wrap = document.getElementById('phoneLoginPwWrap'), btn = document.getElementById('phoneLoginPwBtn'),
+      pEl = document.getElementById('phoneLoginPass'), msg = document.getElementById('phoneLoginMsg');
+    if (wrap) wrap.style.display = '';
+    if (btn) btn.style.display = 'none';
+    if (msg) { msg.textContent = ''; msg.style.color = 'var(--muted)'; }
+    if (pEl) { pEl.value = ''; setTimeout(() => pEl.focus(), 30); }
+  }
+  function cancelPhonePwField() {
+    const wrap = document.getElementById('phoneLoginPwWrap'), btn = document.getElementById('phoneLoginPwBtn'),
+      pEl = document.getElementById('phoneLoginPass'), msg = document.getElementById('phoneLoginMsg');
+    if (wrap) wrap.style.display = 'none';
+    if (btn) btn.style.display = '';
+    if (pEl) pEl.value = '';
+    if (msg) { msg.textContent = ''; msg.style.color = 'var(--muted)'; }
+  }
+  async function saveWmsPhoneLogin() {
+    const msg = document.getElementById('phoneLoginMsg');
+    const flash = (m, ok) => { if (msg) { msg.textContent = m; msg.style.color = ok ? 'var(--primary)' : 'var(--danger)'; } };
+    let wms = null; try { wms = localStorage.getItem('loggedInWmsId'); } catch (e) {}
+    if (!wms || String(wms).indexOf('wms:') !== 0) return flash('Sign in with WMS first', false);
+    const uid = String(wms).slice(4);
+    const email = await fetchWmsEmail(uid);
+    if (!email) return flash('No WMS email on file — ask an admin to add one.', false);
+    const u = email;   // username IS the WMS email
+    const p = document.getElementById('phoneLoginPass').value || '';
+    if (p.length < 4) return flash('Password must be at least 4 characters', false);
+    const hash = await sha256Hex(p);
+    if (!hash) return flash('Could not set password', false);
+    // Guard: this email must not already be registered to a different WMS account.
+    try {
+      const clash = await fetch(SB_URL + '/wms_credentials?username=ilike.' + encodeURIComponent(u) + '&select=wms_id', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      if ((clash || []).some(x => x.wms_id !== uid)) return flash('That email is already registered to another account', false);
+    } catch (e) {}
+    let label = null; try { label = _liveWmsLabel || null; } catch (e) {}
+    try {
+      const r = await fetch(SB_URL + '/wms_credentials?on_conflict=wms_id', {
+        method: 'POST', headers: { ...SB_HDR, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify([{ wms_id: uid, username: u, password_hash: hash, label, updated_at: new Date().toISOString() }])
+      });
+      if (!r.ok) throw new Error(await r.text());
+      const pEl = document.getElementById('phoneLoginPass'), wrap = document.getElementById('phoneLoginPwWrap'), btn = document.getElementById('phoneLoginPwBtn');
+      if (pEl) pEl.value = '';
+      if (wrap) wrap.style.display = 'none';
+      if (btn) { btn.style.display = ''; btn.textContent = 'Change password'; }   // now that one exists
+      flash('Saved ✓ — sign in on your phone with your email + password', true);
+    } catch (e) { flash('Save failed', false); }
   }
 
   function closeSettings() {
