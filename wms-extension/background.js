@@ -153,6 +153,15 @@ function mapLogiwaRole(roleName) {
   if (has('picker') || has('inbound') || has('inventory') || has('returns')) return 'Picker';
   return null;
 }
+// A Logiwa user GUID matches the JWT `idtfr` used as wms_users.user_id. Only ever
+// key a directory row on a GUID-shaped value, so we never create a row whose id
+// won't match what content.js writes when the person actually logs in.
+function isUserGuid(s) { return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(String(s || '')); }
+function pickUserGuid(u) {
+  const cands = [u.userIdentifier, u.userGuid, u.identifier, u.idtfr, u.guid, u.userId, u.id];
+  for (const c of cands) if (isUserGuid(c)) return String(c);
+  return null;
+}
 async function syncRolesFromLogiwa() {
   const SB = 'https://hmpkjmnxoidesnnoecfm.supabase.co/rest/v1';
   const KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
@@ -166,16 +175,33 @@ async function syncRolesFromLogiwa() {
     if (!lr.ok) return;
     const users = ((await lr.json()).data) || [];
     if (!users.length) return;
+    const now = new Date().toISOString();
     const roleByEmail = {};
+    const dir = [];   // active users we can key by GUID: { guid, email, name }
     for (const u of users) {
       if (String(u.userStatusName || '') !== 'Active') continue;
-      const em = String(u.email || '').toLowerCase(); if (!em) continue;
+      const em = String(u.email || '').toLowerCase();
       const role = mapLogiwaRole(u.roleName);
-      if (role) roleByEmail[em] = role;   // duplicate email → last wins
+      if (em && role) roleByEmail[em] = role;   // duplicate email → last wins
+      const guid = pickUserGuid(u);
+      if (guid) dir.push({ guid, email: u.email ? String(u.email).trim() : null, name: u.nameSurname || u.userName || u.fullName || u.displayName || null });
     }
+    // Current directory, then create rows for WMS users who've never logged in
+    // (so admins see everyone and roles below cover them). Existing rows are left
+    // to content.js — we only INSERT the missing ones, never overwrite name/email.
     const wr = await fetch(SB + '/wms_users?select=user_id,email', { headers: SBH });
     const wu = wr.ok ? (await wr.json()) : [];
-    const now = new Date().toISOString();
+    const known = new Set(wu.map(w => w.user_id));
+    const newRows = [];
+    for (const a of dir) {
+      if (known.has(a.guid) || (!a.email && !a.name)) continue;
+      known.add(a.guid);
+      newRows.push({ user_id: a.guid, name: a.name, email: a.email, updated_at: now });
+      wu.push({ user_id: a.guid, email: a.email });   // include in the role-join below
+    }
+    if (newRows.length) {
+      await fetch(SB + '/wms_users?on_conflict=user_id', { method: 'POST', headers: Object.assign({}, SBH, { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(newRows) });
+    }
     const rows = [], seen = {};
     for (const w of wu) {
       const em = String(w.email || '').toLowerCase();
