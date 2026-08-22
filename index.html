@@ -2371,13 +2371,8 @@
       <div id="csCompletion" style="overflow-x:auto"></div>
     </div>
 
-    <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
-      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Pending picking — per brand <span style="font-weight:400;color:var(--muted);font-size:.75rem">· Open + Ready to Pick</span></div>
-      <div id="csPending" style="overflow-x:auto"></div>
-    </div>
-
     <div class="card" style="padding:0;overflow:hidden">
-      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Est. completion — single vs multi <span style="font-weight:400;color:var(--muted);font-size:.75rem">· from ~30 days of hourly depletion history · all warehouses</span></div>
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Est. completion — single vs multi <span style="font-weight:400;color:var(--muted);font-size:.75rem">· from ~30 days of hourly depletion history · follows the warehouse &amp; brand filters</span></div>
       <div id="csEta" style="overflow:auto;max-height:520px"></div>
     </div>
   </div>
@@ -5323,8 +5318,8 @@
   let csData = [];
   let csMyBrands = null;   // Set of the CS user's assigned brands, or null = see all brands
   function csBrandAllowed(brand) { return !csMyBrands || csMyBrands.has(brand); }
-  function onCsWarehouseChange(v) { try { localStorage.setItem('csWarehouseFilter', v); } catch (e) {} populateCsBrandSelect(); renderCustomerSuccess(); }
-  function onCsBrandChange(v) { try { localStorage.setItem('csBrandFilter', v); } catch (e) {} renderCustomerSuccess(); }
+  function onCsWarehouseChange(v) { try { localStorage.setItem('csWarehouseFilter', v); } catch (e) {} populateCsBrandSelect(); renderCustomerSuccess(); renderCsEta(); }
+  function onCsBrandChange(v) { try { localStorage.setItem('csBrandFilter', v); } catch (e) {} renderCustomerSuccess(); renderCsEta(); }
   function csCurrentUid() { let c = null; try { c = localStorage.getItem('loggedInWmsId'); } catch (e) {} return (c && c.indexOf('wms:') === 0) ? c.slice(4) : null; }
   function openCsConsole() {
     const uid = csCurrentUid();
@@ -5364,11 +5359,14 @@
   // (brand_type_snapshot). All-warehouse; scoped to the CS's brands for CS role.
   async function renderCsEta() {
     const el = document.getElementById('csEta'); if (!el) return;
+    let selWh = '', selBrand = '';
+    try { selWh = localStorage.getItem('csWarehouseFilter') || ''; } catch (e) {}
+    try { selBrand = localStorage.getItem('csBrandFilter') || ''; } catch (e) {}
     let rows = [];
     try {
-      rows = await fetch(SB_URL + '/rpc/brand_type_depletion', { method: 'POST', headers: { ...SB_HDR, 'Content-Type': 'application/json' }, body: JSON.stringify({ _days: 31 }) }).then(r => r.ok ? r.json() : []);
+      rows = await fetch(SB_URL + '/rpc/brand_type_depletion', { method: 'POST', headers: { ...SB_HDR, 'Content-Type': 'application/json' }, body: JSON.stringify({ _days: 31, _wh: selWh || null }) }).then(r => r.ok ? r.json() : []);
     } catch (e) { rows = []; }
-    rows = (rows || []).filter(r => csBrandAllowed(r.brand) && Number(r.latest_open) > 0);
+    rows = (rows || []).filter(r => csBrandAllowed(r.brand) && (!selBrand || r.brand === selBrand) && Number(r.latest_open) > 0);
     const fmt = n => Number(n || 0).toLocaleString();
     const tStr = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     const fmtDur = h => { const m = Math.round(h * 60); if (m < 60) return '~' + m + 'm'; return '~' + Math.floor(m / 60) + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : ''); };
@@ -5493,19 +5491,6 @@
             ${tdN(p, '#5eead4')}
             <td style="padding:8px 14px;text-align:right;white-space:nowrap"><span style="display:inline-flex;align-items:center;gap:8px;justify-content:flex-end"><span style="width:70px;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;display:inline-block"><span style="display:block;height:100%;width:${pct}%;background:#5eead4"></span></span><b style="color:var(--text);min-width:34px;text-align:right">${pct}%</b></span></td>
           </tr>`; }).join('')}</tbody></table>`;
-    }
-
-    // 3) pending picking per brand
-    const pEl = document.getElementById('csPending');
-    const byPending = brands.filter(br => pendingOf(br) > 0).sort((a, b) => pendingOf(b) - pendingOf(a));
-    if (!byPending.length) { pEl.innerHTML = '<div style="padding:16px 18px;color:var(--muted);font-size:.82rem">Nothing pending picking 🎉</div>'; }
-    else {
-      pEl.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.82rem">
-        <thead><tr>${th('Brand')}${th('Open', 1)}${th('Ready to Pick', 1)}${th('Pending', 1)}</tr></thead>
-        <tbody>${byPending.map(br => `<tr style="border-top:1px solid var(--border)">
-          <td style="padding:8px 14px;color:var(--text);white-space:nowrap">${escHtml(br)}</td>
-          ${tdN(brandStatus[br].new || 0, '#fb923c')}${tdN(brandStatus[br].rfp || 0, '#fcd34d')}${tdN(pendingOf(br), 'var(--text)', true)}
-        </tr>`).join('')}</tbody></table>`;
     }
   }
 

@@ -581,10 +581,11 @@ async function performSync(isB2B) {
         const bt = {};
         for (const o of all) {
           if (o.shipmentOrderTypeName !== 'B2C' || !B2C_SM_AGG[o.shipmentOrderStatusId]) continue;
+          const wh = o.warehouseCode; if (!wh) continue;
           const brand = o.clientDisplayName || '(no brand)';
           const type = (Number(o.totalQuantity) === 1) ? 'single' : 'multi';
-          const key = brand + '' + type;
-          const b = (bt[key] = bt[key] || { brand, type, open_count: 0, inflow_1h: 0 });
+          const key = wh + '' + brand + '' + type;
+          const b = (bt[key] = bt[key] || { wh, brand, type, open_count: 0, inflow_1h: 0 });
           b.open_count++;
           const created = Date.parse(o.createdDateTime || o.shipmentOrderDate || '');
           if (created && created >= hourAgo) b.inflow_1h++;
