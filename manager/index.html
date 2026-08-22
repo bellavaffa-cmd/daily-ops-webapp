@@ -94,7 +94,10 @@
       <div><label>Opens</label><input type="time" id="cfgOpen"></div>
       <div><label>Closes</label><input type="time" id="cfgClose"></div>
       <div><label>Timezone</label><input type="text" id="cfgTz" placeholder="Asia/Manila"></div>
+      <div><label>Lunch break <span class="hint">(start / end)</span></label><div style="display:flex;gap:6px"><input type="time" id="cfgLunchS"><input type="time" id="cfgLunchE"></div></div>
+      <div><label>Short break <span class="hint">(start / end)</span></label><div style="display:flex;gap:6px"><input type="time" id="cfgBreakS"><input type="time" id="cfgBreakE"></div></div>
     </div>
+    <p class="hint" style="margin-top:8px">Operating hours and break windows feed the CS “Est. completion” ETA — completion times skip lunch, breaks and closed hours (in the warehouse’s timezone).</p>
     <div class="row" style="margin-top:12px"><button class="btn primary" onclick="saveTiming()">Save</button><span class="msg" id="timingMsg"></span></div>
   </div>
 
@@ -358,13 +361,18 @@
     $('cfgMp').value = r.mp_cutoff || '16:15'; $('cfgNonmp').value = r.nonmp_cutoff || '14:09';
     $('cfgOpen').value = r.operating_start || '09:00'; $('cfgClose').value = r.operating_end || '18:00';
     $('cfgTz').value = r.tz || 'Asia/Manila';
+    const br = Array.isArray(r.breaks) ? r.breaks : [];
+    $('cfgLunchS').value = (br[0] && br[0].start) || ''; $('cfgLunchE').value = (br[0] && br[0].end) || '';
+    $('cfgBreakS').value = (br[1] && br[1].start) || ''; $('cfgBreakE').value = (br[1] && br[1].end) || '';
   }
   async function saveTiming() {
+    const mkBreak = (s, e) => (s && e && e > s) ? { start: s, end: e } : null;
+    const breaks = [mkBreak($('cfgLunchS').value, $('cfgLunchE').value), mkBreak($('cfgBreakS').value, $('cfgBreakE').value)].filter(Boolean);
     try {
       await sbSend('POST', '/warehouse_config?on_conflict=wh', [{
         wh: CURRENT_WH, mp_cutoff: $('cfgMp').value || '16:15', nonmp_cutoff: $('cfgNonmp').value || '14:09',
         operating_start: $('cfgOpen').value || '09:00', operating_end: $('cfgClose').value || '18:00',
-        tz: $('cfgTz').value || 'Asia/Manila', updated_at: new Date().toISOString()
+        tz: $('cfgTz').value || 'Asia/Manila', breaks, updated_at: new Date().toISOString()
       }], 'resolution=merge-duplicates,return=minimal');
       flash('timingMsg', 'Saved ✓', true);
     } catch (e) { flash('timingMsg', 'Save failed', false); }

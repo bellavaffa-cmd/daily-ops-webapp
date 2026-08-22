@@ -2372,7 +2372,7 @@
     </div>
 
     <div class="card" style="padding:0;overflow:hidden">
-      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Est. completion — single vs multi <span style="font-weight:400;color:var(--muted);font-size:.75rem">· from ~30 days of hourly depletion history · follows the warehouse &amp; brand filters</span></div>
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Est. completion — single vs multi <span style="font-weight:400;color:var(--muted);font-size:.75rem">· from ~30 days of hourly depletion history · pick a warehouse for a break/hours-aware ETA in its local time</span></div>
       <div id="csEta" style="overflow:auto;max-height:520px"></div>
     </div>
   </div>
@@ -5355,8 +5355,62 @@
     renderCustomerSuccess();
     renderCsEta();
   }
+  // ── Break/operating-hours-aware completion projection ────────────────────────
+  // "HH:MM" → minute-of-day (0–1439), or null.
+  function _hmToMin(s) { const m = /^(\d{1,2}):(\d{2})/.exec(s || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+  // Current wall-clock minute-of-day in a tz, or null if tz invalid.
+  function _tzNowMin(ms, tz) {
+    try {
+      const p = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour12: false, hour: '2-digit', minute: '2-digit' }).formatToParts(new Date(ms));
+      const h = (+p.find(x => x.type === 'hour').value) % 24, mi = +p.find(x => x.type === 'minute').value;
+      return h * 60 + mi;
+    } catch (e) { return null; }
+  }
+  // Sorted, non-overlapping working windows (minute ranges) = operating hours minus breaks.
+  function _workWindows(cfg) {
+    let s = _hmToMin(cfg.operating_start), e = _hmToMin(cfg.operating_end);
+    if (s == null) s = 0; if (e == null || e <= s) e = 1440;
+    let wins = [[s, e]];
+    const breaks = (Array.isArray(cfg.breaks) ? cfg.breaks : [])
+      .map(b => [_hmToMin(b.start), _hmToMin(b.end)]).filter(b => b[0] != null && b[1] != null && b[1] > b[0]);
+    for (const [bs, be] of breaks) {
+      const next = [];
+      for (const [ws, we] of wins) {
+        if (be <= ws || bs >= we) { next.push([ws, we]); continue; }
+        if (bs > ws) next.push([ws, Math.min(bs, we)]);
+        if (be < we) next.push([Math.max(be, ws), we]);
+      }
+      wins = next;
+    }
+    return wins.sort((a, b) => a[0] - b[0]).map(w => ({ s: w[0], e: w[1] })).filter(w => w.e > w.s);
+  }
+  // Wall-clock ms when `open` units clear at `netPerHr`, counting only working
+  // minutes in the warehouse's local day. {doneMs} | {over:true} | null (net≤0/misconfig).
+  function _projectDone(open, netPerHr, cfg, nowMs) {
+    if (!(netPerHr > 0)) return null;
+    const wins = _workWindows(cfg); if (!wins.length) return null;
+    let cur = _tzNowMin(nowMs, cfg.tz); if (cur == null) return null;
+    const perMin = netPerHr / 60, capMs = nowMs + 3 * 24 * 3600 * 1000;
+    let remaining = open, wallMs = nowMs, safety = 0;
+    while (remaining > 0) {
+      if (++safety > 60 || wallMs > capMs) return { over: true };
+      const inWin = wins.find(w => cur >= w.s && cur < w.e);
+      if (inWin) {
+        const minsAvail = inWin.e - cur, canClear = perMin * minsAvail;
+        if (canClear >= remaining) { wallMs += (remaining / perMin) * 60000; remaining = 0; break; }
+        remaining -= canClear; wallMs += minsAvail * 60000; cur = inWin.e;
+      } else {
+        const nextWin = wins.find(w => w.s > cur);
+        if (nextWin) { wallMs += (nextWin.s - cur) * 60000; cur = nextWin.s; }
+        else { wallMs += ((1440 - cur) + wins[0].s) * 60000; cur = wins[0].s; }
+      }
+    }
+    return { doneMs: wallMs };
+  }
   // Per-brand, per-type completion estimate from the historical depletion RPC
   // (brand_type_snapshot). All-warehouse; scoped to the CS's brands for CS role.
+  // When a single warehouse is selected, the ETA is break/operating-hours-aware
+  // and shown in that warehouse's local time; "All warehouses" stays a naive projection.
   async function renderCsEta() {
     const el = document.getElementById('csEta'); if (!el) return;
     let selWh = '', selBrand = '';
@@ -5367,16 +5421,31 @@
       rows = await fetch(SB_URL + '/rpc/brand_type_depletion', { method: 'POST', headers: { ...SB_HDR, 'Content-Type': 'application/json' }, body: JSON.stringify({ _days: 31, _wh: selWh || null }) }).then(r => r.ok ? r.json() : []);
     } catch (e) { rows = []; }
     rows = (rows || []).filter(r => csBrandAllowed(r.brand) && (!selBrand || r.brand === selBrand) && Number(r.latest_open) > 0);
+    // With a single warehouse selected, load its hours/breaks/tz for a realistic ETA.
+    let cfg = null;
+    if (selWh) {
+      try { cfg = (await fetch(SB_URL + '/warehouse_config?wh=eq.' + encodeURIComponent(selWh) + '&select=tz,operating_start,operating_end,breaks', { headers: SB_HDR }).then(r => r.ok ? r.json() : []))[0] || null; } catch (e) {}
+    }
     const fmt = n => Number(n || 0).toLocaleString();
-    const tStr = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const clock = ms => (cfg && cfg.tz)
+      ? new Intl.DateTimeFormat([], { timeZone: cfg.tz, hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(new Date(ms))
+      : new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     const fmtDur = h => { const m = Math.round(h * 60); if (m < 60) return '~' + m + 'm'; return '~' + Math.floor(m / 60) + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : ''); };
     const eta = r => {
       if ((r.samples || 0) < 2) return '<span style="color:var(--muted)">collecting…</span>';
       const net = Number(r.typical_rate) - Number(r.latest_inflow || 0);
       if (net <= 0) return '<span style="color:#f87171">not clearing</span>';
+      if (cfg) {
+        const p = _projectDone(Number(r.latest_open), net, cfg, Date.now());
+        if (p && p.over) return '<span style="color:#fbbf24">next day+</span>';
+        if (p && p.doneMs) {
+          const hrs = (p.doneMs - Date.now()) / 3600000;
+          return '<span style="color:#fbbf24" title="' + fmtDur(hrs) + ' incl. breaks &amp; closed hours · net ~' + net.toFixed(1) + '/hr">' + clock(p.doneMs) + '</span>';
+        }
+      }
       const hrs = Number(r.latest_open) / net;
       if (hrs > 24) return '<span style="color:#fbbf24">24h+</span>';
-      return '<span style="color:#fbbf24" title="' + fmtDur(hrs) + ' · net ~' + net.toFixed(1) + '/hr">' + tStr(Date.now() + hrs * 3600 * 1000) + '</span>';
+      return '<span style="color:#fbbf24" title="' + fmtDur(hrs) + ' · net ~' + net.toFixed(1) + '/hr">' + clock(Date.now() + hrs * 3600 * 1000) + '</span>';
     };
     if (!rows.length) { el.innerHTML = '<div style="padding:16px 18px;color:var(--muted);font-size:.82rem">No depletion history yet — this fills in as hourly snapshots accrue (needs extension v3.14+).</div>'; return; }
     rows.sort((a, b) => Number(b.latest_open) - Number(a.latest_open));
