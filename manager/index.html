@@ -180,6 +180,16 @@
   const KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
   const HDR = { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' };
   const ROLES = ['Admin', 'Manager', 'Supervisor', 'CS', 'Packer', 'Picker', 'Viewer'];
+  // Only Admins may grant the Admin role. Non-Admin managers see it disabled in
+  // dropdowns, and the mutating calls reject it as a safety net.
+  const canGrantAdmin = () => !!(ME && ME.role === 'Admin');
+  function roleOptsHtml(selected) {
+    return ROLES.map(r => {
+      const sel = r === selected ? ' selected' : '';
+      const dis = (r === 'Admin' && !canGrantAdmin() && r !== selected) ? ' disabled' : '';
+      return `<option${sel}${dis}>${r}</option>`;
+    }).join('');
+  }
   const APP_TABS = [
     ['b2c', 'B2C'], ['b2b', 'B2B'],
     ['shortage', 'Shortage'], ['productivity', 'Productivity'], ['jobs', 'Jobs'], ['cs', 'Customer Success'],
@@ -260,8 +270,9 @@
     if (!top) return gateFail('Your WMS login isn\'t a Manager or Admin. Ask an admin to grant you access.');
     ME = { uid, role: top.role, name: label || uid };
     // fill display name from registry if available
-    const reg = await sbGet('/wms_users?user_id=eq.' + encodeURIComponent(uid) + '&select=name,email');
+    const reg = await sbGet('/wms_users?user_id=eq.' + encodeURIComponent(uid) + '&select=name,email,warehouses');
     if (reg[0] && reg[0].name) ME.name = reg[0].name;
+    ME.warehouses = (reg[0] && Array.isArray(reg[0].warehouses)) ? reg[0].warehouses : null;   // WMS-accessible warehouses
     $('whoName').textContent = ME.name; $('whoRole').textContent = ME.role;
     $('gate').classList.add('hide'); $('app').classList.remove('hide');
     boot();
@@ -286,15 +297,21 @@
   // ── Boot: warehouses + role/tab dropdowns ──────────────────────────────────
   async function boot() {
     // role dropdowns
-    $('userRole').innerHTML = ROLES.map(r => `<option>${r}</option>`).join('');
+    $('userRole').innerHTML = roleOptsHtml(null);
     $('tabRole').innerHTML = ROLES.map(r => `<option>${r}</option>`).join('');
-    $('profRole').innerHTML = '<option value="">— none —</option>' + ROLES.map(r => `<option>${r}</option>`).join('');
+    $('profRole').innerHTML = '<option value="">— none —</option>' + roleOptsHtml(null);
     // tab checkboxes
     $('tabChecks').innerHTML = APP_TABS.map(([k, n]) => `<label><input type="checkbox" value="${k}"> ${n}</label>`).join('');
-    // warehouses from b2c_data
+    // warehouses from b2c_data, restricted to the ones this manager's WMS account
+    // can access (Admins, or users whose access covers all, keep the ★ global).
     const rows = await sbGet('/b2c_data?select=wh,type&order=wh.asc');
     _whList = [...new Set(rows.filter(r => (!r.type || r.type === 'warehouse') && r.wh).map(r => r.wh))];
-    $('whSelect').innerHTML = '<option value="*">★ All warehouses (default)</option>' + _whList.map(w => `<option value="${esc(w)}">${esc(w)}</option>`).join('');
+    const myWh = new Set((ME.warehouses || []).map(x => typeof x === 'string' ? x : (x && x.code)).filter(Boolean));
+    const restrict = ME.role !== 'Admin' && myWh.size > 0;
+    const allowed = restrict ? _whList.filter(w => myWh.has(w)) : _whList;
+    const showStar = ME.role === 'Admin' || myWh.size === 0 || _whList.every(w => myWh.has(w));
+    $('whSelect').innerHTML = (showStar ? '<option value="*">★ All warehouses (default)</option>' : '')
+      + allowed.map(w => `<option value="${esc(w)}">${esc(w)}</option>`).join('');
     onWhChange();
     loadProfiles();
     enhanceSelectSearch($('whSelect'));
@@ -394,20 +411,24 @@
     $('roleRows').innerHTML = rows.length ? rows.map(r => {
       const nm = nameOf[r.user_id] || (r.user_id.slice(0, 10) + '…');
       return `<tr><td title="${esc(r.user_id)}">${esc(nm)}</td><td><span class="pill">${r.wh === '*' ? 'All' : esc(r.wh)}</span></td>
-        <td><select onchange="setRole(${r.id}, this.value)" style="width:auto">${ROLES.map(x => `<option ${x === r.role ? 'selected' : ''}>${x}</option>`).join('')}</select></td>
+        <td><select onchange="setRole(${r.id}, this.value)" style="width:auto">${roleOptsHtml(r.role)}</select></td>
         <td style="text-align:right"><button class="btn icon" title="Remove" onclick="delRole(${r.id})">✕</button></td></tr>`;
     }).join('') : '<tr><td colspan="4" style="color:var(--muted)">No users assigned for this scope.</td></tr>';
   }
   async function addUserRole() {
     const uid = $('userId').value.trim(), nm = $('userName').value.trim();
     if (!uid) { flash('roleMsg', 'Enter the user\'s WMS id.', false); return; }
+    if ($('userRole').value === 'Admin' && !canGrantAdmin()) { flash('roleMsg', 'Only an Admin can grant the Admin role.', false); return; }
     try {
       if (nm) await sbSend('POST', '/wms_users?on_conflict=user_id', [{ user_id: uid, name: nm }], 'resolution=merge-duplicates,return=minimal');
       await sbSend('POST', '/user_roles?on_conflict=user_id,wh', [{ user_id: uid, wh: CURRENT_WH, role: $('userRole').value }], 'resolution=merge-duplicates,return=minimal');
       $('userId').value = ''; $('userName').value = ''; loadRoles(); flash('roleMsg', 'Added ✓', true);
     } catch (e) { flash('roleMsg', 'Failed — check the id.', false); }
   }
-  async function setRole(id, role) { try { await sbSend('PATCH', '/user_roles?id=eq.' + id, { role, updated_at: new Date().toISOString() }, 'return=minimal'); } catch (e) {} }
+  async function setRole(id, role) {
+    if (role === 'Admin' && !canGrantAdmin()) { flash('roleMsg', 'Only an Admin can grant the Admin role.', false); loadRoles(); return; }
+    try { await sbSend('PATCH', '/user_roles?id=eq.' + id, { role, updated_at: new Date().toISOString() }, 'return=minimal'); } catch (e) {}
+  }
   async function delRole(id) { try { await sbSend('DELETE', '/user_roles?id=eq.' + id); loadRoles(); } catch (e) {} }
 
   // ── 6: Role → tabs ───────────────────────────────────────────────────────────
@@ -465,6 +486,7 @@
   async function saveProfile() {
     const name = $('profName').value.trim();
     if (!name) { flash('profMsg', 'Enter a name', false); return; }
+    if ($('profRole').value === 'Admin' && !canGrantAdmin()) { flash('profMsg', 'Only an Admin can grant the Admin role.', false); return; }
     let id = $('profEditId').value;
     if (!id) id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) + '-' + Date.now().toString(36).slice(-4);
     const warehouses = [...$('profWhChecks').querySelectorAll('input:checked')].map(c => c.value);
