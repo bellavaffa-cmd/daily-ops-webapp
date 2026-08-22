@@ -2348,7 +2348,7 @@
         <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Today's B2C orders by brand · honors the operating cut-off (post-cut-off orders count for tomorrow)</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <button onclick="openCsConsole()" class="btn btn-sm" style="font-size:.78rem;padding:6px 11px;white-space:nowrap">⚙ My brands</button>
+        <button id="csConsoleBtn" onclick="openCsConsole()" class="btn btn-sm" style="font-size:.78rem;padding:6px 11px;white-space:nowrap;display:none">⚙ My brands</button>
         <select id="csBrand" onchange="onCsBrandChange(this.value)"
           style="font-size:.8rem;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;max-width:220px"></select>
         <select id="csWarehouse" onchange="onCsWarehouseChange(this.value)"
@@ -5344,7 +5344,9 @@
       csData = (rows || []).filter(r => whAllowed(r.wh));
     } catch (e) { csData = []; }
     await loadCsScope();
-    const badge = document.getElementById('csMineBadge'); if (badge) badge.style.display = csMyBrands ? '' : 'none';
+    const isCs = csMyBrands != null;   // only CS-role users get scoped + the console button
+    const badge = document.getElementById('csMineBadge'); if (badge) badge.style.display = isCs ? '' : 'none';
+    const csBtn = document.getElementById('csConsoleBtn'); if (csBtn) csBtn.style.display = isCs ? '' : 'none';
     populateCsWarehouseSelect();
     populateCsBrandSelect();
     renderCustomerSuccess();

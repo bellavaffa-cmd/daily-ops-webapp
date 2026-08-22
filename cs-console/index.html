@@ -106,6 +106,9 @@
   async function start(rawId, label) {
     const uid = String(rawId || '').replace(/^wms:/, '');
     if (!uid) return gateFail('Could not detect your login. Open this from the Customer Success tab.');
+    // Only Customer Success can own brands (so only CS get tagged on errors).
+    const roles = await sbGet('/user_roles?user_id=eq.' + encodeURIComponent(uid) + '&select=role');
+    if (!roles.some(r => r.role === 'CS')) return gateFail('This console is for Customer Success. Your account isn’t assigned the CS role.');
     ME = { uid, name: label || uid };
     const reg = await sbGet('/wms_users?user_id=eq.' + encodeURIComponent(uid) + '&select=name');
     if (reg[0] && reg[0].name) ME.name = reg[0].name;
