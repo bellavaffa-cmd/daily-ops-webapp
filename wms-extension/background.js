@@ -548,6 +548,8 @@ async function performSync(isB2B) {
             is_nonmp:       orderHasTag(o, 'nonmp'),
             is_next_day:    orderHasTag(o, 'nextday'),
             is_tomorrow:    isTomorrowOrder(o, isMp),
+            total_qty:      (o.totalQuantity == null ? null : Number(o.totalQuantity)),   // total units (single-item = 1)
+            line_count:     (Array.isArray(o.products) ? o.products.length : null),        // distinct product lines
             updated_at:     syncIso
           };
         })
