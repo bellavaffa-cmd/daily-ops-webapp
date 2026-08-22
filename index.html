@@ -2741,13 +2741,14 @@
     const def = t.key === 'packingErrorTabDash' ? '0' : '1';
     return (localStorage.getItem(t.key) ?? def) !== '0';
   }
-  // Single source of truth for which nav buttons show: the user's toggle AND the
-  // profile/role gate (tabAllowed). Called on init, on toggle change, and when the
-  // instance profile or role resolves.
+  // Single source of truth for which nav buttons show: the profile/role gate
+  // (tabAllowed / role_tabs). The old per-device "Visible Tabs" toggle layer was
+  // retired with its Settings UI, so role_tabs alone governs (e.g. the Error
+  // Dashboard shows for roles whose role_tabs include 'dash').
   function refreshTabVisibility() {
     TAB_KEYS.forEach(t => {
       const btn = document.getElementById(t.navId);
-      if (btn) btn.style.display = (tabToggledOn(t) && tabAllowed(t.view)) ? '' : 'none';
+      if (btn) btn.style.display = tabAllowed(t.view) ? '' : 'none';
     });
     const activeView = document.querySelector('.view.active')?.id?.replace('view-', '');
     const activeT = TAB_KEYS.find(t => t.view === activeView);
