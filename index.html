@@ -2371,9 +2371,14 @@
       <div id="csCompletion" style="overflow-x:auto"></div>
     </div>
 
-    <div class="card" style="padding:0;overflow:hidden">
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
       <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Pending picking — per brand <span style="font-weight:400;color:var(--muted);font-size:.75rem">· Open + Ready to Pick</span></div>
       <div id="csPending" style="overflow-x:auto"></div>
+    </div>
+
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Est. completion — single vs multi <span style="font-weight:400;color:var(--muted);font-size:.75rem">· from ~30 days of hourly depletion history · all warehouses</span></div>
+      <div id="csEta" style="overflow:auto;max-height:520px"></div>
     </div>
   </div>
 
@@ -5353,6 +5358,41 @@
     populateCsWarehouseSelect();
     populateCsBrandSelect();
     renderCustomerSuccess();
+    renderCsEta();
+  }
+  // Per-brand, per-type completion estimate from the historical depletion RPC
+  // (brand_type_snapshot). All-warehouse; scoped to the CS's brands for CS role.
+  async function renderCsEta() {
+    const el = document.getElementById('csEta'); if (!el) return;
+    let rows = [];
+    try {
+      rows = await fetch(SB_URL + '/rpc/brand_type_depletion', { method: 'POST', headers: { ...SB_HDR, 'Content-Type': 'application/json' }, body: JSON.stringify({ _days: 31 }) }).then(r => r.ok ? r.json() : []);
+    } catch (e) { rows = []; }
+    rows = (rows || []).filter(r => csBrandAllowed(r.brand) && Number(r.latest_open) > 0);
+    const fmt = n => Number(n || 0).toLocaleString();
+    const tStr = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const fmtDur = h => { const m = Math.round(h * 60); if (m < 60) return '~' + m + 'm'; return '~' + Math.floor(m / 60) + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : ''); };
+    const eta = r => {
+      if ((r.samples || 0) < 2) return '<span style="color:var(--muted)">collecting…</span>';
+      const net = Number(r.typical_rate) - Number(r.latest_inflow || 0);
+      if (net <= 0) return '<span style="color:#f87171">not clearing</span>';
+      const hrs = Number(r.latest_open) / net;
+      if (hrs > 24) return '<span style="color:#fbbf24">24h+</span>';
+      return '<span style="color:#fbbf24" title="' + fmtDur(hrs) + ' · net ~' + net.toFixed(1) + '/hr">' + tStr(Date.now() + hrs * 3600 * 1000) + '</span>';
+    };
+    if (!rows.length) { el.innerHTML = '<div style="padding:16px 18px;color:var(--muted);font-size:.82rem">No depletion history yet — this fills in as hourly snapshots accrue (needs extension v3.14+).</div>'; return; }
+    rows.sort((a, b) => Number(b.latest_open) - Number(a.latest_open));
+    const td = (c, extra) => `<td style="padding:8px 14px;font-size:.82rem;${extra || ''}">${c}</td>`;
+    const th = t => `<th style="padding:10px 14px;font-weight:600;color:var(--muted);font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">${t}</th>`;
+    el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.82rem">
+      <thead><tr>${th('Brand')}${th('Type')}${th('Open')}${th('~Orders/hr')}${th('Est. done')}</tr></thead>
+      <tbody>${rows.map(r => `<tr style="border-top:1px solid var(--border)">
+        ${td(escHtml(r.brand), 'color:var(--text);white-space:nowrap')}
+        ${td(r.type === 'single' ? 'Single' : 'Multi', 'color:' + (r.type === 'single' ? '#86efac' : '#c4b5fd') + ';font-weight:600')}
+        ${td(fmt(r.latest_open), 'color:var(--text)')}
+        ${td((r.samples || 0) >= 2 ? Number(r.typical_rate).toFixed(1) : '—', 'color:var(--muted)')}
+        ${td(eta(r))}
+      </tr>`).join('')}</tbody></table>`;
   }
   function populateCsBrandSelect() {
     const el = document.getElementById('csBrand'); if (!el) return;
