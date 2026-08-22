@@ -570,6 +570,44 @@ async function performSync(isB2B) {
       console.error('[WMS bg] b2c_orders error:', e.message);
     }
 
+    // 5d. Brand × type (single/multi) open-order snapshot — hourly, collapsed
+    // across warehouses, kept ~31 days. Feeds a per-brand, per-type historical
+    // depletion rate for completion estimates. Gated to once/hour so frequent
+    // manual/jobs syncs don't flood the table.
+    try {
+      const snapGate = await chrome.storage.local.get(['brandSnapAt']);
+      if (Date.now() - ((snapGate && snapGate.brandSnapAt) || 0) >= 55 * 60 * 1000) {
+        const hourAgo = Date.now() - 60 * 60 * 1000;
+        const bt = {};
+        for (const o of all) {
+          if (o.shipmentOrderTypeName !== 'B2C' || !B2C_SM_AGG[o.shipmentOrderStatusId]) continue;
+          const brand = o.clientDisplayName || '(no brand)';
+          const type = (Number(o.totalQuantity) === 1) ? 'single' : 'multi';
+          const key = brand + '' + type;
+          const b = (bt[key] = bt[key] || { brand, type, open_count: 0, inflow_1h: 0 });
+          b.open_count++;
+          const created = Date.parse(o.createdDateTime || o.shipmentOrderDate || '');
+          if (created && created >= hourAgo) b.inflow_1h++;
+        }
+        const snapIso = new Date().toISOString();
+        const snapRows = Object.values(bt).map(r => ({ ...r, captured_at: snapIso }));
+        for (let i = 0; i < snapRows.length; i += 2000) {
+          await fetch(`${SB_URL}/rest/v1/brand_type_snapshot`, {
+            method: 'POST',
+            headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+            body: JSON.stringify(snapRows.slice(i, i + 2000))
+          }).catch(() => {});
+        }
+        const snapCutoff = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString();
+        await fetch(`${SB_URL}/rest/v1/brand_type_snapshot?captured_at=lt.${encodeURIComponent(snapCutoff)}`, {
+          method: 'DELETE', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY }
+        }).catch(() => {});
+        await chrome.storage.local.set({ brandSnapAt: Date.now() });
+      }
+    } catch (e) {
+      console.error('[WMS bg] brand_type snapshot error:', e.message);
+    }
+
     // 6. Productivity: Logiwa's authoritative user-performance report — per
     // user, per day, picked/packed order+item counts for the last 30 days.
     // Same host + token as the order fetch; failures here don't fail the sync.
