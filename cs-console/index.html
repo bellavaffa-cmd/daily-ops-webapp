@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Customer Success Console — Daily Ops</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0d0a; --surface: #14170f; --surface2: #1b1f17; --border: #2a2f27;
+    --primary: #94ffa1; --danger: #f87171; --text: #ffffff; --muted: #8a9088; --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; line-height: 1.4; }
+  a { color: var(--primary); }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 22px 18px 80px; }
+  h1 { font-size: 1.35rem; margin: 0; }
+  .sub { color: var(--muted); font-size: .8rem; margin-top: 3px; }
+  .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+  .who { text-align: right; font-size: .78rem; color: var(--muted); }
+  .who b { color: var(--text); display: block; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 16px; }
+  .card > h2 { font-size: .95rem; margin: 0 0 3px; }
+  .card .hint { color: var(--muted); font-size: .76rem; margin: 0 0 14px; }
+  input { width: 100%; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-family: inherit; font-size: .88rem; }
+  input[type=checkbox] { width: auto; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-family: inherit; font-weight: 600; font-size: .84rem; cursor: pointer; }
+  .btn:hover { border-color: var(--primary); }
+  .btn.primary { background: var(--primary); color: #06210b; border-color: var(--primary); }
+  .msg { font-size: .78rem; margin-left: 12px; min-height: 14px; }
+  .msg.ok { color: var(--primary); } .msg.err { color: var(--danger); }
+  .country { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; margin: 16px 0 8px; padding-bottom: 5px; border-bottom: 1px solid var(--border); }
+  .brands { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 7px; }
+  .brands label { display: flex; align-items: center; gap: 8px; padding: 8px 11px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: .84rem; color: var(--text); background: var(--surface2); }
+  .brands label.on { border-color: var(--primary); background: rgba(148,255,161,.08); }
+  .barwrap { position: sticky; bottom: 0; background: linear-gradient(transparent, var(--bg) 30%); padding: 14px 0 4px; margin-top: 10px; display: flex; align-items: center; }
+  #gate { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; z-index: 100; }
+  #gate .g { max-width: 400px; }
+  .spin { width: 22px; height: 22px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: sp 1s linear infinite; margin: 0 auto 14px; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  .hide { display: none !important; }
+  .count { font-size: .78rem; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="g">
+    <div id="gateSpin" class="spin"></div>
+    <h1 id="gateTitle">Customer Success Console</h1>
+    <div class="sub" id="gateMsg">Loading your account&hellip;</div>
+    <div id="gateActions" class="hide" style="margin-top:16px"><button class="btn" onclick="location.reload()">Retry</button></div>
+  </div>
+</div>
+
+<div id="app" class="wrap hide">
+  <div class="topbar">
+    <div>
+      <h1>Customer Success Console</h1>
+      <div class="sub">Pick the brands you're in charge of. Reported errors for those brands are tagged to you, and your CS dashboard shows only these brands.</div>
+    </div>
+    <div class="who"><b id="whoName">—</b><span>Customer Success</span></div>
+  </div>
+
+  <div class="card">
+    <h2>My brands <span class="count" id="brandCount"></span></h2>
+    <div class="hint">Grouped by country. Search to narrow, tick the brands you own, then Save.</div>
+    <input id="brandSearch" type="text" placeholder="Search brand…" autocomplete="off" spellcheck="false" oninput="renderBrands()">
+    <div id="brandList" style="margin-top:4px"></div>
+    <div class="barwrap">
+      <button class="btn primary" onclick="saveAssignments()">Save my brands</button>
+      <span class="msg" id="saveMsg"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+  const SB = 'https://hmpkjmnxoidesnnoecfm.supabase.co/rest/v1';
+  const KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
+  const HDR = { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' };
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const flash = (id, msg, ok) => { const e = $(id); if (!e) return; e.textContent = msg; e.className = 'msg ' + (ok ? 'ok' : 'err'); setTimeout(() => { if (e.textContent === msg) e.textContent = ''; }, 3500); };
+  async function sbGet(path) { const r = await fetch(SB + path, { headers: HDR }); return r.ok ? r.json() : []; }
+  async function sbSend(method, path, body, prefer) {
+    const h = Object.assign({}, HDR, prefer ? { Prefer: prefer } : {});
+    const r = await fetch(SB + path, { method, headers: h, body: body ? JSON.stringify(body) : undefined });
+    if (!r.ok) throw new Error((await r.text()) || ('HTTP ' + r.status));
+    return r;
+  }
+
+  // Warehouse-name → country (mirrors the app's whCountryFromName).
+  const WH_COUNTRY_BY_CODE = { AE: 'United Arab Emirates', KSA: 'Saudi Arabia', SA: 'Saudi Arabia', PH: 'Philippines', MY: 'Malaysia', SG: 'Singapore', ID: 'Indonesia', TH: 'Thailand', AU: 'Australia', US: 'United States', MX: 'Mexico', VN: 'Vietnam', IN: 'India' };
+  function whCountry(wh) { const re = /\(([A-Za-z]{2,3})-[^)]*\)/g; let m; while ((m = re.exec(String(wh || '')))) { const c = WH_COUNTRY_BY_CODE[m[1].toUpperCase()]; if (c) return c; } return 'Other'; }
+
+  let ME = null;                 // { uid, name }
+  let BRANDS = [];               // [{ brand, country }]
+  let assigned = new Set();      // brands currently ticked
+  let initialAssigned = new Set();
+
+  // ── Identity (handed in by the app via ?as=&name=) ─────────────────────────
+  let _idResolved = false;
+  function gateFail(msg) { $('gateSpin').classList.add('hide'); $('gateTitle').textContent = 'Couldn’t load'; $('gateMsg').textContent = msg; $('gateActions').classList.remove('hide'); }
+  async function start(rawId, label) {
+    const uid = String(rawId || '').replace(/^wms:/, '');
+    if (!uid) return gateFail('Could not detect your login. Open this from the Customer Success tab.');
+    ME = { uid, name: label || uid };
+    const reg = await sbGet('/wms_users?user_id=eq.' + encodeURIComponent(uid) + '&select=name');
+    if (reg[0] && reg[0].name) ME.name = reg[0].name;
+    $('whoName').textContent = ME.name;
+    $('gate').classList.add('hide'); $('app').classList.remove('hide');
+    boot();
+  }
+  window.addEventListener('message', e => {
+    if (e.source !== window || !e.data || e.data.type !== 'dash-device-id' || !e.data.id) return;
+    if (_idResolved) return; _idResolved = true; start(e.data.id, e.data.label);
+  });
+  (function () { const q = new URLSearchParams(location.search); const p = q.get('as'); if (p && !_idResolved) { _idResolved = true; start(p, q.get('name')); } })();
+  setTimeout(() => { if (_idResolved) return; _idResolved = true; gateFail('Open this from the Customer Success tab so it knows who you are.'); }, 2500);
+
+  // ── Load brands (grouped by country) + my current assignments ──────────────
+  async function boot() {
+    const [rows, mine] = await Promise.all([
+      sbGet('/b2c_brand?select=wh,brands'),
+      sbGet('/cs_brand_assignments?cs_user_id=eq.' + encodeURIComponent(ME.uid) + '&select=brand'),
+    ]);
+    // brand → { country: totalOrders } to pick each brand's dominant country
+    const byBrand = {};
+    for (const r of (rows || [])) {
+      const country = whCountry(r.wh);
+      const b = r.brands || {};
+      for (const brand of Object.keys(b)) {
+        const tot = Number((b[brand] || {}).total || 0);
+        (byBrand[brand] = byBrand[brand] || {});
+        byBrand[brand][country] = (byBrand[brand][country] || 0) + tot;
+      }
+    }
+    BRANDS = Object.keys(byBrand).map(brand => {
+      const countries = byBrand[brand];
+      const country = Object.keys(countries).sort((a, b) => countries[b] - countries[a])[0] || 'Other';
+      return { brand, country };
+    }).sort((a, b) => a.country.localeCompare(b.country) || a.brand.localeCompare(b.brand));
+    assigned = new Set((mine || []).map(r => r.brand));
+    initialAssigned = new Set(assigned);
+    renderBrands();
+  }
+
+  function renderBrands() {
+    const q = ($('brandSearch').value || '').trim().toLowerCase();
+    const shown = BRANDS.filter(b => !q || b.brand.toLowerCase().includes(q));
+    const byCountry = {};
+    shown.forEach(b => { (byCountry[b.country] = byCountry[b.country] || []).push(b.brand); });
+    let html = '';
+    Object.keys(byCountry).sort().forEach(c => {
+      html += `<div class="country">${esc(c)} <span style="color:var(--muted);font-weight:400">· ${byCountry[c].length}</span></div><div class="brands">`;
+      html += byCountry[c].map(brand => {
+        const on = assigned.has(brand);
+        return `<label class="${on ? 'on' : ''}"><input type="checkbox" ${on ? 'checked' : ''} onchange="toggleBrand(this, ${JSON.stringify(brand).replace(/"/g, '&quot;')})"> ${esc(brand)}</label>`;
+      }).join('');
+      html += '</div>';
+    });
+    if (!shown.length) html = '<div class="hint" style="margin-top:12px">No brands match.</div>';
+    $('brandList').innerHTML = html;
+    updateCount();
+  }
+  function toggleBrand(cb, brand) {
+    if (cb.checked) assigned.add(brand); else assigned.delete(brand);
+    cb.closest('label').classList.toggle('on', cb.checked);
+    updateCount();
+  }
+  function updateCount() { $('brandCount').textContent = assigned.size ? '· ' + assigned.size + ' selected' : ''; }
+
+  async function saveAssignments() {
+    const toAdd = [...assigned].filter(b => !initialAssigned.has(b));
+    const toRemove = [...initialAssigned].filter(b => !assigned.has(b));
+    if (!toAdd.length && !toRemove.length) { flash('saveMsg', 'No changes', true); return; }
+    try {
+      if (toAdd.length) {
+        const now = new Date().toISOString();
+        await sbSend('POST', '/cs_brand_assignments?on_conflict=cs_user_id,brand',
+          toAdd.map(brand => ({ cs_user_id: ME.uid, cs_name: ME.name, brand, updated_at: now })),
+          'resolution=merge-duplicates,return=minimal');
+      }
+      for (const brand of toRemove) {
+        await sbSend('DELETE', '/cs_brand_assignments?cs_user_id=eq.' + encodeURIComponent(ME.uid) + '&brand=eq.' + encodeURIComponent(brand));
+      }
+      initialAssigned = new Set(assigned);
+      flash('saveMsg', 'Saved ✓', true);
+    } catch (e) { flash('saveMsg', 'Save failed', false); }
+  }
+</script>
+</body>
+</html>

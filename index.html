@@ -2344,10 +2344,11 @@
   <div class="view" id="view-cs">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:16px">
       <div>
-        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Customer Success</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Customer Success <span id="csMineBadge" style="display:none;font-size:.68rem;font-weight:700;color:#06210b;background:var(--primary);padding:2px 8px;border-radius:20px;vertical-align:middle;margin-left:6px">My brands</span></div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Today's B2C orders by brand · honors the operating cut-off (post-cut-off orders count for tomorrow)</div>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button onclick="openCsConsole()" class="btn btn-sm" style="font-size:.78rem;padding:6px 11px;white-space:nowrap">⚙ My brands</button>
         <select id="csBrand" onchange="onCsBrandChange(this.value)"
           style="font-size:.8rem;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;max-width:220px"></select>
         <select id="csWarehouse" onchange="onCsWarehouseChange(this.value)"
@@ -5312,13 +5313,38 @@
   // b2c_brand holds per-(wh,status,day,brand) counts; day='today' already honors
   // the operating cut-off (post-cut-off arrivals are day='tomorrow').
   let csData = [];
+  let csMyBrands = null;   // Set of the CS user's assigned brands, or null = see all brands
+  function csBrandAllowed(brand) { return !csMyBrands || csMyBrands.has(brand); }
   function onCsWarehouseChange(v) { try { localStorage.setItem('csWarehouseFilter', v); } catch (e) {} populateCsBrandSelect(); renderCustomerSuccess(); }
   function onCsBrandChange(v) { try { localStorage.setItem('csBrandFilter', v); } catch (e) {} renderCustomerSuccess(); }
+  function csCurrentUid() { let c = null; try { c = localStorage.getItem('loggedInWmsId'); } catch (e) {} return (c && c.indexOf('wms:') === 0) ? c.slice(4) : null; }
+  function openCsConsole() {
+    const uid = csCurrentUid();
+    let url = 'cs-console/index.html';
+    if (uid) url += '?as=' + encodeURIComponent(uid) + (_liveWmsLabel ? '&name=' + encodeURIComponent(_liveWmsLabel) : '');
+    window.open(url, '_blank', 'noopener');
+  }
+  // CS-role users see only the brands they've assigned to themselves (via the CS
+  // Console); Admin/Manager/Supervisor (and non-CS) see all brands.
+  async function loadCsScope() {
+    csMyBrands = null;
+    const uid = csCurrentUid();
+    if (!uid) return;
+    try {
+      const roles = await fetch(SB_URL + '/user_roles?user_id=eq.' + encodeURIComponent(uid) + '&select=role', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      const names = new Set((roles || []).map(r => r.role));
+      if (names.has('Admin') || names.has('Manager') || names.has('Supervisor') || !names.has('CS')) return;   // see all
+      const a = await fetch(SB_URL + '/cs_brand_assignments?cs_user_id=eq.' + encodeURIComponent(uid) + '&select=brand', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      csMyBrands = new Set((a || []).map(r => r.brand));
+    } catch (e) { csMyBrands = null; }
+  }
   async function fetchCustomerSuccess() {
     try {
       const rows = await fetch(SB_URL + '/b2c_brand?day=eq.today&select=wh,status,brands', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
       csData = (rows || []).filter(r => whAllowed(r.wh));
     } catch (e) { csData = []; }
+    await loadCsScope();
+    const badge = document.getElementById('csMineBadge'); if (badge) badge.style.display = csMyBrands ? '' : 'none';
     populateCsWarehouseSelect();
     populateCsBrandSelect();
     renderCustomerSuccess();
@@ -5331,7 +5357,7 @@
     for (const r of csData) {
       if (selWh && r.wh !== selWh) continue;   // only brands present in the filtered warehouse
       const b = r.brands || {};
-      for (const k of Object.keys(b)) if (Number((b[k] || {}).total || 0) > 0) set.add(k);
+      for (const k of Object.keys(b)) if (csBrandAllowed(k) && Number((b[k] || {}).total || 0) > 0) set.add(k);
     }
     const brands = [...set].sort();
     const html = '<option value="">All brands</option>' + brands.map(b => `<option value="${escHtml(b)}">${escHtml(b)}</option>`).join('');
@@ -5359,6 +5385,7 @@
       whSet.add(r.wh);
       const b = r.brands || {};
       for (const brand of Object.keys(b)) {
+        if (!csBrandAllowed(brand)) continue;   // CS role → only my brands
         const t = Number((b[brand] || {}).total || 0);
         if (!t) continue;
         (brandWh[brand] = brandWh[brand] || {})[r.wh] = (brandWh[brand][r.wh] || 0) + t;
@@ -6231,7 +6258,8 @@
           skus:       Array.isArray(r.skus) ? r.skus : safeParseJson(r.skus),
           photos:     Array.isArray(r.photos) ? r.photos : [],
           reporterName: r.reported_by || '',
-          reporterId:   r.reporter_id || ''
+          reporterId:   r.reporter_id || '',
+          csName:       r.cs_name || ''
         });
       });
       updateBadge();
@@ -6262,7 +6290,8 @@
           skus:        JSON.stringify(record.skus || []),
           photos:      record.photos || [],
           reported_by: record.reporterName || '',
-          reporter_id: record.reporterId || ''
+          reporter_id: record.reporterId || '',
+          cs_name:     record.csName || ''
         })
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -6845,6 +6874,13 @@ function fail(error) {
     const reporterId   = _dashDeviceId || (await dashGetDeviceId());
     const reporterName = _dashDeviceLabel || '';
 
+    // Tag the error with the CS(es) who own this brand (Customer Success Console).
+    let csName = '';
+    try {
+      const csRows = await fetch(SB_URL + '/cs_brand_assignments?brand=eq.' + encodeURIComponent(brand) + '&select=cs_name', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      csName = [...new Set((csRows || []).map(r => r.cs_name).filter(Boolean))].join(', ');
+    } catch (e) {}
+
     const record = {
       id: uid(), timestamp: new Date(),
       warehouse, brand,
@@ -6852,7 +6888,7 @@ function fail(error) {
       notes, skus,
       photos: [...photosBuffer],
       status: 'Open',
-      reporterId, reporterName
+      reporterId, reporterName, csName
     };
 
     // Optimistically add to local list
@@ -7170,6 +7206,7 @@ function fail(error) {
               <div class="detail-item"><span class="detail-label">Tote Number</span><span class="detail-value" style="display:inline-flex;align-items:center;gap:8px"><span>${e.toteNum||'—'}</span>${e.toteNum ? `<button onclick="copyText('${e.toteNum.replace(/'/g,"\\'")}',this)" title="Copy tote number" style="display:inline-flex;align-items:center;padding:3px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;cursor:pointer;color:var(--muted);transition:border-color .15s" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'"><svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>` : ''}</span></div>
               <div class="detail-item"><span class="detail-label">Reported</span><span class="detail-value">${formatTime(e.timestamp)}</span></div>
               <div class="detail-item"><span class="detail-label">Reported by</span><span class="detail-value">${(e.reporterName || '—').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</span></div>
+              <div class="detail-item"><span class="detail-label">CS (brand owner)</span><span class="detail-value">${(e.csName || '—').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</span></div>
               ${skuRows}
               ${notesRows}
               ${photosRow}
