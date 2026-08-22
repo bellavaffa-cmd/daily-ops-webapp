@@ -6876,6 +6876,20 @@ function fail(error) {
     const submitBtn = document.getElementById('errorSubmitBtn');
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Saving…'; }
 
+    // Block duplicates: reject if an error for this order number already exists.
+    // Fail open on a network error so a real report is never lost to an outage.
+    try {
+      const dup = await fetch(SB_URL + '/packing_errors?order_id=eq.' + encodeURIComponent(orderId) + '&select=error_type,status,created_at&order=created_at.desc&limit=1', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      if (dup && dup.length) {
+        const d = dup[0];
+        const when = d.created_at ? new Date(d.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+        showToast('Order ' + orderId + ' already has a reported error (' + (d.error_type || 'error') + (d.status ? ' · ' + d.status : '') + (when ? ' · ' + when : '') + '). Duplicate not allowed.', false);
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit Report'; }
+        const oidEl = document.getElementById('orderId'); if (oidEl) { oidEl.style.borderColor = 'var(--danger, #e05252)'; oidEl.focus(); }
+        return;
+      }
+    } catch (e) { /* fail open — allow the report */ }
+
     // Stamp the report with who filed it, from the stored identity (WMS login →
     // display name when available; otherwise the device/browser id).
     const reporterId   = _dashDeviceId || (await dashGetDeviceId());
