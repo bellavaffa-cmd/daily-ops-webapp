@@ -298,7 +298,7 @@
   async function boot() {
     // role dropdowns
     $('userRole').innerHTML = roleOptsHtml(null);
-    $('tabRole').innerHTML = ROLES.map(r => `<option>${r}</option>`).join('');
+    $('tabRole').innerHTML = roleOptsHtml(null);
     $('profRole').innerHTML = '<option value="">— none —</option>' + roleOptsHtml(null);
     // tab checkboxes
     $('tabChecks').innerHTML = APP_TABS.map(([k, n]) => `<label><input type="checkbox" value="${k}"> ${n}</label>`).join('');
@@ -402,17 +402,21 @@
   async function delWebhook(id) { try { await sbSend('DELETE', '/warehouse_webhooks?id=eq.' + id); loadWebhooks(); } catch (e) {} }
 
   // ── 2: User roles ────────────────────────────────────────────────────────────
+  let _roleRows = [];
   async function loadRoles() {
     // Show roles scoped to this warehouse and the global (*) ones.
     const scope = CURRENT_WH === '*' ? 'wh=eq.*' : 'or=(wh.eq.' + encodeURIComponent(CURRENT_WH) + ',wh.eq.*)';
     const rows = await sbGet('/user_roles?' + scope + '&select=id,user_id,wh,role&order=role.asc');
+    _roleRows = rows;
     const users = await sbGet('/wms_users?select=user_id,name,email');
     const nameOf = {}; users.forEach(u => nameOf[u.user_id] = u.name || u.email || u.user_id);
     $('roleRows').innerHTML = rows.length ? rows.map(r => {
       const nm = nameOf[r.user_id] || (r.user_id.slice(0, 10) + '…');
+      // A non-Admin cannot alter or remove an Admin user's role row.
+      const locked = r.role === 'Admin' && !canGrantAdmin();
       return `<tr><td title="${esc(r.user_id)}">${esc(nm)}</td><td><span class="pill">${r.wh === '*' ? 'All' : esc(r.wh)}</span></td>
-        <td><select onchange="setRole(${r.id}, this.value)" style="width:auto">${roleOptsHtml(r.role)}</select></td>
-        <td style="text-align:right"><button class="btn icon" title="Remove" onclick="delRole(${r.id})">✕</button></td></tr>`;
+        <td><select onchange="setRole(${r.id}, this.value)" style="width:auto"${locked ? ' disabled' : ''}>${roleOptsHtml(r.role)}</select></td>
+        <td style="text-align:right"><button class="btn icon" title="${locked ? 'Only an Admin can change this' : 'Remove'}" onclick="delRole(${r.id})"${locked ? ' disabled' : ''}>✕</button></td></tr>`;
     }).join('') : '<tr><td colspan="4" style="color:var(--muted)">No users assigned for this scope.</td></tr>';
   }
   async function addUserRole() {
@@ -426,14 +430,20 @@
     } catch (e) { flash('roleMsg', 'Failed — check the id.', false); }
   }
   async function setRole(id, role) {
-    if (role === 'Admin' && !canGrantAdmin()) { flash('roleMsg', 'Only an Admin can grant the Admin role.', false); loadRoles(); return; }
+    const cur = _roleRows.find(x => x.id === id);
+    if ((role === 'Admin' || (cur && cur.role === 'Admin')) && !canGrantAdmin()) { flash('roleMsg', 'Only an Admin can change an Admin role.', false); loadRoles(); return; }
     try { await sbSend('PATCH', '/user_roles?id=eq.' + id, { role, updated_at: new Date().toISOString() }, 'return=minimal'); } catch (e) {}
   }
-  async function delRole(id) { try { await sbSend('DELETE', '/user_roles?id=eq.' + id); loadRoles(); } catch (e) {} }
+  async function delRole(id) {
+    const cur = _roleRows.find(x => x.id === id);
+    if (cur && cur.role === 'Admin' && !canGrantAdmin()) { flash('roleMsg', 'Only an Admin can remove an Admin role.', false); return; }
+    try { await sbSend('DELETE', '/user_roles?id=eq.' + id); loadRoles(); } catch (e) {}
+  }
 
   // ── 6: Role → tabs ───────────────────────────────────────────────────────────
   async function loadRoleTabs() {
     const role = $('tabRole').value;
+    if (role === 'Admin' && !canGrantAdmin()) { $('tabChecks').querySelectorAll('input').forEach(cb => cb.checked = false); return; }
     const r = (await sbGet('/role_tabs?wh=eq.' + encodeURIComponent(CURRENT_WH) + '&role=eq.' + encodeURIComponent(role) + '&select=tabs'))[0];
     let tabs = r && Array.isArray(r.tabs) ? r.tabs : null;
     // Default: no row → all tabs on (so nothing is accidentally hidden before configured).
@@ -442,6 +452,7 @@
   }
   async function saveRoleTabs() {
     const role = $('tabRole').value;
+    if (role === 'Admin' && !canGrantAdmin()) { flash('tabsMsg', 'Only an Admin can edit Admin tab access.', false); return; }
     const tabs = [...$('tabChecks').querySelectorAll('input')].filter(cb => cb.checked).map(cb => cb.value);
     try {
       await sbSend('POST', '/role_tabs?on_conflict=wh,role', [{ wh: CURRENT_WH, role, tabs, updated_at: new Date().toISOString() }], 'resolution=merge-duplicates,return=minimal');
@@ -467,8 +478,11 @@
       const nw = Array.isArray(p.warehouses) && p.warehouses.length ? p.warehouses.length : 'all';
       const lock = p.password_hash ? ' 🔒' : '';
       const meta = p.username ? `<div class="hint" style="margin-top:2px">login: ${esc(p.username)}</div>` : '';
+      // Only an Admin may edit or delete an Admin-role profile.
+      const adminLocked = p.role === 'Admin' && !canGrantAdmin();
+      const dis = adminLocked ? ' disabled title="Only an Admin can manage this"' : '';
       return `<tr><td>${esc(p.name || p.id)}${lock}${meta}</td><td>${nw}</td><td>${p.role ? esc(p.role) : '—'}</td>
-        <td style="text-align:right;white-space:nowrap"><button class="btn" onclick="editProfile('${esc(p.id)}')">Edit</button> <button class="btn" onclick="delProfile('${esc(p.id)}')">✕</button></td></tr>`;
+        <td style="text-align:right;white-space:nowrap"><button class="btn" onclick="editProfile('${esc(p.id)}')"${dis}>Edit</button> <button class="btn" onclick="delProfile('${esc(p.id)}')"${dis}>✕</button></td></tr>`;
     }).join('') || '<tr><td colspan="4" class="hint">No profiles yet.</td></tr>';
   }
   function editProfile(id) {
@@ -486,7 +500,8 @@
   async function saveProfile() {
     const name = $('profName').value.trim();
     if (!name) { flash('profMsg', 'Enter a name', false); return; }
-    if ($('profRole').value === 'Admin' && !canGrantAdmin()) { flash('profMsg', 'Only an Admin can grant the Admin role.', false); return; }
+    const _editing = $('profEditId').value ? _profiles.find(x => x.id === $('profEditId').value) : null;
+    if ((($('profRole').value === 'Admin') || (_editing && _editing.role === 'Admin')) && !canGrantAdmin()) { flash('profMsg', 'Only an Admin can manage an Admin-role profile.', false); return; }
     let id = $('profEditId').value;
     if (!id) id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) + '-' + Date.now().toString(36).slice(-4);
     const warehouses = [...$('profWhChecks').querySelectorAll('input:checked')].map(c => c.value);
@@ -502,7 +517,11 @@
       flash('profMsg', 'Saved ✓', true); resetProfileForm(); loadProfiles();
     } catch (e) { flash('profMsg', 'Save failed', false); }
   }
-  async function delProfile(id) { try { await sbSend('DELETE', '/instance_profiles?id=eq.' + encodeURIComponent(id)); loadProfiles(); } catch (e) {} }
+  async function delProfile(id) {
+    const p = _profiles.find(x => x.id === id);
+    if (p && p.role === 'Admin' && !canGrantAdmin()) { flash('profMsg', 'Only an Admin can delete an Admin-role profile.', false); return; }
+    try { await sbSend('DELETE', '/instance_profiles?id=eq.' + encodeURIComponent(id)); loadProfiles(); } catch (e) {}
+  }
 </script>
 </body>
 </html>
