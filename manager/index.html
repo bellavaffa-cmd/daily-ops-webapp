@@ -93,7 +93,7 @@
       <div><label>Non-MP cut-off</label><input type="time" id="cfgNonmp"></div>
       <div><label>Opens</label><input type="time" id="cfgOpen"></div>
       <div><label>Closes</label><input type="time" id="cfgClose"></div>
-      <div><label>Timezone</label><input type="text" id="cfgTz" placeholder="Asia/Manila"></div>
+      <div><label>Timezone <span class="hint">(auto by country)</span></label><select id="cfgTz"></select></div>
       <div><label>Lunch break <span class="hint">(start / end)</span></label><div style="display:flex;gap:6px"><input type="time" id="cfgLunchS"><input type="time" id="cfgLunchE"></div></div>
       <div><label>Short break <span class="hint">(start / end)</span></label><div style="display:flex;gap:6px"><input type="time" id="cfgBreakS"><input type="time" id="cfgBreakE"></div></div>
     </div>
@@ -303,6 +303,7 @@
     $('userRole').innerHTML = roleOptsHtml(null);
     $('tabRole').innerHTML = roleOptsHtml(null);
     $('profRole').innerHTML = '<option value="">— none —</option>' + roleOptsHtml(null);
+    populateTzOptions();
     // tab checkboxes
     $('tabChecks').innerHTML = APP_TABS.map(([k, n]) => `<label><input type="checkbox" value="${k}"> ${n}</label>`).join('');
     // warehouses from b2c_data, restricted to the ones this manager's WMS account
@@ -356,11 +357,38 @@
   }
 
   // ── 1 + 3: Timing ──────────────────────────────────────────────────────────
+  // Warehouse code (in the trailing parens, e.g. "SG-JOO") → IANA timezone.
+  // Site-specific overrides win where a country spans zones (e.g. US).
+  const TZ_BY_SITE = { 'US-MES': 'America/Chicago', 'US-SAN': 'America/Los_Angeles' };
+  const TZ_BY_COUNTRY = {
+    SG: 'Asia/Singapore', MY: 'Asia/Kuala_Lumpur', PH: 'Asia/Manila', ID: 'Asia/Jakarta',
+    TH: 'Asia/Bangkok', VN: 'Asia/Ho_Chi_Minh', HK: 'Asia/Hong_Kong', JP: 'Asia/Tokyo',
+    CN: 'Asia/Shanghai', IN: 'Asia/Kolkata', AU: 'Australia/Sydney', NZ: 'Pacific/Auckland',
+    AE: 'Asia/Dubai', SA: 'Asia/Riyadh', KSA: 'Asia/Riyadh', QA: 'Asia/Qatar', KW: 'Asia/Kuwait',
+    MX: 'America/Mexico_City', US: 'America/Chicago', CA: 'America/Toronto', BR: 'America/Sao_Paulo',
+    GB: 'Europe/London', UK: 'Europe/London', DE: 'Europe/Berlin', FR: 'Europe/Paris'
+  };
+  function inferTz(wh) {
+    const m = /\(([^)]+)\)\s*$/.exec(wh || ''); if (!m) return '';
+    const code = m[1].toUpperCase();
+    return TZ_BY_SITE[code] || TZ_BY_COUNTRY[code.split('-')[0]] || '';
+  }
+  function populateTzOptions() {
+    const sel = $('cfgTz'); if (!sel || sel.options.length) return;
+    let zones = [];
+    try { zones = Intl.supportedValuesOf('timeZone') || []; } catch (e) {}
+    if (!zones.length) zones = [...new Set([...Object.values(TZ_BY_SITE), ...Object.values(TZ_BY_COUNTRY), 'UTC'])].sort();
+    sel.innerHTML = zones.map(z => `<option value="${esc(z)}">${esc(z)}</option>`).join('');
+  }
   async function loadTiming() {
     const r = (await sbGet('/warehouse_config?wh=eq.' + encodeURIComponent(CURRENT_WH) + '&select=*'))[0] || {};
     $('cfgMp').value = r.mp_cutoff || '16:15'; $('cfgNonmp').value = r.nonmp_cutoff || '14:09';
     $('cfgOpen').value = r.operating_start || '09:00'; $('cfgClose').value = r.operating_end || '18:00';
-    $('cfgTz').value = r.tz || 'Asia/Manila';
+    // Saved tz wins; otherwise auto-pick from the warehouse's country.
+    const tz = r.tz || inferTz(CURRENT_WH) || 'Asia/Manila';
+    const sel = $('cfgTz');
+    if (sel && ![...sel.options].some(o => o.value === tz)) sel.add(new Option(tz, tz));
+    sel.value = tz;
     const br = Array.isArray(r.breaks) ? r.breaks : [];
     $('cfgLunchS').value = (br[0] && br[0].start) || ''; $('cfgLunchE').value = (br[0] && br[0].end) || '';
     $('cfgBreakS').value = (br[1] && br[1].start) || ''; $('cfgBreakE').value = (br[1] && br[1].end) || '';
