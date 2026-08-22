@@ -62,12 +62,12 @@
   <div class="topbar">
     <div>
       <h1>Customer Success Console</h1>
-      <div class="sub">Pick the brands you're in charge of. Reported errors for those brands are tagged to you, and your CS dashboard shows only these brands.</div>
+      <div class="sub" id="appSub">Pick the brands you're in charge of. Reported errors for those brands are tagged to you, and your CS dashboard shows only these brands.</div>
     </div>
-    <div class="who"><b id="whoName">—</b><span>Customer Success</span></div>
+    <div class="who"><b id="whoName">—</b><span id="whoRole">Customer Success</span></div>
   </div>
 
-  <div class="card">
+  <div class="card" id="brandsCard">
     <h2>My brands <span class="count" id="brandCount"></span></h2>
     <div class="hint">Grouped by country. Search to narrow, tick the brands you own, then Save.</div>
     <input id="brandSearch" type="text" placeholder="Search brand…" autocomplete="off" spellcheck="false" oninput="renderBrands()">
@@ -121,13 +121,21 @@
   async function start(rawId, label) {
     const uid = String(rawId || '').replace(/^wms:/, '');
     if (!uid) return gateFail('Could not detect your login. Open this from the Customer Success tab.');
-    // Only Customer Success can own brands (so only CS get tagged on errors).
+    // CS, Managers and Admins may open the console. Brand ownership stays
+    // CS-only (only CS get tagged on errors), so managers see just Carriers.
     const roles = await sbGet('/user_roles?user_id=eq.' + encodeURIComponent(uid) + '&select=role');
-    if (!roles.some(r => r.role === 'CS')) return gateFail('This console is for Customer Success. Your account isn’t assigned the CS role.');
-    ME = { uid, name: label || uid };
+    const roleSet = new Set((roles || []).map(r => r.role));
+    const isCs = roleSet.has('CS');
+    if (!(isCs || roleSet.has('Manager') || roleSet.has('Admin'))) return gateFail('This console is for Customer Success and managers. Your account isn’t assigned a matching role.');
+    ME = { uid, name: label || uid, isCs };
     const reg = await sbGet('/wms_users?user_id=eq.' + encodeURIComponent(uid) + '&select=name');
     if (reg[0] && reg[0].name) ME.name = reg[0].name;
     $('whoName').textContent = ME.name;
+    if (!isCs) {
+      $('brandsCard').classList.add('hide');
+      $('whoRole').textContent = roleSet.has('Manager') ? 'Manager' : 'Admin';
+      $('appSub').textContent = 'Manage the carriers available at each warehouse for the error-report form.';
+    }
     $('gate').classList.add('hide'); $('app').classList.remove('hide');
     boot();
   }
@@ -162,7 +170,7 @@
     }).sort((a, b) => a.country.localeCompare(b.country) || a.brand.localeCompare(b.brand));
     assigned = new Set((mine || []).map(r => r.brand));
     initialAssigned = new Set(assigned);
-    renderBrands();
+    if (ME.isCs) renderBrands();
     populateWh(rows);
   }
 

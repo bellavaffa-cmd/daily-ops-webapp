@@ -5317,6 +5317,7 @@
   // the operating cut-off (post-cut-off arrivals are day='tomorrow').
   let csData = [];
   let csMyBrands = null;   // Set of the CS user's assigned brands, or null = see all brands
+  let csCanOpenConsole = false;   // CS, Manager or Admin may open the CS Console
   function csBrandAllowed(brand) { return !csMyBrands || csMyBrands.has(brand); }
   function onCsWarehouseChange(v) { try { localStorage.setItem('csWarehouseFilter', v); } catch (e) {} populateCsBrandSelect(); renderCustomerSuccess(); renderCsEta(); }
   function onCsBrandChange(v) { try { localStorage.setItem('csBrandFilter', v); } catch (e) {} renderCustomerSuccess(); renderCsEta(); }
@@ -5330,12 +5331,13 @@
   // CS-role users see only the brands they've assigned to themselves (via the CS
   // Console); Admin/Manager/Supervisor (and non-CS) see all brands.
   async function loadCsScope() {
-    csMyBrands = null;
+    csMyBrands = null; csCanOpenConsole = false;
     const uid = csCurrentUid();
     if (!uid) return;
     try {
       const roles = await fetch(SB_URL + '/user_roles?user_id=eq.' + encodeURIComponent(uid) + '&select=role', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
       const names = new Set((roles || []).map(r => r.role));
+      csCanOpenConsole = names.has('CS') || names.has('Manager') || names.has('Admin');
       if (names.has('Admin') || names.has('Manager') || names.has('Supervisor') || !names.has('CS')) return;   // see all
       const a = await fetch(SB_URL + '/cs_brand_assignments?cs_user_id=eq.' + encodeURIComponent(uid) + '&select=brand', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
       csMyBrands = new Set((a || []).map(r => r.brand));
@@ -5347,9 +5349,10 @@
       csData = (rows || []).filter(r => whAllowed(r.wh));
     } catch (e) { csData = []; }
     await loadCsScope();
-    const isCs = csMyBrands != null;   // only CS-role users get scoped + the console button
+    const isCs = csMyBrands != null;   // only CS-role users get the scoped view + badge
     const badge = document.getElementById('csMineBadge'); if (badge) badge.style.display = isCs ? '' : 'none';
-    const csBtn = document.getElementById('csConsoleBtn'); if (csBtn) csBtn.style.display = isCs ? '' : 'none';
+    const csBtn = document.getElementById('csConsoleBtn');
+    if (csBtn) { csBtn.style.display = csCanOpenConsole ? '' : 'none'; csBtn.textContent = isCs ? '⚙ My brands' : '⚙ Carriers'; }
     populateCsWarehouseSelect();
     populateCsBrandSelect();
     renderCustomerSuccess();
