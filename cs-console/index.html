@@ -154,8 +154,15 @@
     shown.forEach(b => { (byCountry[b.country] = byCountry[b.country] || []).push(b.brand); });
     let html = '';
     Object.keys(byCountry).sort().forEach(c => {
-      html += `<div class="country">${esc(c)} <span style="color:var(--muted);font-weight:400">· ${byCountry[c].length}</span></div><div class="brands">`;
-      html += byCountry[c].map(brand => {
+      const list = byCountry[c];
+      const onCount = list.filter(b => assigned.has(b)).length;
+      const allOn = onCount === list.length;
+      const cJson = JSON.stringify(c).replace(/"/g, '&quot;');
+      html += `<div class="country" onclick="toggleCountry(${cJson})" title="${allOn ? 'Clear all' : 'Select all'} brands in ${esc(c)}" style="display:flex;align-items:center;gap:10px;cursor:pointer">
+        <span>${esc(c)} <span style="color:var(--muted);font-weight:400">· ${list.length}${onCount ? ' · ' + onCount + ' selected' : ''}</span></span>
+        <span style="margin-left:auto;font-size:.68rem;font-weight:700;color:var(--primary)">${allOn ? 'Clear all' : 'Select all'}</span>
+      </div><div class="brands">`;
+      html += list.map(brand => {
         const on = assigned.has(brand);
         return `<label class="${on ? 'on' : ''}"><input type="checkbox" ${on ? 'checked' : ''} onchange="toggleBrand(this, ${JSON.stringify(brand).replace(/"/g, '&quot;')})"> ${esc(brand)}</label>`;
       }).join('');
@@ -169,6 +176,15 @@
     if (cb.checked) assigned.add(brand); else assigned.delete(brand);
     cb.closest('label').classList.toggle('on', cb.checked);
     updateCount();
+  }
+  // Country header click: select all brands under it (respecting the current
+  // search filter), or clear them all if they're already all selected.
+  function toggleCountry(country) {
+    const q = ($('brandSearch').value || '').trim().toLowerCase();
+    const brandsInC = BRANDS.filter(b => b.country === country && (!q || b.brand.toLowerCase().includes(q))).map(b => b.brand);
+    const allOn = brandsInC.length && brandsInC.every(b => assigned.has(b));
+    brandsInC.forEach(b => allOn ? assigned.delete(b) : assigned.add(b));
+    renderBrands();
   }
   function updateCount() { $('brandCount').textContent = assigned.size ? '· ' + assigned.size + ' selected' : ''; }
 
