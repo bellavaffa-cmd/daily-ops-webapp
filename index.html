@@ -5441,12 +5441,13 @@
     else {
       const byRate = brands.slice().sort((a, b) => (packingOf(b) / (brandTotal(b) || 1)) - (packingOf(a) / (brandTotal(a) || 1)));
       cEl.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.82rem">
-        <thead><tr>${th('Brand')}${th('Open', 1)}${th('Ready to Pick', 1)}${th('Ready to Pack', 1)}${th('Today', 1)}${th('In packing', 1)}${th('Progress', 1)}</tr></thead>
+        <thead><tr>${th('Brand')}${th('Total', 1)}${th('Open', 1)}${th('Ready to Pick', 1)}${th('Ready to Pack', 1)}${th('In packing', 1)}${th('Progress', 1)}</tr></thead>
         <tbody>${byRate.map(br => { const bs = brandStatus[br] || {}, t = brandTotal(br), p = packingOf(br), pct = t ? Math.round(p / t * 100) : 0;
           return `<tr style="border-top:1px solid var(--border)">
             <td style="padding:8px 14px;color:var(--text);white-space:nowrap">${escHtml(br)}</td>
+            ${tdN(t, 'var(--text)', true)}
             ${tdN(bs.new || 0, (bs.new ? '#fb923c' : 'var(--muted)'))}${tdN(bs.rfp || 0, (bs.rfp ? '#fcd34d' : 'var(--muted)'))}${tdN(bs.picked || 0, (bs.picked ? '#86efac' : 'var(--muted)'))}
-            ${tdN(t)}${tdN(p, '#5eead4')}
+            ${tdN(p, '#5eead4')}
             <td style="padding:8px 14px;text-align:right;white-space:nowrap"><span style="display:inline-flex;align-items:center;gap:8px;justify-content:flex-end"><span style="width:70px;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;display:inline-block"><span style="display:block;height:100%;width:${pct}%;background:#5eead4"></span></span><b style="color:var(--text);min-width:34px;text-align:right">${pct}%</b></span></td>
           </tr>`; }).join('')}</tbody></table>`;
     }
