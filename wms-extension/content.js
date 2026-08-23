@@ -339,7 +339,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
         var arr = (d && d.data) || d || [];
         if (!Array.isArray(arr) || !arr.length) return;
-        var whs = arr.map(function (w) { return { code: w.code, id: w.warehouseIdentifier }; }).filter(function (w) { return w.code; });
+        var whs = arr.map(function (w) { return { code: w.code, id: w.identifier }; }).filter(function (w) { return w.code; });
         if (!whs.length) return;
         chrome.storage.local.set({ wmsWarehouses: whs.map(function (w) { return w.code; }) });
         fetch('https://hmpkjmnxoidesnnoecfm.supabase.co/rest/v1/wms_users?on_conflict=user_id', {
