@@ -3255,6 +3255,14 @@
   }
   function _brandEsc(e) { if (e.key === 'Escape') closeBrandModal(); }
   function closeBrandModal() { const m = document.getElementById('brandModal'); if (m) m.remove(); document.removeEventListener('keydown', _brandEsc); }
+  // Expand/collapse a brand group in the order-numbers-by-brand table.
+  function toggleBrandGroup(idx, headerRow) {
+    const table = headerRow.closest('table'); if (!table) return;
+    const rows = table.querySelectorAll('tr[data-bg="' + idx + '"]');
+    const willShow = rows.length && rows[0].style.display === 'none';
+    rows.forEach(r => r.style.display = willShow ? '' : 'none');
+    const caret = headerRow.querySelector('.bg-caret'); if (caret) caret.textContent = willShow ? '▾' : '▸';
+  }
   async function openBrandBreakdown(day, statusKey) {
     const BRAND_STATUS = {
       new:     { label: 'Open',            ids: () => [WMS_STATUS_ID['Open']] },
@@ -3292,7 +3300,13 @@
     try {
       const statusFilter = statusKey === 'total' ? '' : ('&status=eq.' + encodeURIComponent(statusKey));
       const dayFilter = '&is_tomorrow=is.' + (day === 'tomorrow' ? 'true' : 'false');
-      orders = await fetch(SB_URL + '/b2c_orders?select=order_id,wh,brand,is_priority_mp,is_nonmp,is_next_day' + statusFilter + dayFilter + '&order=order_id.asc&limit=50000', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      const base = SB_URL + '/b2c_orders?select=order_id,wh,brand,is_priority_mp,is_nonmp,is_next_day' + statusFilter + dayFilter + '&order=order_id.asc';
+      const PAGE = 1000;   // page past PostgREST's 1000-row response cap so nothing is dropped
+      for (let off = 0; off <= 30000; off += PAGE) {
+        const batch = await fetch(base + '&limit=' + PAGE + '&offset=' + off, { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+        orders = orders.concat(batch);
+        if (batch.length < PAGE) break;
+      }
     } catch (e) { orders = []; }
     const byBrand = {};
     for (const o of orders) {
@@ -3316,16 +3330,16 @@
       if (o.is_next_day) t.push('<span style="color:#f0abfc">Next Day</span>');
       return t.join(' · ') || '<span style="color:var(--muted)">—</span>';
     };
-    const th = t => `<th style="text-align:left;padding:9px 10px;font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap;position:sticky;top:0;background:var(--surface)">${t}</th>`;
     body.innerHTML = `<div style="max-height:64vh;overflow:auto">
-      <div style="font-size:.75rem;color:var(--muted);margin:4px 0 12px">${fmt(grandCount)} order${grandCount !== 1 ? 's' : ''} · ${list.length} brand${list.length !== 1 ? 's' : ''}</div>
+      <div style="font-size:.75rem;color:var(--muted);margin:4px 0 12px">${fmt(grandCount)} order${grandCount !== 1 ? 's' : ''} · ${list.length} brand${list.length !== 1 ? 's' : ''} · tap a brand to expand</div>
       <table style="width:100%;border-collapse:collapse">
-        <thead><tr>${th('Order #')}${th('Warehouse')}${th('Tags')}</tr></thead>
         <tbody>
-          ${list.map(r => `
-            <tr><td colspan="3" style="padding:9px 10px;font-size:.8rem;font-weight:700;color:var(--text);background:var(--surface2);border-bottom:1px solid var(--border)">${escHtml(r.brand)} <span style="color:var(--muted);font-weight:400">· ${fmt(r.orders.length)}</span></td></tr>
-            ${r.orders.map(o => `<tr style="border-bottom:1px solid var(--border)">
-              <td style="padding:6px 10px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.78rem;color:var(--text);white-space:nowrap">${escHtml(o.order_id)}</td>
+          ${list.map((r, i) => `
+            <tr onclick="toggleBrandGroup(${i}, this)" style="cursor:pointer">
+              <td colspan="3" style="padding:10px;font-size:.82rem;font-weight:700;color:var(--text);background:var(--surface2);border-bottom:1px solid var(--border)"><span class="bg-caret" style="display:inline-block;width:1em;color:var(--muted);font-size:.72rem">▸</span> ${escHtml(r.brand)} <span style="color:var(--muted);font-weight:400">· ${fmt(r.orders.length)}</span></td>
+            </tr>
+            ${r.orders.map(o => `<tr data-bg="${i}" style="display:none;border-bottom:1px solid var(--border)">
+              <td style="padding:6px 10px 6px 26px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.78rem;color:var(--text);white-space:nowrap">${escHtml(o.order_id)}</td>
               <td style="padding:6px 10px;font-size:.75rem;color:var(--muted);white-space:nowrap">${escHtml(whShort(o.wh))}</td>
               <td style="padding:6px 10px;font-size:.75rem;white-space:nowrap">${tagCell(o)}</td>
             </tr>`).join('')}
