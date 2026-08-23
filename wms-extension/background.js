@@ -579,6 +579,7 @@ async function performSync(isB2B) {
             is_tomorrow:    isTomorrowOrder(o, isMp),
             total_qty:      (o.totalQuantity == null ? null : Number(o.totalQuantity)),   // total units (single-item = 1)
             line_count:     (Array.isArray(o.products) ? o.products.length : null),        // distinct product lines
+            tags:           (Array.isArray(o.tags) ? o.tags.filter(t => t && t.identifier).map(t => ({ id: String(t.identifier), name: t.name || '' })) : null),  // WMS tags (id = identifier GUID) → per-cut-off open counts
             updated_at:     syncIso
           };
         })

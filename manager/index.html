@@ -107,6 +107,12 @@
       <div><label>Priority-MP cut-off</label><input type="time" id="cfgMp"></div>
       <div><label>Non-MP cut-off</label><input type="time" id="cfgNonmp"></div>
     </div>
+    <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+      <label style="display:block;margin-bottom:2px">Custom cut-offs</label>
+      <p class="hint" style="margin-top:0">Extra named cut-offs, each mapped to a WMS order tag. Shown on the dashboard's Cut-off countdown with that tag's open count + countdown.</p>
+      <div id="cutoffRows"></div>
+      <button class="btn" style="margin-top:2px" onclick="addCutoffRow()">+ Add cut-off</button>
+    </div>
     <div class="row" style="margin-top:12px"><button class="btn primary" onclick="saveCutoffs()">Save</button><span class="msg" id="cutoffMsg"></span></div>
   </div>
 
@@ -403,6 +409,8 @@
     sel.value = tz;
     renderBreakRows(r.breaks);
     renderOpDays(r.operating_days);
+    await loadCutoffTags();
+    renderCutoffRows(r.cutoffs);
   }
   // Operating-day toggles (weekday numbers, JS getDay: 0=Sun … 6=Sat). No saved
   // value → all 7 on (the past-cut-off alert never suppressed).
@@ -426,6 +434,41 @@
     $('breakRows').innerHTML = rows.map(b => breakRowHtml(b && b.start, b && b.end)).join('');
   }
   function addBreakRow() { $('breakRows').insertAdjacentHTML('beforeend', breakRowHtml('', '')); }
+  // ── Custom cut-offs (each mapped to a WMS order tag) ──────────────────────
+  let _cutoffTags = [];   // [{id, name}] distinct tags seen on orders → the tag picker
+  async function loadCutoffTags() {
+    try { const r = await fetch(SB + '/rpc/distinct_order_tags', { method: 'POST', headers: HDR, body: '{}' }); _cutoffTags = r.ok ? (await r.json()) : []; }
+    catch (e) { _cutoffTags = []; }
+  }
+  function tagOptionsHtml(selId, selName) {
+    const opts = _cutoffTags.slice();
+    if (selId && !opts.some(t => t.id === selId)) opts.unshift({ id: selId, name: selName || selId });   // keep a saved tag even if unseen lately
+    return `<option value="">— pick tag —</option>` +
+      opts.map(t => `<option value="${esc(t.id)}" data-name="${esc(t.name || '')}"${t.id === selId ? ' selected' : ''}>${esc(t.name || t.id)}</option>`).join('');
+  }
+  function cutoffRowHtml(name, time, tagId, tagName) {
+    return `<div class="cutoff-row" style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+      <input class="co-name" placeholder="Name (e.g. Express)" value="${esc(name || '')}" style="flex:1 1 130px;min-width:110px">
+      <input type="time" class="co-time" value="${esc(time || '')}">
+      <select class="co-tag" style="flex:1 1 150px;min-width:130px">${tagOptionsHtml(tagId, tagName)}</select>
+      <button class="btn icon" title="Remove cut-off" onclick="this.closest('.cutoff-row').remove()">✕</button></div>`;
+  }
+  function renderCutoffRows(cutoffs) {
+    const arr = Array.isArray(cutoffs) ? cutoffs : [];
+    $('cutoffRows').innerHTML = arr.map(c => cutoffRowHtml(c && c.name, c && c.time, c && c.tag_id, c && c.tag_name)).join('');
+  }
+  function addCutoffRow() { $('cutoffRows').insertAdjacentHTML('beforeend', cutoffRowHtml('', '', '', '')); }
+  function collectCutoffs() {
+    return [...document.querySelectorAll('#cutoffRows .cutoff-row')].map(row => {
+      const sel = row.querySelector('.co-tag');
+      return {
+        name: row.querySelector('.co-name').value.trim(),
+        time: row.querySelector('.co-time').value,
+        tag_id: sel.value,
+        tag_name: sel.selectedOptions[0] ? (sel.selectedOptions[0].getAttribute('data-name') || '') : ''
+      };
+    }).filter(c => c.name && c.time && c.tag_id);   // keep only complete rows
+  }
   // Each card upserts only its own columns; PostgREST leaves omitted columns
   // untouched on an existing row, so the three saves don't clobber each other.
   async function saveOperating() {
@@ -442,6 +485,7 @@
     try {
       await sbSend('POST', '/warehouse_config?on_conflict=wh', [{
         wh: CURRENT_WH, mp_cutoff: $('cfgMp').value || '16:15', nonmp_cutoff: $('cfgNonmp').value || '14:09',
+        cutoffs: collectCutoffs(),
         updated_at: new Date().toISOString()
       }], 'resolution=merge-duplicates,return=minimal');
       flash('cutoffMsg', 'Saved ✓', true);

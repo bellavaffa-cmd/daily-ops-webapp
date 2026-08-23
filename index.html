@@ -3618,8 +3618,18 @@
         </div>
       </div>`;
     };
-    const cutoffHtml = `<div class="card" style="padding:16px 18px"><div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Cut-off countdown${rate != null ? ` <span style="font-weight:400">· ${fmt(rate)}/hr packing</span>` : ''}</div>
-      ${cutRow('Non-MP', cfg.nonmp_cutoff, openNon)}${cutRow('Priority MP', cfg.mp_cutoff, openMp)}</div>`;
+    // Manager-defined custom cut-offs (each mapped to a WMS order tag) render as
+    // extra rows; their open counts come from the per-order fetch below, so the
+    // card is a builder we re-render once those counts are known.
+    const buildCutoffCard = (customCounts) => {
+      const custom = Array.isArray(cfg.cutoffs) ? cfg.cutoffs : [];
+      const customRows = (customCounts && custom.length)
+        ? custom.filter(c => c && c.name && c.time && c.tag_id).map(c => cutRow(c.name, c.time, Number(customCounts[c.tag_id] || 0))).join('')
+        : '';
+      return `<div id="b2cInsightCutoff" class="card" style="padding:16px 18px"><div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Cut-off countdown${rate != null ? ` <span style="font-weight:400">· ${fmt(rate)}/hr packing</span>` : ''}</div>
+        ${cutRow('Non-MP', cfg.nonmp_cutoff, openNon)}${cutRow('Priority MP', cfg.mp_cutoff, openMp)}${customRows}</div>`;
+    };
+    const cutoffHtml = buildCutoffCard(null);
 
     // Inflow trend sparkline
     const series = stats.inflowArr.slice(0, 16).reverse().map(b => b.val);
@@ -3638,9 +3648,17 @@
 
     // Per-order fetch → aging, single/multi, top brands
     try {
-      let orders = []; const base = SB_URL + '/b2c_orders?select=brand,client_id,created_at,total_qty,wh' + (insClosed ? '' : '&is_tomorrow=is.false') + '&order=created_at.asc';
+      let orders = []; const base = SB_URL + '/b2c_orders?select=brand,client_id,created_at,total_qty,wh,tags' + (insClosed ? '' : '&is_tomorrow=is.false') + '&order=created_at.asc';
       for (let off = 0; off <= 30000; off += 1000) { const b = await fetch(base + '&limit=1000&offset=' + off, { headers: SB_HDR }).then(r => r.ok ? r.json() : []); orders = orders.concat(b); if (b.length < 1000) break; }
       orders = orders.filter(o => inWhFilter(o.wh));
+      // Custom cut-offs: count open orders bearing each cut-off's WMS tag, then
+      // re-render the cut-off card with the counts (rows use the same countdown logic).
+      const _cuts = Array.isArray(cfg.cutoffs) ? cfg.cutoffs.filter(c => c && c.name && c.time && c.tag_id) : [];
+      if (_cuts.length) {
+        const cc = {}; _cuts.forEach(c => cc[c.tag_id] = 0);
+        for (const o of orders) { if (!Array.isArray(o.tags)) continue; const ids = new Set(o.tags.map(t => t && t.id)); for (const c of _cuts) if (ids.has(c.tag_id)) cc[c.tag_id]++; }
+        const cel = document.getElementById('b2cInsightCutoff'); if (cel) cel.outerHTML = buildCutoffCard(cc);
+      }
       const now = Date.now();
       // Aging
       const buckets = { '<1h': 0, '1–2h': 0, '2–4h': 0, '4h+': 0 }; let oldest = 0;
