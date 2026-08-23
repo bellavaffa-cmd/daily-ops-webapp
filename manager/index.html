@@ -50,6 +50,11 @@
   .whbar { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 10px 0 12px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
   .whbar select { max-width: 340px; }
   #gate { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; z-index: 100; }
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow: auto; z-index: 90; }
+  .modal.open { display: flex; }
+  .modal-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; width: 100%; max-width: 580px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .modal-head h3 { margin: 0; font-size: 1rem; color: var(--text); }
   #gate .g { max-width: 400px; }
   #gate h1 { margin-bottom: 8px; }
   .spin { width: 22px; height: 22px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: sp 1s linear infinite; margin: 0 auto 14px; }
@@ -112,21 +117,25 @@
       <label style="display:block;margin-bottom:2px">Custom cut-offs</label>
       <p class="hint" style="margin-top:0">Orders with the chosen <b>tag(s)</b> that flowed in within a <b>time window</b> are due by a <b>cut-off</b>. <i>Same day</i> = today, <i>next day</i> = tomorrow (resolved live; a batch stays visible until its deadline, and the deadline skips non-operating days). Shown on the dashboard's Cut-off countdown with the open count, countdown, and on-track/at-risk.</p>
       <table><thead><tr><th>Name</th><th>Tags</th><th>Flowed in</th><th>Cut-off</th><th></th></tr></thead><tbody id="cutoffList"></tbody></table>
-      <div style="margin-top:12px;border-top:1px dashed var(--border);padding-top:10px">
-        <div class="row"><div style="flex:1;min-width:180px"><label>Name</label><input type="text" id="ccName" placeholder="e.g. Next-Day late" oninput="updateCcSaveState()"></div><input type="hidden" id="ccEditId"></div>
-        <label style="margin-top:8px;display:block">Tags <span class="hint">(any of)</span></label>
-        <div id="ccTags" style="margin-top:4px"></div>
-        <div class="row" style="margin-top:8px;align-items:center;flex-wrap:wrap;gap:6px">
-          <span class="hint">Flowed in from</span><input type="time" id="ccFrom" oninput="updateCcSaveState()">
-          <select id="ccFromDay"><option value="same">same day</option><option value="next">next day</option></select>
-          <span class="hint">to</span><input type="time" id="ccTo" oninput="updateCcSaveState()">
-          <select id="ccToDay"><option value="same">same day</option><option value="next">next day</option></select>
+      <div class="row" style="margin-top:12px"><button class="btn primary" onclick="openCutoffModal()">+ Add cut-off</button></div>
+      <div class="modal" id="cutoffModal" onclick="if(event.target===this)closeCutoffModal()">
+        <div class="modal-card">
+          <div class="modal-head"><h3 id="ccModalTitle">Add cut-off</h3><button class="btn icon" onclick="closeCutoffModal()">✕</button></div>
+          <div class="row"><div style="flex:1;min-width:180px"><label>Name</label><input type="text" id="ccName" placeholder="e.g. Next-Day late" oninput="updateCcSaveState()"></div><input type="hidden" id="ccEditId"></div>
+          <label style="margin-top:8px;display:block">Tags <span class="hint">(any of)</span></label>
+          <div id="ccTags" style="margin-top:4px"></div>
+          <div class="row" style="margin-top:8px;align-items:center;flex-wrap:wrap;gap:6px">
+            <span class="hint">Flowed in from</span><input type="time" id="ccFrom" oninput="updateCcSaveState()">
+            <select id="ccFromDay"><option value="same">same day</option><option value="next">next day</option></select>
+            <span class="hint">to</span><input type="time" id="ccTo" oninput="updateCcSaveState()">
+            <select id="ccToDay"><option value="same">same day</option><option value="next">next day</option></select>
+          </div>
+          <div class="row" style="margin-top:8px;align-items:center;flex-wrap:wrap;gap:6px">
+            <span class="hint">Cut-off at</span><input type="time" id="ccCut" oninput="updateCcSaveState()">
+            <select id="ccCutDay"><option value="same">same day</option><option value="next" selected>next day</option></select>
+          </div>
+          <div class="row" style="margin-top:12px"><button class="btn primary" id="ccSaveBtn" onclick="saveCutoff()">Add cut-off</button> <button class="btn" onclick="closeCutoffModal()">Cancel</button> <span class="msg" id="ccMsg"></span></div>
         </div>
-        <div class="row" style="margin-top:8px;align-items:center;flex-wrap:wrap;gap:6px">
-          <span class="hint">Cut-off at</span><input type="time" id="ccCut" oninput="updateCcSaveState()">
-          <select id="ccCutDay"><option value="same">same day</option><option value="next" selected>next day</option></select>
-        </div>
-        <div class="row" style="margin-top:10px"><button class="btn primary" id="ccSaveBtn" onclick="saveCutoff()">Add cut-off</button> <button class="btn" onclick="resetCutoffForm()">Cancel</button> <span class="msg" id="ccMsg"></span></div>
       </div>
     </div>
   </div>
@@ -185,23 +194,27 @@
     <h2>📺 Instance profiles</h2>
     <p class="hint">Named warehouse + tab scopes for shared screens / phones without a WMS account. A device <b>signs in</b> with the profile's <b>login username + password</b> (the app shows a login gate); it can't be changed from Settings — only by logging out and back in, or when a WMS ID ties to the device (which takes over). Empty warehouse or tab list = no limit on that dimension.</p>
     <table><thead><tr><th>Profile</th><th>Warehouses</th><th>Role</th><th></th></tr></thead><tbody id="profileRows"></tbody></table>
-    <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
-      <div class="row">
-        <div style="flex:1;min-width:160px"><label>Profile name</label><input type="text" id="profName" placeholder="e.g. Manila Floor Screen"></div>
-        <div style="flex:1;min-width:160px"><label>Login username</label><input type="text" id="profUser" placeholder="e.g. manila1" autocomplete="off"></div>
-        <input type="hidden" id="profEditId">
+    <div class="row" style="margin-top:14px"><button class="btn primary" onclick="openProfileModal()">+ Add profile</button></div>
+    <div class="modal" id="profModal" onclick="if(event.target===this)closeProfileModal()">
+      <div class="modal-card">
+        <div class="modal-head"><h3 id="profModalTitle">Add profile</h3><button class="btn icon" onclick="closeProfileModal()">✕</button></div>
+        <div class="row">
+          <div style="flex:1;min-width:160px"><label>Profile name</label><input type="text" id="profName" placeholder="e.g. Manila Floor Screen"></div>
+          <div style="flex:1;min-width:160px"><label>Login username</label><input type="text" id="profUser" placeholder="e.g. manila1" autocomplete="off"></div>
+          <input type="hidden" id="profEditId">
+        </div>
+        <div class="row" style="margin-top:8px">
+          <div style="flex:1;min-width:200px"><label>Password <span class="hint">(blank = keep existing / no password)</span></label><input type="password" id="profPass" placeholder="Set or change password" autocomplete="new-password"></div>
+          <label style="display:flex;align-items:center;gap:6px;color:var(--text);align-self:flex-end;padding-bottom:8px;white-space:nowrap"><input type="checkbox" id="profPassClear"> Remove password</label>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <div style="flex:1;min-width:160px"><label>Role <span class="hint">(applies that role's tab access on top of the tabs below)</span></label><select id="profRole"></select></div>
+        </div>
+        <label style="margin-top:10px;display:block">Warehouses <span class="hint">(none = all)</span></label>
+        <div id="profWhChecks" class="row" style="flex-wrap:wrap;gap:8px 16px"></div>
+        <p class="hint" style="margin-top:10px">Visible tabs are determined by the profile's <b>Role</b> (configured in “Tabs each role can see”). No role = all tabs.</p>
+        <div class="row" style="margin-top:12px"><button class="btn primary" onclick="saveProfile()">Save profile</button><button class="btn" onclick="closeProfileModal()">Cancel</button><span class="msg" id="profMsg"></span></div>
       </div>
-      <div class="row" style="margin-top:8px">
-        <div style="flex:1;min-width:200px"><label>Password <span class="hint">(blank = keep existing / no password)</span></label><input type="password" id="profPass" placeholder="Set or change password" autocomplete="new-password"></div>
-        <label style="display:flex;align-items:center;gap:6px;color:var(--text);align-self:flex-end;padding-bottom:8px;white-space:nowrap"><input type="checkbox" id="profPassClear"> Remove password</label>
-      </div>
-      <div class="row" style="margin-top:8px">
-        <div style="flex:1;min-width:160px"><label>Role <span class="hint">(applies that role's tab access on top of the tabs below)</span></label><select id="profRole"></select></div>
-      </div>
-      <label style="margin-top:10px;display:block">Warehouses <span class="hint">(none = all)</span></label>
-      <div id="profWhChecks" class="row" style="flex-wrap:wrap;gap:8px 16px"></div>
-      <p class="hint" style="margin-top:10px">Visible tabs are determined by the profile's <b>Role</b> (configured in “Tabs each role can see”). No role = all tabs.</p>
-      <div class="row" style="margin-top:12px"><button class="btn primary" onclick="saveProfile()">Save profile</button><button class="btn" onclick="resetProfileForm()">Clear</button><span class="msg" id="profMsg"></span></div>
     </div>
   </div>
 </div>
@@ -499,11 +512,19 @@
     $('ccTo').value = inf.to || ''; $('ccToDay').value = inf.toDay || 'same';
     $('ccCut').value = cut.time || ''; $('ccCutDay').value = cut.day || 'next';
     renderCcTags(c.tags); $('ccSaveBtn').textContent = 'Update cut-off'; updateCcSaveState();
+    document.getElementById('ccModalTitle').textContent = 'Edit cut-off'; openModal('cutoffModal');
     flash('ccMsg', 'Editing "' + (c.name || c.id) + '"', true);
   }
   async function _writeCutoffs() {
     await sbSend('POST', '/warehouse_config?on_conflict=wh', [{ wh: CURRENT_WH, cutoffs: _cutoffs, updated_at: new Date().toISOString() }], 'resolution=merge-duplicates,return=minimal');
   }
+  // Modal open/close for the Add profile / Add cut-off editors.
+  function openModal(id) { const m = document.getElementById(id); if (m) m.classList.add('open'); }
+  function closeModal(id) { const m = document.getElementById(id); if (m) m.classList.remove('open'); }
+  function openProfileModal() { resetProfileForm(); document.getElementById('profModalTitle').textContent = 'Add profile'; openModal('profModal'); }
+  function closeProfileModal() { closeModal('profModal'); }
+  function openCutoffModal() { resetCutoffForm(); document.getElementById('ccModalTitle').textContent = 'Add cut-off'; openModal('cutoffModal'); }
+  function closeCutoffModal() { closeModal('cutoffModal'); }
   async function saveCutoff() {
     const checks = [...$('ccTags').querySelectorAll('.cc-tag:checked')];
     const c = {
@@ -519,7 +540,7 @@
     if (!c.inflow.from || !c.inflow.to || !c.cutoff.time) { flash('ccMsg', 'Set the from/to and cut-off times', false); return; }
     const i = _cutoffs.findIndex(x => x.id === c.id);
     if (i >= 0) _cutoffs[i] = c; else _cutoffs.push(c);
-    try { await _writeCutoffs(); flash('ccMsg', 'Saved ✓', true); resetCutoffForm(); renderCutoffList(); }
+    try { await _writeCutoffs(); resetCutoffForm(); renderCutoffList(); closeCutoffModal(); }
     catch (e) { flash('ccMsg', 'Save failed', false); }
   }
   async function delCutoff(id) {
@@ -671,6 +692,7 @@
     $('profPass').value = ''; $('profPassClear').checked = false;
     const whs = (Array.isArray(p.warehouses) ? p.warehouses : []).map(x => (typeof x === 'string' ? x : (x && x.code))).filter(Boolean);
     renderProfileChecks(whs);
+    document.getElementById('profModalTitle').textContent = 'Edit profile'; openModal('profModal');
     flash('profMsg', 'Editing "' + (p.name || p.id) + '"' + (p.password_hash ? ' · password set (blank keeps it)' : ''), true);
   }
   function resetProfileForm() { $('profEditId').value = ''; $('profName').value = ''; $('profUser').value = ''; $('profRole').value = ''; $('profPass').value = ''; $('profPassClear').checked = false; renderProfileChecks([]); }
@@ -691,7 +713,7 @@
     else if (pass) row.password_hash = await sha256Hex(pass);
     try {
       await sbSend('POST', '/instance_profiles?on_conflict=id', [row], 'resolution=merge-duplicates,return=minimal');
-      flash('profMsg', 'Saved ✓', true); resetProfileForm(); loadProfiles();
+      resetProfileForm(); loadProfiles(); closeProfileModal();
     } catch (e) { flash('profMsg', 'Save failed', false); }
   }
   async function delProfile(id) {
