@@ -107,13 +107,28 @@
       <div><label>Priority-MP cut-off</label><input type="time" id="cfgMp"></div>
       <div><label>Non-MP cut-off</label><input type="time" id="cfgNonmp"></div>
     </div>
-    <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
-      <label style="display:block;margin-bottom:2px">Custom cut-offs</label>
-      <p class="hint" style="margin-top:0">Define orders by <b>tag(s)</b> and the <b>time window they flowed in</b>, with a <b>cut-off</b> deadline. <i>Same day</i> = today, <i>next day</i> = tomorrow (resolved live; a batch stays visible until its deadline). E.g. Next-Day orders that flowed in 16:15→23:59 (same day) with a cut-off of 14:00 the next day. Shown on the dashboard's Cut-off countdown with the open count + countdown + on-track/at-risk.</p>
-      <div id="cutoffRows"></div>
-      <button class="btn" style="margin-top:2px" onclick="addCutoffRow()">+ Add cut-off</button>
-    </div>
     <div class="row" style="margin-top:12px"><button class="btn primary" onclick="saveCutoffs()">Save</button><span class="msg" id="cutoffMsg"></span></div>
+    <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+      <label style="display:block;margin-bottom:2px">Custom cut-offs</label>
+      <p class="hint" style="margin-top:0">Orders with the chosen <b>tag(s)</b> that flowed in within a <b>time window</b> are due by a <b>cut-off</b>. <i>Same day</i> = today, <i>next day</i> = tomorrow (resolved live; a batch stays visible until its deadline, and the deadline skips non-operating days). Shown on the dashboard's Cut-off countdown with the open count, countdown, and on-track/at-risk.</p>
+      <table><thead><tr><th>Name</th><th>Tags</th><th>Flowed in</th><th>Cut-off</th><th></th></tr></thead><tbody id="cutoffList"></tbody></table>
+      <div style="margin-top:12px;border-top:1px dashed var(--border);padding-top:10px">
+        <div class="row"><div style="flex:1;min-width:180px"><label>Name</label><input type="text" id="ccName" placeholder="e.g. Next-Day late" oninput="updateCcSaveState()"></div><input type="hidden" id="ccEditId"></div>
+        <label style="margin-top:8px;display:block">Tags <span class="hint">(any of)</span></label>
+        <div id="ccTags" style="margin-top:4px"></div>
+        <div class="row" style="margin-top:8px;align-items:center;flex-wrap:wrap;gap:6px">
+          <span class="hint">Flowed in from</span><input type="time" id="ccFrom" oninput="updateCcSaveState()">
+          <select id="ccFromDay"><option value="same">same day</option><option value="next">next day</option></select>
+          <span class="hint">to</span><input type="time" id="ccTo" oninput="updateCcSaveState()">
+          <select id="ccToDay"><option value="same">same day</option><option value="next">next day</option></select>
+        </div>
+        <div class="row" style="margin-top:8px;align-items:center;flex-wrap:wrap;gap:6px">
+          <span class="hint">Cut-off at</span><input type="time" id="ccCut" oninput="updateCcSaveState()">
+          <select id="ccCutDay"><option value="same">same day</option><option value="next" selected>next day</option></select>
+        </div>
+        <div class="row" style="margin-top:10px"><button class="btn primary" id="ccSaveBtn" onclick="saveCutoff()">Add cut-off</button> <button class="btn" onclick="resetCutoffForm()">Cancel</button> <span class="msg" id="ccMsg"></span></div>
+      </div>
+    </div>
   </div>
 
   <!-- Lunch / breaks -->
@@ -410,7 +425,8 @@
     renderBreakRows(r.breaks);
     renderOpDays(r.operating_days);
     await loadCutoffTags();
-    renderCutoffRows(r.cutoffs);
+    renderCutoffList(r.cutoffs);
+    resetCutoffForm();
   }
   // Operating-day toggles (weekday numbers, JS getDay: 0=Sun … 6=Sat). No saved
   // value → all 7 on (the past-cut-off alert never suppressed).
@@ -434,61 +450,82 @@
     $('breakRows').innerHTML = rows.map(b => breakRowHtml(b && b.start, b && b.end)).join('');
   }
   function addBreakRow() { $('breakRows').insertAdjacentHTML('beforeend', breakRowHtml('', '')); }
-  // ── Custom cut-offs (tags + inflow window + cut-off deadline) ─────────────
-  // Each cut-off: orders carrying ANY of the selected tags that flowed in during the
-  // inflow window (from-to time, each same/next day) are due by the cut-off time/day.
-  // Days are same/next relative to the current day; the dashboard resolves them live.
+  // ── Custom cut-offs (saved list + editor, like Instance profiles) ─────────
+  // Each cut-off: orders carrying ANY of the tags that flowed in during the inflow
+  // window (from-to time, each same/next day) are due by the cut-off time/day. Stored
+  // as a JSON array on warehouse_config.cutoffs; added/edited one at a time via the form.
+  let _cutoffs = [];      // this warehouse's saved cut-offs
   let _cutoffTags = [];   // [{id, name}] distinct WMS tags → the tag picker
   async function loadCutoffTags() {
     try { const r = await fetch(SB + '/rpc/distinct_order_tags', { method: 'POST', headers: HDR, body: '{}' }); _cutoffTags = r.ok ? (await r.json()) : []; }
     catch (e) { _cutoffTags = []; }
   }
-  function dayOptions(sel) {
-    return `<option value="same"${sel !== 'next' ? ' selected' : ''}>same day</option><option value="next"${sel === 'next' ? ' selected' : ''}>next day</option>`;
+  function _cutId(name) { return ((String(name || 'cut').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24)) || 'cut') + '-' + Date.now().toString(36).slice(-4) + Math.random().toString(36).slice(2, 5); }
+  function _dayLbl(d) { return d === 'next' ? 'next day' : 'same day'; }
+  function renderCutoffList(cutoffs) {
+    if (Array.isArray(cutoffs)) _cutoffs = cutoffs.map(c => ({ ...c, id: c.id || _cutId(c.name) }));
+    $('cutoffList').innerHTML = _cutoffs.map(c => {
+      const inf = c.inflow || {}, cut = c.cutoff || {};
+      const tags = (Array.isArray(c.tag_names) && c.tag_names.length ? c.tag_names : (c.tags || [])).join(', ') || '—';
+      const flowed = `${esc(inf.from || '?')}–${esc(inf.to || '?')} · ${_dayLbl(inf.fromDay)}${inf.toDay && inf.toDay !== inf.fromDay ? ' → ' + _dayLbl(inf.toDay) : ''}`;
+      const cutC = `${esc(cut.time || '?')} · ${_dayLbl(cut.day)}`;
+      return `<tr><td>${esc(c.name || c.id)}</td><td class="hint">${esc(tags)}</td><td class="hint">${flowed}</td><td class="hint">${cutC}</td>
+        <td style="text-align:right;white-space:nowrap"><button class="btn" onclick="editCutoff('${esc(c.id)}')">Edit</button> <button class="btn" onclick="delCutoff('${esc(c.id)}')">✕</button></td></tr>`;
+    }).join('') || '<tr><td colspan="5" class="hint">No custom cut-offs yet.</td></tr>';
   }
-  function tagChecksHtml(selected) {
+  function renderCcTags(selected) {
     const set = new Set(Array.isArray(selected) ? selected : []);
-    if (!_cutoffTags.length) return '<span class="hint">No order tags synced yet.</span>';
-    return _cutoffTags.map(t => `<label style="display:inline-flex;align-items:center;gap:4px;margin:0 12px 4px 0;font-size:.82rem;color:var(--text)"><input type="checkbox" class="co-tag" value="${esc(t.id)}" data-name="${esc(t.name || '')}"${set.has(t.id) ? ' checked' : ''}> ${esc(t.name || t.id)}</label>`).join('');
+    $('ccTags').innerHTML = _cutoffTags.length
+      ? _cutoffTags.map(t => `<label style="display:inline-flex;align-items:center;gap:4px;margin:0 12px 4px 0;font-size:.82rem;color:var(--text)"><input type="checkbox" class="cc-tag" onchange="updateCcSaveState()" value="${esc(t.id)}" data-name="${esc(t.name || '')}"${set.has(t.id) ? ' checked' : ''}> ${esc(t.name || t.id)}</label>`).join('')
+      : '<span class="hint">No order tags synced yet.</span>';
   }
-  function cutoffRowHtml(c) {
-    c = c || {}; const inf = c.inflow || {}, cut = c.cutoff || {};
-    return `<div class="cutoff-row" style="border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:10px">
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-        <input class="co-name" placeholder="Name (e.g. Next-Day late)" value="${esc(c.name || '')}" style="flex:1 1 160px">
-        <button class="btn icon" title="Remove cut-off" onclick="this.closest('.cutoff-row').remove()">✕</button>
-      </div>
-      <div style="margin-bottom:8px"><span class="hint">Tags (any of)</span><div class="co-tags" style="margin-top:4px">${tagChecksHtml(c.tags)}</div></div>
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
-        <span class="hint" style="flex:0 0 auto">Flowed in from</span>
-        <input type="time" class="co-from" value="${esc(inf.from || '')}">
-        <select class="co-fromday">${dayOptions(inf.fromDay)}</select>
-        <span class="hint" style="flex:0 0 auto">to</span>
-        <input type="time" class="co-to" value="${esc(inf.to || '')}">
-        <select class="co-today">${dayOptions(inf.toDay)}</select>
-      </div>
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        <span class="hint" style="flex:0 0 auto">Cut-off at</span>
-        <input type="time" class="co-cut" value="${esc(cut.time || '')}">
-        <select class="co-cutday">${dayOptions(cut.day)}</select>
-      </div></div>`;
+  // All fields required — the Save button stays disabled until name, ≥1 tag, and the
+  // from / to / cut-off times are all set. (The day selectors always have a value.)
+  function _ccValid() {
+    return !!($('ccName').value.trim() && $('ccTags').querySelector('.cc-tag:checked') && $('ccFrom').value && $('ccTo').value && $('ccCut').value);
   }
-  function renderCutoffRows(cutoffs) {
-    const arr = Array.isArray(cutoffs) ? cutoffs : [];
-    $('cutoffRows').innerHTML = arr.map(c => cutoffRowHtml(c)).join('');
+  function updateCcSaveState() { $('ccSaveBtn').disabled = !_ccValid(); }
+  function resetCutoffForm() {
+    $('ccEditId').value = ''; $('ccName').value = '';
+    $('ccFrom').value = ''; $('ccFromDay').value = 'same'; $('ccTo').value = ''; $('ccToDay').value = 'same';
+    $('ccCut').value = ''; $('ccCutDay').value = 'next';
+    renderCcTags([]); $('ccSaveBtn').textContent = 'Add cut-off'; $('ccMsg').textContent = ''; updateCcSaveState();
   }
-  function addCutoffRow() { $('cutoffRows').insertAdjacentHTML('beforeend', cutoffRowHtml({ inflow: { fromDay: 'same', toDay: 'same' }, cutoff: { day: 'next' } })); }
-  function collectCutoffs() {
-    return [...document.querySelectorAll('#cutoffRows .cutoff-row')].map(row => {
-      const checks = [...row.querySelectorAll('.co-tag:checked')];
-      return {
-        name: row.querySelector('.co-name').value.trim(),
-        tags: checks.map(c => c.value),
-        tag_names: checks.map(c => c.getAttribute('data-name') || ''),
-        inflow: { from: row.querySelector('.co-from').value, fromDay: row.querySelector('.co-fromday').value, to: row.querySelector('.co-to').value, toDay: row.querySelector('.co-today').value },
-        cutoff: { time: row.querySelector('.co-cut').value, day: row.querySelector('.co-cutday').value }
-      };
-    }).filter(c => c.name && c.tags.length && c.inflow.from && c.inflow.to && c.cutoff.time);   // keep only complete rows
+  function editCutoff(id) {
+    const c = _cutoffs.find(x => x.id === id); if (!c) return;
+    const inf = c.inflow || {}, cut = c.cutoff || {};
+    $('ccEditId').value = c.id; $('ccName').value = c.name || '';
+    $('ccFrom').value = inf.from || ''; $('ccFromDay').value = inf.fromDay || 'same';
+    $('ccTo').value = inf.to || ''; $('ccToDay').value = inf.toDay || 'same';
+    $('ccCut').value = cut.time || ''; $('ccCutDay').value = cut.day || 'next';
+    renderCcTags(c.tags); $('ccSaveBtn').textContent = 'Update cut-off'; updateCcSaveState();
+    flash('ccMsg', 'Editing "' + (c.name || c.id) + '"', true);
+  }
+  async function _writeCutoffs() {
+    await sbSend('POST', '/warehouse_config?on_conflict=wh', [{ wh: CURRENT_WH, cutoffs: _cutoffs, updated_at: new Date().toISOString() }], 'resolution=merge-duplicates,return=minimal');
+  }
+  async function saveCutoff() {
+    const checks = [...$('ccTags').querySelectorAll('.cc-tag:checked')];
+    const c = {
+      id: $('ccEditId').value || _cutId($('ccName').value),
+      name: $('ccName').value.trim(),
+      tags: checks.map(x => x.value),
+      tag_names: checks.map(x => x.getAttribute('data-name') || ''),
+      inflow: { from: $('ccFrom').value, fromDay: $('ccFromDay').value, to: $('ccTo').value, toDay: $('ccToDay').value },
+      cutoff: { time: $('ccCut').value, day: $('ccCutDay').value }
+    };
+    if (!c.name) { flash('ccMsg', 'Enter a name', false); return; }
+    if (!c.tags.length) { flash('ccMsg', 'Pick at least one tag', false); return; }
+    if (!c.inflow.from || !c.inflow.to || !c.cutoff.time) { flash('ccMsg', 'Set the from/to and cut-off times', false); return; }
+    const i = _cutoffs.findIndex(x => x.id === c.id);
+    if (i >= 0) _cutoffs[i] = c; else _cutoffs.push(c);
+    try { await _writeCutoffs(); flash('ccMsg', 'Saved ✓', true); resetCutoffForm(); renderCutoffList(); }
+    catch (e) { flash('ccMsg', 'Save failed', false); }
+  }
+  async function delCutoff(id) {
+    _cutoffs = _cutoffs.filter(x => x.id !== id);
+    try { await _writeCutoffs(); renderCutoffList(); if ($('ccEditId').value === id) resetCutoffForm(); }
+    catch (e) { flash('ccMsg', 'Delete failed', false); }
   }
   // Each card upserts only its own columns; PostgREST leaves omitted columns
   // untouched on an existing row, so the three saves don't clobber each other.
@@ -506,7 +543,6 @@
     try {
       await sbSend('POST', '/warehouse_config?on_conflict=wh', [{
         wh: CURRENT_WH, mp_cutoff: $('cfgMp').value || '16:15', nonmp_cutoff: $('cfgNonmp').value || '14:09',
-        cutoffs: collectCutoffs(),
         updated_at: new Date().toISOString()
       }], 'resolution=merge-duplicates,return=minimal');
       flash('cutoffMsg', 'Saved ✓', true);
