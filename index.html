@@ -2936,6 +2936,7 @@
   }
   let b2cPackSnaps = [];  // productivity_snapshot rows — cumulative packed_orders for the hourly packing rate
   let whActivityToday = {};   // warehouse_code -> pick+pack count on its current local date (hybrid operating-day detection). Declared here so the first render can't hit a temporal-dead-zone.
+  const GRACE_MIN = 120;      // a quiet operating-weekday is a holiday only after open + 2h. Hoisted here (not by operatingTodayInfo) so the load-time renderB2C() can't TDZ on it and abort init.
 
   // ── Exclude-from-total toggles (B2C / B2B KPI status boxes) ─────────────
   // Each status box has a top-right button to drop that status from the "Total
@@ -3709,7 +3710,6 @@
       whActivityToday = map;
     } catch (e) { /* keep last */ }
   }
-  const GRACE_MIN = 120;   // a quiet operating-weekday is a holiday only after open + 2h
   function operatingTodayInfo() {
     const sel = (typeof getSelectedWhs === 'function' ? getSelectedWhs() : []);
     const wh = sel.length === 1 ? sel[0] : null;
