@@ -3556,7 +3556,11 @@
     const host = document.getElementById('b2cInsights'); if (!host) return;
     const fmt = n => Number(n || 0).toLocaleString();
     const cfg = selectedOpsCfg();
-    const filtered = (b2cData || []).filter(r => (!r.type || r.type === 'warehouse') && r.wh && inWhFilter(r.wh));
+    // Closed today → the whole insights section reflects the merged next-operating-day
+    // queue (today + tomorrow-held), matching the KPI cards above; else today only.
+    const insClosed = !operatingTodayInfo().operating;
+    const insBase = (b2cData || []).filter(r => (!r.type || r.type === 'warehouse') && r.wh && inWhFilter(r.wh));
+    const filtered = insClosed ? insBase.map(mergeTodayTomorrowRow) : insBase;
 
     // Bottleneck funnel
     const stages = [
@@ -3634,7 +3638,7 @@
 
     // Per-order fetch → aging, single/multi, top brands
     try {
-      let orders = []; const base = SB_URL + '/b2c_orders?select=brand,client_id,created_at,total_qty,wh&is_tomorrow=is.false&order=created_at.asc';
+      let orders = []; const base = SB_URL + '/b2c_orders?select=brand,client_id,created_at,total_qty,wh' + (insClosed ? '' : '&is_tomorrow=is.false') + '&order=created_at.asc';
       for (let off = 0; off <= 30000; off += 1000) { const b = await fetch(base + '&limit=1000&offset=' + off, { headers: SB_HDR }).then(r => r.ok ? r.json() : []); orders = orders.concat(b); if (b.length < 1000) break; }
       orders = orders.filter(o => inWhFilter(o.wh));
       const now = Date.now();
