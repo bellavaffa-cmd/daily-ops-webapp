@@ -2005,6 +2005,7 @@
         <div id="b2cSubTomorrow" style="font-size:.75rem;color:var(--muted);margin-top:2px;display:none">
           B2C orders that dropped after cut-off (Priority-MP after <span id="tmrMpCut">16:15</span>, Non-MP after <span id="tmrNonmpCut">14:09</span>) — held for tomorrow
         </div>
+        <div id="b2cClosedNote" style="font-size:.75rem;color:#fbbf24;margin-top:3px;display:none"></div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;justify-content:flex-end">
         <div class="wh-multi" style="flex:0 1 220px;min-width:150px;max-width:260px">
@@ -3381,9 +3382,27 @@
   }
   function updateB2cDayChrome() {
     const isTom = b2cDay === 'tomorrow';
-    const title = document.getElementById('b2cViewTitle'); if (title) title.textContent = isTom ? "Tomorrow's Order" : "Today's Order";
+    const title = document.getElementById('b2cViewTitle');
     const st  = document.getElementById('b2cSubToday');    if (st)  st.style.display  = isTom ? 'none' : '';
     const stm = document.getElementById('b2cSubTomorrow'); if (stm) stm.style.display = isTom ? '' : 'none';
+    const note = document.getElementById('b2cClosedNote'); if (note) note.style.display = 'none';
+    if (isTom) { if (title) title.textContent = "Tomorrow's Order"; }
+    else {
+      // Today view: if the (selected) warehouse isn't operating today, retitle to the
+      // next operating day, since these orders will be worked then — not "today".
+      const cfg = selectedOpsCfg();
+      const opDays = Array.isArray(cfg.operating_days) ? cfg.operating_days.map(Number) : null;
+      const DOWF = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      let wdToday; try { wdToday = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[new Intl.DateTimeFormat('en-US', { timeZone: cfg.tz, weekday: 'short' }).format(new Date())]; } catch (e) { wdToday = new Date().getDay(); }
+      const isOpToday = !opDays || !opDays.length || opDays.includes(wdToday);
+      if (isOpToday) { if (title) title.textContent = "Today's Order"; }
+      else {
+        let d = 1; while (d <= 7 && !opDays.includes((wdToday + d) % 7)) d++;
+        const wd = (wdToday + d) % 7;
+        if (title) title.textContent = `${DOWF[wd]}'s Order`;
+        if (note) { note.textContent = `Closed today — showing ${DOWF[wd]}'s queue (next operating day, opens ${cfg.operating_start || '09:00'})`; note.style.display = ''; }
+      }
+    }
     if (isTom) {
       const mp = document.getElementById('tmrMpCut');    if (mp) mp.textContent = opsConfig.mp_cutoff || '16:15';
       const nm = document.getElementById('tmrNonmpCut'); if (nm) nm.textContent = opsConfig.nonmp_cutoff || '14:09';
