@@ -2030,34 +2030,32 @@
     <div id="b2cKpis" style="margin-bottom:16px"></div>
 
     <!-- B2C hourly flow: new orders created in vs orders reaching Ready to Ship -->
-    <div class="card" id="b2cFlowBox" style="padding:16px 18px;margin-bottom:20px;border:1px solid var(--brand,#94ffa1)">
-      <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
-        <div style="flex:0 1 auto;min-width:160px">
-          <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--brand,#94ffa1)">Hourly flow</div>
-          <div id="b2cFlowWindow" style="font-size:.7rem;color:var(--muted);margin-top:3px">Collecting data…</div>
+    <div id="b2cFlowBox" style="margin-bottom:20px">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+        <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--brand,#94ffa1)">Hourly flow</div>
+        <div id="b2cFlowWindow" style="font-size:.7rem;color:var(--muted)">Collecting data…</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
+        <div class="card" style="padding:16px 18px">
+          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#fb923c;margin-bottom:8px">New Order / hr</div>
+          <div id="b2cFlowInflow" style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">—</div>
         </div>
-        <div style="flex:1;min-width:280px;display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px">
-          <div class="card" style="padding:14px 16px">
-            <div style="font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#fb923c;margin-bottom:4px">New Order / hr</div>
-            <div id="b2cFlowInflow" style="font-size:1.8rem;font-weight:700;color:var(--text);line-height:1">—</div>
-          </div>
-          <div class="card" style="padding:14px 16px">
-            <div style="font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#86efac;margin-bottom:4px">Picking / hr</div>
-            <div id="b2cFlowPicked" style="font-size:1.8rem;font-weight:700;color:var(--text);line-height:1">—</div>
-          </div>
-          <div class="card" style="padding:14px 16px">
-            <div style="font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#5eead4;margin-bottom:4px">Packing / hr</div>
-            <div id="b2cFlowCleared" style="font-size:1.8rem;font-weight:700;color:var(--text);line-height:1">—</div>
-          </div>
-          <div class="card" style="padding:14px 16px">
-            <div style="font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px">Net Depletion / hr</div>
-            <div id="b2cFlowNet" style="font-size:1.8rem;font-weight:700;color:var(--text);line-height:1">—</div>
-          </div>
-          <div class="card" style="padding:14px 16px" title="Estimated time to clear all open B2C orders at the current net packing rate (packing minus new-order inflow)">
-            <div style="font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#fbbf24;margin-bottom:4px">Est. all done</div>
-            <div id="b2cFlowEta" style="font-size:1.8rem;font-weight:700;color:var(--text);line-height:1">—</div>
-            <div id="b2cFlowEtaSub" style="font-size:.62rem;color:var(--muted);margin-top:4px;min-height:12px"></div>
-          </div>
+        <div class="card" style="padding:16px 18px">
+          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#86efac;margin-bottom:8px">Picking / hr</div>
+          <div id="b2cFlowPicked" style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">—</div>
+        </div>
+        <div class="card" style="padding:16px 18px">
+          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#5eead4;margin-bottom:8px">Packing / hr</div>
+          <div id="b2cFlowCleared" style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">—</div>
+        </div>
+        <div class="card" style="padding:16px 18px">
+          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">Net Depletion / hr</div>
+          <div id="b2cFlowNet" style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">—</div>
+        </div>
+        <div class="card" style="padding:16px 18px" title="Estimated time to clear all open B2C orders at the current net packing rate (packing minus new-order inflow)">
+          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#fbbf24;margin-bottom:8px">Est. all done</div>
+          <div id="b2cFlowEta" style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">—</div>
+          <div id="b2cFlowEtaSub" style="font-size:.72rem;color:var(--muted);margin-top:5px;min-height:12px"></div>
         </div>
       </div>
     </div>
