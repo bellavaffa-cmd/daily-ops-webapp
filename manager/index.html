@@ -391,10 +391,15 @@
     const r = (await sbGet('/warehouse_config?wh=eq.' + encodeURIComponent(CURRENT_WH) + '&select=*'))[0] || {};
     $('cfgMp').value = r.mp_cutoff || '16:15'; $('cfgNonmp').value = r.nonmp_cutoff || '14:09';
     $('cfgOpen').value = r.operating_start || '09:00'; $('cfgClose').value = r.operating_end || '18:00';
-    // Saved tz wins; otherwise auto-pick from the warehouse's country.
-    const tz = r.tz || inferTz(CURRENT_WH) || 'Asia/Manila';
+    // Canonicalise the saved tz to a real IANA name (fixes case / legacy aliases,
+    // e.g. "singapore" → "Asia/Singapore"); if it can't resolve to a zone in the
+    // list, auto-pick the one inferred from the warehouse's country. Saving persists it.
     const sel = $('cfgTz');
-    if (sel && ![...sel.options].some(o => o.value === tz)) sel.add(new Option(tz, tz));
+    const inList = t => sel && [...sel.options].some(o => o.value === t);
+    const canonTz = t => { if (!t) return null; try { return new Intl.DateTimeFormat('en', { timeZone: t }).resolvedOptions().timeZone; } catch (e) { return null; } };
+    let tz = canonTz(r.tz);
+    if (!tz || !inList(tz)) tz = inferTz(CURRENT_WH) || 'Asia/Manila';
+    if (sel && !inList(tz)) sel.add(new Option(tz, tz));
     sel.value = tz;
     renderBreakRows(r.breaks);
     renderOpDays(r.operating_days);

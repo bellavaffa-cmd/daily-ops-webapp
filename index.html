@@ -4214,9 +4214,19 @@
         // Hybrid operating-day activity refreshes in the background — NEVER block
         // the render on it (a slow/failing fetch must not blank the page).
         loadActivityToday().then(() => { try { renderB2C(); } catch (e) { console.error('renderB2C (activity):', e); } });
-        renderB2C();
-        renderB2B();       // b2b_data has no country field of its own; re-group once b2cData's arrives
-        renderShortage();  // same — shortage_data has no country field either
+        // Render each surface in isolation. A throw in a HIDDEN tab (B2B/Shortage)
+        // must not blank the visible B2C view, must not stop the other surfaces, and
+        // must not mislabel the whole app as broken. When one does fail, name WHICH
+        // surface (with the exact message on hover + stashed in localStorage) instead
+        // of a vague "display error" — so an otherwise-unreproducible throw self-identifies.
+        const renderErrs = [];
+        const renderStep = (name, fn) => {
+          try { fn(); }
+          catch (e) { console.error(name + ' render error:', e); renderErrs.push(name + ': ' + ((e && e.message) || String(e))); }
+        };
+        renderStep('B2C', renderB2C);
+        renderStep('B2B', renderB2B);       // b2b_data has no country field of its own; re-group once b2cData's arrives
+        renderStep('Shortage', renderShortage);  // same — shortage_data has no country field either
         if (localStorage.getItem('b2cWarehousePicked') === null) showWarehousePicker();
         const latest = rows.reduce((a, b) => (a.updated_at > b.updated_at ? a : b), rows[0]);
         if (latest && latest.updated_at) {
@@ -4226,7 +4236,16 @@
           });
           if (window.markLastSync) window.markLastSync(new Date(latest.updated_at).getTime());
         }
-        if (modeEl) { modeEl.textContent = 'Supabase ●'; modeEl.style.color = 'var(--success)'; }
+        if (modeEl) {
+          if (renderErrs.length) {
+            modeEl.textContent = 'Supabase ● · ' + renderErrs.map(s => s.split(':')[0]).join('/') + ' render error';
+            modeEl.style.color = 'var(--danger)';
+            modeEl.title = renderErrs.join('  |  ');   // hover / long-press for the exact message
+            try { localStorage.setItem('lastRenderError', new Date().toISOString() + ' — ' + renderErrs.join('  |  ')); } catch (e) {}
+          } else {
+            modeEl.textContent = 'Supabase ●'; modeEl.style.color = 'var(--success)'; modeEl.title = '';
+          }
+        }
       } else {
         if (modeEl) { modeEl.textContent = 'Snapshot — click Sync to update'; modeEl.style.color = 'var(--muted)'; }
       }
