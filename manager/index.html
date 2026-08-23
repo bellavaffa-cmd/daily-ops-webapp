@@ -109,7 +109,7 @@
     </div>
     <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
       <label style="display:block;margin-bottom:2px">Custom cut-offs</label>
-      <p class="hint" style="margin-top:0">Build a filter in WMS's order list, copy its URL, and paste it here. Shown on the dashboard's Cut-off countdown with that filter's open count + countdown. Countable criteria: status, tag, brand (carrier/channel/address filters aren't synced).</p>
+      <p class="hint" style="margin-top:0">Build a filter in WMS's order list, copy its URL, and paste it here. Choose <b>due before</b> (orders that must clear before the cut-off) or <b>received after</b> (orders that arrive after the cut-off, till midnight — e.g. Next Day orders rolling to tomorrow). Countable criteria: status, tag, brand (carrier/channel/address filters aren't synced).</p>
       <div id="cutoffRows"></div>
       <button class="btn" style="margin-top:2px" onclick="addCutoffRow()">+ Add cut-off</button>
     </div>
@@ -450,11 +450,17 @@
     return out;
   }
   const _cutoffHasCriteria = f => !!(f && (f.statuses.length || f.tags.length || f.clients.length));
-  function cutoffRowHtml(name, time, url, summary) {
+  function cutoffRowHtml(name, time, url, summary, win, fulfill) {
+    const w = win === 'after' ? 'after' : 'before';
     return `<div class="cutoff-row" style="display:flex;gap:6px;align-items:center;margin-bottom:4px;flex-wrap:wrap">
-      <input class="co-name" placeholder="Name (e.g. Express)" value="${esc(name || '')}" style="flex:1 1 120px;min-width:100px">
-      <input type="time" class="co-time" value="${esc(time || '')}">
-      <input class="co-url" placeholder="Paste WMS order-list filter URL" value="${esc(url || '')}" oninput="updateCutoffSummary(this)" style="flex:2 1 220px;min-width:170px">
+      <input class="co-name" placeholder="Name (e.g. Express)" value="${esc(name || '')}" style="flex:1 1 110px;min-width:90px">
+      <input type="time" class="co-time" title="Cut-off time" value="${esc(time || '')}">
+      <select class="co-window" title="Which orders to count for this cut-off" style="flex:0 1 auto">
+        <option value="before"${w === 'before' ? ' selected' : ''}>due before</option>
+        <option value="after"${w === 'after' ? ' selected' : ''}>received after (till midnight)</option>
+      </select>
+      <span class="hint" style="flex:0 0 auto">fulfil by (next day)</span><input type="time" class="co-fulfill" title="Optional: fulfilment deadline on the NEXT day (only used with 'received after') — e.g. 14:00 = 2pm next day" value="${esc(fulfill || '')}" style="flex:0 1 auto">
+      <input class="co-url" placeholder="Paste WMS order-list filter URL" value="${esc(url || '')}" oninput="updateCutoffSummary(this)" style="flex:2 1 200px;min-width:160px">
       <button class="btn icon" title="Remove cut-off" onclick="this.closest('.cutoff-row').remove()">✕</button>
       <div class="co-summary hint" style="flex:1 1 100%;margin:2px 0 8px">${summary ? '✓ ' + esc(summary) : ''}</div></div>`;
   }
@@ -468,14 +474,18 @@
   }
   function renderCutoffRows(cutoffs) {
     const arr = Array.isArray(cutoffs) ? cutoffs : [];
-    $('cutoffRows').innerHTML = arr.map(c => cutoffRowHtml(c && c.name, c && c.time, c && c.url, c && c.summary)).join('');
+    $('cutoffRows').innerHTML = arr.map(c => cutoffRowHtml(c && c.name, c && c.time, c && c.url, c && c.summary, c && c.window, c && c.fulfill_by)).join('');
   }
-  function addCutoffRow() { $('cutoffRows').insertAdjacentHTML('beforeend', cutoffRowHtml('', '', '', '')); }
+  function addCutoffRow() { $('cutoffRows').insertAdjacentHTML('beforeend', cutoffRowHtml('', '', '', '', 'before', '')); }
   function collectCutoffs() {
     return [...document.querySelectorAll('#cutoffRows .cutoff-row')].map(row => {
       const url = row.querySelector('.co-url').value.trim();
       const f = parseWmsFilter(url);
-      return { name: row.querySelector('.co-name').value.trim(), time: row.querySelector('.co-time').value, url, filter: { statuses: f.statuses, tags: f.tags, clients: f.clients }, summary: f.summary };
+      const win = (row.querySelector('.co-window') || {}).value === 'after' ? 'after' : 'before';
+      const fulfill = row.querySelector('.co-fulfill').value;
+      const c = { name: row.querySelector('.co-name').value.trim(), time: row.querySelector('.co-time').value, window: win, url, filter: { statuses: f.statuses, tags: f.tags, clients: f.clients }, summary: f.summary };
+      if (win === 'after' && fulfill) c.fulfill_by = fulfill;   // next-day fulfilment deadline (received-after only)
+      return c;
     }).filter(c => c.name && c.time && _cutoffHasCriteria(c.filter));   // keep only complete, countable rows
   }
   // Each card upserts only its own columns; PostgREST leaves omitted columns

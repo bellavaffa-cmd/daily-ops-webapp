@@ -3635,13 +3635,65 @@
         </div>
       </div>`;
     };
-    // Manager-defined custom cut-offs (each mapped to a WMS order tag) render as
-    // extra rows; their open counts come from the per-order fetch below, so the
-    // card is a builder we re-render once those counts are known.
+    // A custom cut-off with window 'after' counts orders that ARRIVED after its
+    // cut-off today (the post-cut-off inflow rolling to tomorrow) — so it reads as
+    // "received … till midnight" and counts down to midnight, not to the cut-off.
+    const afterRow = (lbl, cutStr, count) => {
+      const toMid = Math.max(0, 1440 - nowMin);
+      return `<div style="padding:8px 0;border-top:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+          <span style="font-size:.85rem;font-weight:700;color:var(--text)">${lbl}</span>
+          <span style="font-size:.85rem;font-weight:700;color:var(--text);white-space:nowrap">${fmt(count)} <span style="font-size:.72rem;font-weight:400;color:var(--muted)">received</span></span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:2px;font-size:.72rem">
+          <span style="color:var(--muted)">after ${cutStr} · till midnight</span>
+          <span style="white-space:nowrap;color:var(--muted)">${dur(toMid)} left</span>
+        </div>
+      </div>`;
+    };
+    // A "received after" cut-off can also carry a next-day fulfilment deadline
+    // ("…must be fulfilled by 2pm the next day"). Then the batch = orders that came
+    // in after the most-recent cut-off (carried across midnight until its deadline),
+    // and the row counts down to fulfil_by on the day AFTER that cut-off.
+    const _now = Date.now();
+    const _atToday = hhmm => { const m = /^(\d{1,2}):(\d{2})/.exec(hhmm || ''); if (!m) return null; const d = new Date(); d.setHours(+m[1], +m[2], 0, 0); return d.getTime(); };
+    const _midnightAfter = ts => { const d = new Date(ts); d.setHours(24, 0, 0, 0); return d.getTime(); };
+    const cutoffMeta = c => {
+      const cut = _atToday(c.time);
+      if (c.window === 'after' && c.fulfill_by) {
+        let lastCut = cut; if (cut != null && _now < cut) lastCut -= 86400000;   // cut-off not reached today → use yesterday's
+        let deadline = null;
+        if (lastCut != null) { const dd = new Date(lastCut); dd.setDate(dd.getDate() + 1); const fm = /^(\d{1,2}):(\d{2})/.exec(c.fulfill_by); if (fm) { dd.setHours(+fm[1], +fm[2], 0, 0); deadline = dd.getTime(); } }
+        return { mode: 'fulfill', start: lastCut, end: lastCut != null ? _midnightAfter(lastCut) : null, deadline };
+      }
+      return { mode: c.window === 'after' ? 'after' : 'before', cut };
+    };
+    const fulfillRow = (lbl, count, deadline) => {
+      const remain = deadline ? Math.round((deadline - _now) / 60000) : null;
+      const dd = deadline ? new Date(deadline) : null;
+      const when = dd ? `${DOW[dd.getDay()]} ${String(dd.getHours()).padStart(2, '0')}:${String(dd.getMinutes()).padStart(2, '0')}` : '—';
+      let timeLbl, verdict;
+      if (remain != null && remain > 0) {
+        timeLbl = `by ${when} · in ${dur(remain)}`;
+        if (count <= 0) verdict = '<span style="color:#86efac">clear ✓</span>';
+        else if (rate == null || rate <= 0) verdict = '<span style="color:var(--muted)">rate n/a</span>';
+        else verdict = (count / rate * 60) <= remain ? '<span style="color:#86efac">on track ✓</span>' : '<span style="color:#fbbf24">at risk ✗</span>';
+      } else { timeLbl = `${when} · passed`; verdict = count <= 0 ? '<span style="color:#86efac">done ✓</span>' : '<span style="color:#f87171">overdue</span>'; }
+      return `<div style="padding:8px 0;border-top:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+          <span style="font-size:.85rem;font-weight:700;color:var(--text)">${lbl}</span>
+          <span style="font-size:.85rem;font-weight:700;color:var(--text);white-space:nowrap">${fmt(count)} <span style="font-size:.72rem;font-weight:400;color:var(--muted)">to fulfil</span></span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:2px;font-size:.72rem">
+          <span style="color:var(--muted)">${timeLbl}</span><span style="white-space:nowrap">${verdict}</span>
+        </div></div>`;
+    };
+    // Manager-defined custom cut-offs render as extra rows; their counts come from the
+    // per-order fetch below, so the card is a builder we re-render once counts are known.
     const buildCutoffCard = (customCounts) => {
       const custom = Array.isArray(cfg.cutoffs) ? cfg.cutoffs.filter(c => c && c.name && c.time) : [];
       const customRows = (customCounts && custom.length)
-        ? custom.map((c, i) => cutRow(c.name, c.time, Number(customCounts[i] || 0))).join('')
+        ? custom.map((c, i) => { const cnt = Number(customCounts[i] || 0); const m = cutoffMeta(c); return m.mode === 'fulfill' ? fulfillRow(c.name, cnt, m.deadline) : (m.mode === 'after' ? afterRow(c.name, c.time, cnt) : cutRow(c.name, c.time, cnt)); }).join('')
         : '';
       return `<div id="b2cInsightCutoff" class="card" style="padding:16px 18px"><div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Cut-off countdown${rate != null ? ` <span style="font-weight:400">· ${fmt(rate)}/hr packing</span>` : ''}</div>
         ${cutRow('Non-MP', cfg.nonmp_cutoff, openNon)}${cutRow('Priority MP', cfg.mp_cutoff, openMp)}${customRows}</div>`;
@@ -3665,33 +3717,47 @@
 
     // Per-order fetch → aging, single/multi, top brands
     try {
-      let orders = []; const base = SB_URL + '/b2c_orders?select=brand,client_id,created_at,total_qty,wh,tags,status' + (insClosed ? '' : '&is_tomorrow=is.false') + '&order=created_at.asc';
+      let orders = []; const base = SB_URL + '/b2c_orders?select=brand,client_id,created_at,total_qty,wh,tags,status,is_tomorrow&order=created_at.asc';   // fetch both days; split per cut-off / insight client-side
       for (let off = 0; off <= 30000; off += 1000) { const b = await fetch(base + '&limit=1000&offset=' + off, { headers: SB_HDR }).then(r => r.ok ? r.json() : []); orders = orders.concat(b); if (b.length < 1000) break; }
       orders = orders.filter(o => inWhFilter(o.wh));
-      // Custom cut-offs: count open orders matching each cut-off's parsed WMS filter,
-      // then re-render the cut-off card with the counts (rows share the countdown logic).
+      // Aging / single-multi / brands keep the MP-driven today-vs-tomorrow behaviour:
+      // today only while operating, both when closed (merged).
+      const dayOrders = insClosed ? orders : orders.filter(o => o.is_tomorrow === false);
+      // Custom cut-offs: apply EACH cut-off's OWN time as its today/tomorrow boundary —
+      // an order created after today@cut-off rolls to tomorrow, mirroring the MP split.
+      // Operating → count that cut-off's "today"; closed → count both (merged view).
       const _cuts = Array.isArray(cfg.cutoffs) ? cfg.cutoffs.filter(c => c && c.name && c.time) : [];
       if (_cuts.length) {
+        const metas = _cuts.map(cutoffMeta);
         const cc = _cuts.map(() => 0);
-        for (const o of orders) _cuts.forEach((c, i) => { if (orderMatchesCutoff(o, c)) cc[i]++; });
+        for (const o of orders) {
+          const created = Date.parse(o.created_at || '');
+          _cuts.forEach((c, i) => {
+            if (!orderMatchesCutoff(o, c)) return;
+            const m = metas[i];
+            if (m.mode === 'fulfill') { if (created && m.start != null && created > m.start && created <= m.end) cc[i]++; }   // the after-cut-off batch, carried until its next-day deadline
+            else if (m.mode === 'after') { if (created && m.cut && created > m.cut) cc[i]++; }                                 // post-cut-off inflow (created after today@cut-off)
+            else { const rolled = created && m.cut && created > m.cut; if (insClosed || !rolled) cc[i]++; }                    // due before cut-off (today; both when closed)
+          });
+        }
         const cel = document.getElementById('b2cInsightCutoff'); if (cel) cel.outerHTML = buildCutoffCard(cc);
       }
       const now = Date.now();
       // Aging
       const buckets = { '<1h': 0, '1–2h': 0, '2–4h': 0, '4h+': 0 }; let oldest = 0;
-      for (const o of orders) { const t = Date.parse(o.created_at || ''); if (!t) continue; const h = (now - t) / 3600000; if (h > oldest) oldest = h; if (h < 1) buckets['<1h']++; else if (h < 2) buckets['1–2h']++; else if (h < 4) buckets['2–4h']++; else buckets['4h+']++; }
+      for (const o of dayOrders) { const t = Date.parse(o.created_at || ''); if (!t) continue; const h = (now - t) / 3600000; if (h > oldest) oldest = h; if (h < 1) buckets['<1h']++; else if (h < 2) buckets['1–2h']++; else if (h < 4) buckets['2–4h']++; else buckets['4h+']++; }
       const agEl = document.getElementById('b2cInsightAging');
       if (agEl) agEl.innerHTML = `<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">Order aging</div>
         ${Object.entries(buckets).map(([k, v]) => `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:.82rem"><span style="color:${k === '4h+' ? '#f87171' : 'var(--muted)'}">${k}</span><b style="color:var(--text)">${fmt(v)}</b></div>`).join('')}
         <div style="font-size:.72rem;color:var(--muted);margin-top:6px">Oldest open: <b style="color:${oldest >= 4 ? '#f87171' : 'var(--text)'}">${oldest < 1 ? Math.round(oldest * 60) + 'm' : oldest.toFixed(1) + 'h'}</b></div>`;
       // Single vs multi
-      let single = 0, multi = 0, unk = 0; for (const o of orders) { const q = o.total_qty; if (q == null) unk++; else if (Number(q) === 1) single++; else multi++; }
+      let single = 0, multi = 0, unk = 0; for (const o of dayOrders) { const q = o.total_qty; if (q == null) unk++; else if (Number(q) === 1) single++; else multi++; }
       const totm = single + multi; const mixEl = document.getElementById('b2cInsightMix');
       if (mixEl) mixEl.innerHTML = `<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">Single vs multi item</div>
         <div style="display:flex;height:18px;border-radius:5px;overflow:hidden;margin-bottom:8px"><div style="width:${totm ? single / totm * 100 : 50}%;background:#86efac"></div><div style="width:${totm ? multi / totm * 100 : 50}%;background:#c4b5fd"></div></div>
         <div style="display:flex;justify-content:space-between;font-size:.82rem"><span style="color:#86efac">Single <b>${fmt(single)}</b></span><span style="color:#c4b5fd">Multi <b>${fmt(multi)}</b></span></div>${unk ? `<div style="font-size:.7rem;color:var(--muted);margin-top:4px">${fmt(unk)} unknown</div>` : ''}`;
       // Top brands
-      const byBrand = {}; for (const o of orders) { const b = o.brand || '(no brand)'; (byBrand[b] = byBrand[b] || { n: 0, cid: null }); byBrand[b].n++; if (o.client_id) byBrand[b].cid = o.client_id; }
+      const byBrand = {}; for (const o of dayOrders) { const b = o.brand || '(no brand)'; (byBrand[b] = byBrand[b] || { n: 0, cid: null }); byBrand[b].n++; if (o.client_id) byBrand[b].cid = o.client_id; }
       const top = Object.entries(byBrand).map(([brand, v]) => ({ brand, n: v.n, cid: v.cid })).sort((a, b) => b.n - a.n).slice(0, 8);
       const maxB = Math.max(1, ...top.map(b => b.n)); const enc2 = v => encodeURIComponent(encodeURIComponent(JSON.stringify(v)));
       const brEl = document.getElementById('b2cInsightBrands');
