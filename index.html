@@ -3559,7 +3559,16 @@
         timeLbl = `${DOW[wd]} ${cutStr} · in ${dur(remain)}`;
         verdict = open <= 0 ? '<span style="color:#86efac">none open</span>' : `<span style="color:var(--muted)">for ${DOW[wd]}</span>`;
       }
-      return `<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid var(--border)"><div><b style="color:var(--text)">${lbl}</b> <span style="color:var(--muted);font-size:.72rem">${timeLbl}</span></div><div style="text-align:right"><b style="color:var(--text)">${fmt(open)}</b> open · ${verdict}</div></div>`;
+      return `<div style="padding:8px 0;border-top:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+          <span style="font-size:.85rem;font-weight:700;color:var(--text)">${lbl}</span>
+          <span style="font-size:.85rem;font-weight:700;color:var(--text);white-space:nowrap">${fmt(open)} <span style="font-size:.72rem;font-weight:400;color:var(--muted)">open</span></span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:2px;font-size:.72rem">
+          <span style="color:var(--muted)">${timeLbl}</span>
+          <span style="white-space:nowrap">${verdict}</span>
+        </div>
+      </div>`;
     };
     const cutoffHtml = `<div class="card" style="padding:16px 18px"><div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Cut-off countdown${rate != null ? ` <span style="font-weight:400">· ${fmt(rate)}/hr packing</span>` : ''}</div>
       ${cutRow('Non-MP', cfg.nonmp_cutoff, openNon)}${cutRow('Priority MP', cfg.mp_cutoff, openMp)}</div>`;
