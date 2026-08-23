@@ -486,10 +486,11 @@ async function performSync(isB2B) {
       const day = isTomorrowOrder(o, isMp) ? 'tomorrow' : 'today';
       const bag = ensureWh(wh)[col][day];
       const brand = o.clientDisplayName || '(no brand)';
-      const b = (bag[brand] = bag[brand] || { mp_only: 0, mp_nextday: 0, nonmp: 0, total: 0 });
+      const b = (bag[brand] = bag[brand] || { mp_only: 0, mp_nextday: 0, nonmp: 0, nextday: 0, total: 0 });
       b.total++;
       if (isMp && isNext) b.mp_nextday++; else if (isMp) b.mp_only++;
       if (isNon) b.nonmp++;
+      if (isNext) b.nextday++;   // ALL Next-Day orders (any tag) — the dashboard counts these as Next Day
     }
     const brandNow = new Date().toISOString();
     const b2cBrandRows = [];

@@ -2914,11 +2914,20 @@
   }
   let b2cFlow = [];       // b2c_flow_snapshot rows — B2C new-orders inflow (inflow_1h)
   let b2cMpNextday = {};  // b2c_brand rollup: [day][wh][status] = count of Priority-MP orders also tagged Next Day
+  let b2cNextDay = {};    // b2c_brand rollup: [day][wh][status] = count of ALL orders tagged Next Day (any tag)
   // Sum the MP+Next-Day count over a set of warehouses per status, for a given day.
   function mpNextdayForStatuses(day, whList) {
     const out = { new: 0, rfp: 0, picking: 0, picked: 0, packing: 0 };
     const dm = b2cMpNextday[day] || {};
     (whList || []).forEach(wh => { const sm = dm[wh]; if (!sm) return; for (const k in out) out[k] += Number(sm[k] || 0); });
+    return out;
+  }
+  // Sum ALL Next-Day orders (any tag) per status. Falls back to the MP+Next-Day
+  // count until the extension starts writing the wider `nextday` field.
+  function nextDayForStatuses(day, whList) {
+    const out = { new: 0, rfp: 0, picking: 0, picked: 0, packing: 0 };
+    const dm = b2cNextDay[day] || {}, mdm = b2cMpNextday[day] || {};
+    (whList || []).forEach(wh => { const sm = dm[wh] || mdm[wh]; if (!sm) return; for (const k in out) out[k] += Number(sm[k] || 0); });
     return out;
   }
   let b2cPackSnaps = [];  // productivity_snapshot rows — cumulative packed_orders for the hourly packing rate
@@ -3191,10 +3200,12 @@
 
     const tagSum   = c => filtered.reduce((a, r) => a + (r[c] || 0), 0);
     const mpN      = opts.mpNextday || {};   // { status: count of MP orders also tagged Next Day }
-    const mpOf     = k => ({ nonmp: tagSum(k + '_nonmp'), prioritymp: tagSum(k + '_prioritymp'), mpNextday: Number(mpN[k] || 0) });
+    const nextN    = opts.nextDay || {};     // { status: count of ALL orders tagged Next Day }
+    const mpOf     = k => ({ nonmp: tagSum(k + '_nonmp'), prioritymp: tagSum(k + '_prioritymp'), mpNextday: Number(mpN[k] || 0), nextDay: Number(nextN[k] || 0) });
     const totNonmp = B2C_KEYS.reduce((a, k) => b2cExcl.has(k) ? a : a + tagSum(k + '_nonmp'), 0);
     const totPrio  = B2C_KEYS.reduce((a, k) => b2cExcl.has(k) ? a : a + tagSum(k + '_prioritymp'), 0);
     const totMpN   = B2C_KEYS.reduce((a, k) => b2cExcl.has(k) ? a : a + Number(mpN[k] || 0), 0);
+    const totNext  = B2C_KEYS.reduce((a, k) => b2cExcl.has(k) ? a : a + Number(nextN[k] || 0), 0);
 
     const statuses = [
       { key: 'new',     label: 'Open',            count: tot.new,     color: '#fb923c', ...mpOf('new') },
@@ -3202,7 +3213,7 @@
       { key: 'picking', label: 'Picking Started', count: tot.picking, color: '#93c5fd', ...mpOf('picking') },
       { key: 'picked',  label: 'Ready to Pack',   count: tot.picked,  color: '#86efac', ...mpOf('picked') },
       { key: 'packing', label: 'Packing Started', count: tot.packing, color: '#c4b5fd', ...mpOf('packing') },
-      { key: 'total',   label: 'Total Orders',    count: total,       color: 'var(--text)', nonmp: totNonmp, prioritymp: totPrio, mpNextday: totMpN },
+      { key: 'total',   label: 'Total Orders',    count: total,       color: 'var(--text)', nonmp: totNonmp, prioritymp: totPrio, mpNextday: totMpN, nextDay: totNext },
     ];
 
     // WMS deep-link options: warehouse filter + created-date range. The caller
@@ -3235,10 +3246,10 @@
           <a class="mp-link" href="${url}" target="_blank" title="Open in WMS" style="display:inline-block;text-decoration:none;color:var(--text);font-size:2rem;font-weight:700;line-height:1">${fmt(s.count)}</a>
           ${subtitle ? `<div style="font-size:.72rem;color:var(--muted);margin-top:5px">${subtitle}</div>` : ''}
           <div style="font-size:.82rem;margin-top:6px;display:flex;flex-direction:column;gap:2px;color:var(--muted)">
-            <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Next Day', { ..._whOpts, ..._cdMp })}" target="_blank" title="Priority MP orders also tagged Next Day (WMS link shows all Next Day — its tag filter can't intersect with MP)" style="text-decoration:none;color:inherit;width:fit-content">Next Day <b style="color:#f0abfc">${fmt(s.mpNextday || 0)}</b></a>
+            <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Next Day', { ..._whOpts, ..._cdMp })}" target="_blank" title="All orders tagged Next Day (counted here regardless of MP)" style="text-decoration:none;color:inherit;width:fit-content">Next Day <b style="color:#f0abfc">${fmt(s.nextDay || 0)}</b></a>
             <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Priority MP', { ..._whOpts, ..._cdMp })}" target="_blank" title="Priority MP excluding Next Day (WMS link shows all Priority MP — its tag filter can't exclude)" style="text-decoration:none;color:inherit;width:fit-content">MP <b style="color:#c084fc">${fmt(Math.max(0, (s.prioritymp || 0) - (s.mpNextday || 0)))}</b></a>
             <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Non-MP', { ..._whOpts, ..._cdNon })}" target="_blank" title="Open Non-MP in WMS" style="text-decoration:none;color:inherit;width:fit-content">Non-MP <b style="color:var(--text)">${fmt(s.nonmp || 0)}</b></a>
-            <span title="Orders tagged with neither MP nor Non-MP (WMS has no filter for this — its tag filter is include-only)" style="width:fit-content">Others <b style="color:#94a3b8">${fmt(Math.max(0, (s.count || 0) - (s.nonmp || 0) - (s.prioritymp || 0)))}</b></span>
+            <span title="Orders tagged with neither MP, Non-MP nor Next Day (WMS has no filter for this — its tag filter is include-only)" style="width:fit-content">Others <b style="color:#94a3b8">${fmt(Math.max(0, (s.count || 0) - (s.nonmp || 0) - (s.prioritymp || 0) - Math.max(0, (s.nextDay || 0) - (s.mpNextday || 0))))}</b></span>
           </div>
         </div>`;
       }).join('')}
@@ -3324,10 +3335,11 @@
     if (!list.length) { body.innerHTML = '<div style="color:var(--muted);padding:24px 0;text-align:center">No orders in this bucket yet.</div>'; return; }
     const whShort = w => { const m = /\(([^)]+)\)/.exec(w || ''); return m ? m[1] : (w || ''); };
     const tagCell = o => {
+      // A Next-Day order is shown as Next Day only — not also tagged MP.
+      if (o.is_next_day) return '<span style="color:#f0abfc">Next Day</span>';
       const t = [];
       if (o.is_priority_mp) t.push('<span style="color:#c084fc">MP</span>');
       if (o.is_nonmp) t.push('<span style="color:var(--muted)">Non-MP</span>');
-      if (o.is_next_day) t.push('<span style="color:#f0abfc">Next Day</span>');
       return t.join(' · ') || '<span style="color:var(--muted)">—</span>';
     };
     body.innerHTML = `<div style="max-height:64vh;overflow:auto">
@@ -3399,7 +3411,7 @@
     const fmt   = n => n.toLocaleString();
 
     if (!isTom) renderB2CRiskBanner(filtered);
-    document.getElementById('b2cKpis').innerHTML = b2cKpiCardsHtml(filtered, { interactive: !isTom, day: b2cDay, mpNextday: mpNextdayForStatuses(b2cDay, filtered.map(r => r.wh)), wms: { ...b2cWmsWhOpts(), range: isTom ? 'post' : 'pre' } });
+    document.getElementById('b2cKpis').innerHTML = b2cKpiCardsHtml(filtered, { interactive: !isTom, day: b2cDay, mpNextday: mpNextdayForStatuses(b2cDay, filtered.map(r => r.wh)), nextDay: nextDayForStatuses(b2cDay, filtered.map(r => r.wh)), wms: { ...b2cWmsWhOpts(), range: isTom ? 'post' : 'pre' } });
 
     // Table helpers
     const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color||'var(--text)'};font-size:.82rem">${fmt(n)}</td>`;
@@ -3943,12 +3955,18 @@
       // Build the MP+Next-Day per-(day,wh,status) map from b2c_brand.
       try {
         const brandRows = brandRes && brandRes.ok ? await brandRes.json() : [];
-        b2cMpNextday = {};
+        b2cMpNextday = {}; b2cNextDay = {};
         for (const r of brandRows) {
-          let n = 0; const b = r.brands || {}; for (const k in b) n += Number((b[k] || {}).mp_nextday || 0);
+          let n = 0, nd = 0, sawNd = false; const b = r.brands || {};
+          for (const k in b) {
+            const v = b[k] || {};
+            n += Number(v.mp_nextday || 0);
+            if (v.nextday != null) { sawNd = true; nd += Number(v.nextday || 0); }
+          }
           ((b2cMpNextday[r.day] = b2cMpNextday[r.day] || {})[r.wh] = b2cMpNextday[r.day][r.wh] || {})[r.status] = n;
+          if (sawNd) ((b2cNextDay[r.day] = b2cNextDay[r.day] || {})[r.wh] = b2cNextDay[r.day][r.wh] || {})[r.status] = nd;
         }
-      } catch (e) { b2cMpNextday = {}; }
+      } catch (e) { b2cMpNextday = {}; b2cNextDay = {}; }
       if (rows && rows.length) {
         // Split each status into TODAY (open − tomorrow) and TOMORROW (orders
         // that dropped after their cut-off, computed by the sync). The primary
@@ -7923,7 +7941,7 @@ function fail(error) {
     // for the widget frame so it wraps the same number per row as the tab.
     const _row = selWh ? (b2cData || []).find(r => r.wh === selWh && r.wh_id) : null;
     const wms = { range: 'pre', whIds: _row ? [_row.wh_id] : [], whLbl: selWh || '' };
-    return b2cKpiCardsHtml(f, { interactive: true, minCard: 133, hidePct: true, wms });
+    return b2cKpiCardsHtml(f, { interactive: true, minCard: 133, hidePct: true, mpNextday: mpNextdayForStatuses('today', f.map(r => r.wh)), nextDay: nextDayForStatuses('today', f.map(r => r.wh)), wms });
   }
   function dashB2BBoxHtml(selWh) {
     const f = (b2bData || []).filter(r => !selWh || r.wh === selWh);
