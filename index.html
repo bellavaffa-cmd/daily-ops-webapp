@@ -3339,9 +3339,9 @@
               <td colspan="3" style="padding:10px;font-size:.82rem;font-weight:700;color:var(--text);background:var(--surface2);border-bottom:1px solid var(--border)"><span class="bg-caret" style="display:inline-block;width:1em;color:var(--muted);font-size:.72rem">▸</span> ${escHtml(r.brand)} <span style="color:var(--muted);font-weight:400">· ${fmt(r.orders.length)}</span></td>
             </tr>
             ${r.orders.map(o => `<tr data-bg="${i}" style="display:none;border-bottom:1px solid var(--border)">
-              <td style="padding:6px 10px 6px 26px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.78rem;color:var(--text);white-space:nowrap">${escHtml(o.order_id)}</td>
-              <td style="padding:6px 10px;font-size:.75rem;color:var(--muted);white-space:nowrap">${escHtml(whShort(o.wh))}</td>
-              <td style="padding:6px 10px;font-size:.75rem;white-space:nowrap">${tagCell(o)}</td>
+              <td style="padding:5px 8px 5px 24px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.78rem;color:var(--text);white-space:nowrap">${escHtml(o.order_id)}</td>
+              <td style="padding:5px 8px;font-size:.75rem;color:var(--muted);white-space:nowrap">${escHtml(whShort(o.wh))}</td>
+              <td style="padding:5px 8px;font-size:.75rem;white-space:nowrap;width:100%">${tagCell(o)}</td>
             </tr>`).join('')}
           `).join('')}
         </tbody>
