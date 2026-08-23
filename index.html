@@ -2935,6 +2935,7 @@
     return out;
   }
   let b2cPackSnaps = [];  // productivity_snapshot rows — cumulative packed_orders for the hourly packing rate
+  let whActivityToday = {};   // warehouse_code -> pick+pack count on its current local date (hybrid operating-day detection). Declared here so the first render can't hit a temporal-dead-zone.
 
   // ── Exclude-from-total toggles (B2C / B2B KPI status boxes) ─────────────
   // Each status box has a top-right button to drop that status from the "Total
@@ -3692,9 +3693,8 @@
 
   // Hybrid operating-day detection. `operating_days` is the weekly baseline;
   // pick/pack activity overrides it (unexpected work → open; a quiet operating
-  // weekday past open+2h → treated as a holiday → closed). whActivityToday holds
-  // each warehouse's pick+pack count on ITS current local date.
-  let whActivityToday = {};
+  // weekday past open+2h → treated as a holiday → closed). whActivityToday is
+  // declared with the other globals above so the first render can't TDZ on it.
   function _dateInTz(tz) { try { return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date()); } catch (e) { return new Intl.DateTimeFormat('en-CA').format(new Date()); } }
   async function loadActivityToday() {
     try {
