@@ -3550,6 +3550,23 @@
     return { inflow, packedPerHr, net: (packedPerHr != null && inflow != null) ? packedPerHr - inflow : null, inflowArr };
   }
 
+  // Does a b2c_orders row match a custom cut-off's parsed WMS filter? Criteria are
+  // AND across types (status / tag / brand), IN within a type. The Manager Console
+  // parses the pasted WMS URL into { statuses, tags, clients }. Legacy single-tag
+  // configs (tag_id) still work. A filter with no supported criteria matches nothing.
+  function orderMatchesCutoff(o, c) {
+    const f = (c && c.filter) || (c && c.tag_id ? { tags: [c.tag_id] } : null);
+    if (!f) return false;
+    const hasAny = (f.statuses && f.statuses.length) || (f.tags && f.tags.length) || (f.clients && f.clients.length);
+    if (!hasAny) return false;
+    if (f.statuses && f.statuses.length && !f.statuses.includes(o.status)) return false;
+    if (f.clients && f.clients.length && !f.clients.includes(o.client_id)) return false;
+    if (f.tags && f.tags.length) {
+      const ids = Array.isArray(o.tags) ? o.tags.map(t => t && t.id) : [];
+      if (!f.tags.some(t => ids.includes(t))) return false;
+    }
+    return true;
+  }
   // The insights section under the KPI cards. Synchronous cards (cut-off, funnel,
   // trend) paint immediately; brands/aging/mix/staffing fill in after their fetch.
   async function renderB2CInsights() {
@@ -3622,9 +3639,9 @@
     // extra rows; their open counts come from the per-order fetch below, so the
     // card is a builder we re-render once those counts are known.
     const buildCutoffCard = (customCounts) => {
-      const custom = Array.isArray(cfg.cutoffs) ? cfg.cutoffs : [];
+      const custom = Array.isArray(cfg.cutoffs) ? cfg.cutoffs.filter(c => c && c.name && c.time) : [];
       const customRows = (customCounts && custom.length)
-        ? custom.filter(c => c && c.name && c.time && c.tag_id).map(c => cutRow(c.name, c.time, Number(customCounts[c.tag_id] || 0))).join('')
+        ? custom.map((c, i) => cutRow(c.name, c.time, Number(customCounts[i] || 0))).join('')
         : '';
       return `<div id="b2cInsightCutoff" class="card" style="padding:16px 18px"><div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Cut-off countdown${rate != null ? ` <span style="font-weight:400">· ${fmt(rate)}/hr packing</span>` : ''}</div>
         ${cutRow('Non-MP', cfg.nonmp_cutoff, openNon)}${cutRow('Priority MP', cfg.mp_cutoff, openMp)}${customRows}</div>`;
@@ -3648,15 +3665,15 @@
 
     // Per-order fetch → aging, single/multi, top brands
     try {
-      let orders = []; const base = SB_URL + '/b2c_orders?select=brand,client_id,created_at,total_qty,wh,tags' + (insClosed ? '' : '&is_tomorrow=is.false') + '&order=created_at.asc';
+      let orders = []; const base = SB_URL + '/b2c_orders?select=brand,client_id,created_at,total_qty,wh,tags,status' + (insClosed ? '' : '&is_tomorrow=is.false') + '&order=created_at.asc';
       for (let off = 0; off <= 30000; off += 1000) { const b = await fetch(base + '&limit=1000&offset=' + off, { headers: SB_HDR }).then(r => r.ok ? r.json() : []); orders = orders.concat(b); if (b.length < 1000) break; }
       orders = orders.filter(o => inWhFilter(o.wh));
-      // Custom cut-offs: count open orders bearing each cut-off's WMS tag, then
-      // re-render the cut-off card with the counts (rows use the same countdown logic).
-      const _cuts = Array.isArray(cfg.cutoffs) ? cfg.cutoffs.filter(c => c && c.name && c.time && c.tag_id) : [];
+      // Custom cut-offs: count open orders matching each cut-off's parsed WMS filter,
+      // then re-render the cut-off card with the counts (rows share the countdown logic).
+      const _cuts = Array.isArray(cfg.cutoffs) ? cfg.cutoffs.filter(c => c && c.name && c.time) : [];
       if (_cuts.length) {
-        const cc = {}; _cuts.forEach(c => cc[c.tag_id] = 0);
-        for (const o of orders) { if (!Array.isArray(o.tags)) continue; const ids = new Set(o.tags.map(t => t && t.id)); for (const c of _cuts) if (ids.has(c.tag_id)) cc[c.tag_id]++; }
+        const cc = _cuts.map(() => 0);
+        for (const o of orders) _cuts.forEach((c, i) => { if (orderMatchesCutoff(o, c)) cc[i]++; });
         const cel = document.getElementById('b2cInsightCutoff'); if (cel) cel.outerHTML = buildCutoffCard(cc);
       }
       const now = Date.now();

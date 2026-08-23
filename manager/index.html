@@ -109,7 +109,7 @@
     </div>
     <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
       <label style="display:block;margin-bottom:2px">Custom cut-offs</label>
-      <p class="hint" style="margin-top:0">Extra named cut-offs, each mapped to a WMS order tag. Shown on the dashboard's Cut-off countdown with that tag's open count + countdown.</p>
+      <p class="hint" style="margin-top:0">Build a filter in WMS's order list, copy its URL, and paste it here. Shown on the dashboard's Cut-off countdown with that filter's open count + countdown. Countable criteria: status, tag, brand (carrier/channel/address filters aren't synced).</p>
       <div id="cutoffRows"></div>
       <button class="btn" style="margin-top:2px" onclick="addCutoffRow()">+ Add cut-off</button>
     </div>
@@ -409,7 +409,6 @@
     sel.value = tz;
     renderBreakRows(r.breaks);
     renderOpDays(r.operating_days);
-    await loadCutoffTags();
     renderCutoffRows(r.cutoffs);
   }
   // Operating-day toggles (weekday numbers, JS getDay: 0=Sun … 6=Sat). No saved
@@ -434,40 +433,50 @@
     $('breakRows').innerHTML = rows.map(b => breakRowHtml(b && b.start, b && b.end)).join('');
   }
   function addBreakRow() { $('breakRows').insertAdjacentHTML('beforeend', breakRowHtml('', '')); }
-  // ── Custom cut-offs (each mapped to a WMS order tag) ──────────────────────
-  let _cutoffTags = [];   // [{id, name}] distinct tags seen on orders → the tag picker
-  async function loadCutoffTags() {
-    try { const r = await fetch(SB + '/rpc/distinct_order_tags', { method: 'POST', headers: HDR, body: '{}' }); _cutoffTags = r.ok ? (await r.json()) : []; }
-    catch (e) { _cutoffTags = []; }
+  // ── Custom cut-offs (each = a pasted WMS order-list filter URL) ────────────
+  // Parse the params WMS uses (sos=status ids, tag=tag GUIDs, cli=client GUIDs — each
+  // double-URL-encoded) into criteria we can count against b2c_orders. Other filter
+  // fields (carrier, channel, address…) aren't synced per order, so they're ignored.
+  const _WMS_STATUS_KEY = { 6: 'new', 8: 'rfp', 9: 'picking', 12: 'picked', 13: 'packing' };  // WMS status id → b2c_orders.status
+  function parseWmsFilter(url) {
+    const out = { statuses: [], tags: [], clients: [], labels: [], summary: '' };
+    if (!url) return out;
+    let qs; try { qs = new URL(url).searchParams; } catch (e) { try { qs = new URLSearchParams(url.split('?')[1] || ''); } catch (e2) { return out; } }
+    const dec = v => { try { return JSON.parse(decodeURIComponent(v)); } catch (e) { return null; } };
+    const sos = qs.get('sos'); if (sos) { out.statuses = (dec(sos) || []).map(n => _WMS_STATUS_KEY[Number(n)]).filter(Boolean); const l = qs.get('soslbl'); if (l && out.statuses.length) out.labels.push(l); }
+    const tag = qs.get('tag'); if (tag) { out.tags = (dec(tag) || []).map(String); const l = qs.get('taglbl'); if (l && out.tags.length) out.labels.push(l); }
+    const cli = qs.get('cli'); if (cli) { out.clients = (dec(cli) || []).map(String); const l = qs.get('clilbl'); if (l && out.clients.length) out.labels.push(l); }
+    out.summary = out.labels.join(' · ');
+    return out;
   }
-  function tagOptionsHtml(selId, selName) {
-    const opts = _cutoffTags.slice();
-    if (selId && !opts.some(t => t.id === selId)) opts.unshift({ id: selId, name: selName || selId });   // keep a saved tag even if unseen lately
-    return `<option value="">— pick tag —</option>` +
-      opts.map(t => `<option value="${esc(t.id)}" data-name="${esc(t.name || '')}"${t.id === selId ? ' selected' : ''}>${esc(t.name || t.id)}</option>`).join('');
-  }
-  function cutoffRowHtml(name, time, tagId, tagName) {
-    return `<div class="cutoff-row" style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
-      <input class="co-name" placeholder="Name (e.g. Express)" value="${esc(name || '')}" style="flex:1 1 130px;min-width:110px">
+  const _cutoffHasCriteria = f => !!(f && (f.statuses.length || f.tags.length || f.clients.length));
+  function cutoffRowHtml(name, time, url, summary) {
+    return `<div class="cutoff-row" style="display:flex;gap:6px;align-items:center;margin-bottom:4px;flex-wrap:wrap">
+      <input class="co-name" placeholder="Name (e.g. Express)" value="${esc(name || '')}" style="flex:1 1 120px;min-width:100px">
       <input type="time" class="co-time" value="${esc(time || '')}">
-      <select class="co-tag" style="flex:1 1 150px;min-width:130px">${tagOptionsHtml(tagId, tagName)}</select>
-      <button class="btn icon" title="Remove cut-off" onclick="this.closest('.cutoff-row').remove()">✕</button></div>`;
+      <input class="co-url" placeholder="Paste WMS order-list filter URL" value="${esc(url || '')}" oninput="updateCutoffSummary(this)" style="flex:2 1 220px;min-width:170px">
+      <button class="btn icon" title="Remove cut-off" onclick="this.closest('.cutoff-row').remove()">✕</button>
+      <div class="co-summary hint" style="flex:1 1 100%;margin:2px 0 8px">${summary ? '✓ ' + esc(summary) : ''}</div></div>`;
+  }
+  function updateCutoffSummary(input) {
+    const el = input.closest('.cutoff-row').querySelector('.co-summary');
+    const v = input.value.trim();
+    if (!v) { el.textContent = ''; el.style.color = ''; return; }
+    const f = parseWmsFilter(v);
+    if (_cutoffHasCriteria(f)) { el.textContent = '✓ ' + (f.summary || 'matches this filter'); el.style.color = '#4ade80'; }
+    else { el.textContent = '⚠ No countable criteria (status / tag / brand) — carrier, channel & address filters aren’t synced.'; el.style.color = '#f87171'; }
   }
   function renderCutoffRows(cutoffs) {
     const arr = Array.isArray(cutoffs) ? cutoffs : [];
-    $('cutoffRows').innerHTML = arr.map(c => cutoffRowHtml(c && c.name, c && c.time, c && c.tag_id, c && c.tag_name)).join('');
+    $('cutoffRows').innerHTML = arr.map(c => cutoffRowHtml(c && c.name, c && c.time, c && c.url, c && c.summary)).join('');
   }
   function addCutoffRow() { $('cutoffRows').insertAdjacentHTML('beforeend', cutoffRowHtml('', '', '', '')); }
   function collectCutoffs() {
     return [...document.querySelectorAll('#cutoffRows .cutoff-row')].map(row => {
-      const sel = row.querySelector('.co-tag');
-      return {
-        name: row.querySelector('.co-name').value.trim(),
-        time: row.querySelector('.co-time').value,
-        tag_id: sel.value,
-        tag_name: sel.selectedOptions[0] ? (sel.selectedOptions[0].getAttribute('data-name') || '') : ''
-      };
-    }).filter(c => c.name && c.time && c.tag_id);   // keep only complete rows
+      const url = row.querySelector('.co-url').value.trim();
+      const f = parseWmsFilter(url);
+      return { name: row.querySelector('.co-name').value.trim(), time: row.querySelector('.co-time').value, url, filter: { statuses: f.statuses, tags: f.tags, clients: f.clients }, summary: f.summary };
+    }).filter(c => c.name && c.time && _cutoffHasCriteria(c.filter));   // keep only complete, countable rows
   }
   // Each card upserts only its own columns; PostgREST leaves omitted columns
   // untouched on an existing row, so the three saves don't clobber each other.
