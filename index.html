@@ -3229,7 +3229,7 @@
         // nested inside the status link — nested <a> is invalid and the status
         // link would otherwise swallow their clicks.
         return `
-        <div class="card kpi-link" onclick="brandBoxClick(event,'${_day}','${s.key}')" title="Click for the per-brand breakdown" style="cursor:pointer;position:relative;padding:16px 18px${excluded ? ';opacity:.5' : ''}">
+        <div class="card kpi-link" onclick="brandBoxClick(event,'${_day}','${s.key}')" title="Click to list order numbers by brand" style="cursor:pointer;position:relative;padding:16px 18px${excluded ? ';opacity:.5' : ''}">
           ${interactive && !isTotal ? excludeBtn('b2c', s.key, excluded) : ''}
           <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px${excluded ? ';text-decoration:line-through' : ''}">${s.label}</div>
           <a class="mp-link" href="${url}" target="_blank" title="Open in WMS" style="display:inline-block;text-decoration:none;color:var(--text);font-size:2rem;font-weight:700;line-height:1">${fmt(s.count)}</a>
@@ -3245,10 +3245,10 @@
     </div>`;
   }
 
-  // ── Per-brand breakdown modal (Today/Tomorrow status-box drill-down) ─────
-  // Clicking a B2C status box opens this: per-brand counts split into
-  // Priority-MP-only / Priority-MP+Next-Day / Non-MP, read from the b2c_brand
-  // table the sync writes. Scoped to the current warehouse selection + day.
+  // ── Order-numbers-by-brand modal (Today/Tomorrow status-box drill-down) ──
+  // Clicking a B2C status box opens this: every open order number in that status,
+  // grouped by brand, read from the per-order b2c_orders table the sync writes.
+  // Scoped to the current warehouse selection + day (today vs tomorrow-held).
   function brandBoxClick(e, day, statusKey) {
     if (e && e.target && e.target.closest('a,button')) return;   // let WMS links / exclude buttons work
     openBrandBreakdown(day, statusKey);
@@ -3278,7 +3278,7 @@
       <div style="display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border)">
         <div style="flex:1;min-width:0">
           <div style="font-size:1.05rem;font-weight:700;color:var(--text)">${escHtml(meta.label)} · ${day === 'today' ? 'Today' : 'Tomorrow'}</div>
-          <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Per-brand tag breakdown · ${escHtml(scopeLbl)}</div>
+          <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Order numbers by brand · ${escHtml(scopeLbl)}</div>
         </div>
         <a href="${wmsUrl}" target="_blank" style="text-decoration:none;font-size:.78rem;padding:7px 12px;border:1px solid var(--border);border-radius:8px;color:var(--text);white-space:nowrap">Open in WMS ↗</a>
         <button onclick="closeBrandModal()" aria-label="Close" style="background:none;border:none;color:var(--muted);font-size:1.4rem;cursor:pointer;line-height:1;padding:0 4px">×</button>
@@ -3288,42 +3288,42 @@
     document.body.appendChild(ov);
     document.addEventListener('keydown', _brandEsc);
 
-    let rows = [];
+    let orders = [];
     try {
       const statusFilter = statusKey === 'total' ? '' : ('&status=eq.' + encodeURIComponent(statusKey));
-      rows = await fetch(SB_URL + '/b2c_brand?day=eq.' + encodeURIComponent(day) + statusFilter + '&select=wh,status,brands', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
-    } catch (e) { rows = []; }
-    const agg = {};
-    for (const r of rows) {
-      if (!inScope(r.wh)) continue;
-      const b = r.brands || {};
-      for (const brand of Object.keys(b)) {
-        const v = b[brand] || {};
-        const a = (agg[brand] = agg[brand] || { mp_only: 0, mp_nextday: 0, nonmp: 0, total: 0 });
-        a.mp_only += v.mp_only || 0; a.mp_nextday += v.mp_nextday || 0; a.nonmp += v.nonmp || 0; a.total += v.total || 0;
-      }
+      const dayFilter = '&is_tomorrow=is.' + (day === 'tomorrow' ? 'true' : 'false');
+      orders = await fetch(SB_URL + '/b2c_orders?select=order_id,wh,brand,is_priority_mp,is_nonmp,is_next_day' + statusFilter + dayFilter + '&order=order_id.asc&limit=50000', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+    } catch (e) { orders = []; }
+    const byBrand = {};
+    for (const o of orders) {
+      if (!inScope(o.wh)) continue;
+      const brand = o.brand || '(no brand)';
+      (byBrand[brand] = byBrand[brand] || []).push(o);
     }
-    const list = Object.keys(agg).map(brand => ({ brand, ...agg[brand] })).sort((x, y) => y.total - x.total);
-    const grand = list.reduce((a, r) => ({ mp_only: a.mp_only + r.mp_only, mp_nextday: a.mp_nextday + r.mp_nextday, nonmp: a.nonmp + r.nonmp, total: a.total + r.total }), { mp_only: 0, mp_nextday: 0, nonmp: 0, total: 0 });
+    const list = Object.keys(byBrand)
+      .map(brand => ({ brand, orders: byBrand[brand] }))
+      .sort((x, y) => y.orders.length - x.orders.length || x.brand.localeCompare(y.brand));
+    const grandCount = list.reduce((a, r) => a + r.orders.length, 0);
     const fmt = n => Number(n || 0).toLocaleString();
     const body = document.getElementById('brandModalBody');
     if (!body) return;
     if (!list.length) { body.innerHTML = '<div style="color:var(--muted);padding:24px 0;text-align:center">No orders in this bucket yet.</div>'; return; }
-    const th = (t, r) => `<th style="text-align:${r ? 'right' : 'left'};padding:9px 10px;font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap">${t}</th>`;
-    const td = (n, color, bold) => `<td style="text-align:right;padding:8px 10px;font-size:.82rem;color:${color || 'var(--text)'};${bold ? 'font-weight:700' : ''}">${fmt(n)}</td>`;
-    body.innerHTML = `<div style="overflow-x:auto;max-height:60vh;overflow-y:auto"><table style="width:100%;border-collapse:collapse">
-      <thead><tr>${th('Brand')}${th('Priority MP only', 1)}${th('MP + Next Day', 1)}${th('Non-MP', 1)}${th('Total', 1)}</tr></thead>
-      <tbody>
-        ${list.map(r => `<tr style="border-bottom:1px solid var(--border)">
-          <td style="padding:8px 10px;font-size:.82rem;color:var(--text);white-space:nowrap">${escHtml(r.brand)}</td>
-          ${td(r.mp_only, '#c084fc')}${td(r.mp_nextday, '#f0abfc')}${td(r.nonmp, 'var(--text)')}${td(r.total, 'var(--text)', true)}
-        </tr>`).join('')}
-      </tbody>
-      <tfoot><tr style="border-top:2px solid var(--border)">
-        <td style="padding:9px 10px;font-size:.82rem;font-weight:700;color:var(--text)">Total · ${list.length} brand${list.length > 1 ? 's' : ''}</td>
-        ${td(grand.mp_only, '#c084fc', true)}${td(grand.mp_nextday, '#f0abfc', true)}${td(grand.nonmp, 'var(--text)', true)}${td(grand.total, 'var(--text)', true)}
-      </tr></tfoot>
-    </table></div>`;
+    const tagTitle = o => [o.is_priority_mp ? 'Priority MP' : '', o.is_nonmp ? 'Non-MP' : '', o.is_next_day ? 'Next Day' : ''].filter(Boolean).join(' · ');
+    const chip = o => {
+      const nd = o.is_next_day;   // highlight Next-Day orders (pink border) like the KPI boxes
+      return `<span title="${escHtml(tagTitle(o) || 'no tag')}" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.74rem;background:var(--surface2);border:1px solid ${nd ? '#f0abfc' : 'var(--border)'};border-radius:6px;padding:3px 7px;color:var(--text);white-space:nowrap">${escHtml(o.order_id)}</span>`;
+    };
+    body.innerHTML = `<div style="max-height:64vh;overflow-y:auto">
+      <div style="font-size:.75rem;color:var(--muted);margin:4px 0 12px">${fmt(grandCount)} order${grandCount !== 1 ? 's' : ''} · ${list.length} brand${list.length !== 1 ? 's' : ''}</div>
+      ${list.map(r => `
+        <div style="margin-bottom:14px">
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px;position:sticky;top:0;background:var(--surface);padding:2px 0">
+            <div style="font-size:.85rem;font-weight:700;color:var(--text)">${escHtml(r.brand)}</div>
+            <div style="font-size:.72rem;color:var(--muted)">${fmt(r.orders.length)}</div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">${r.orders.map(chip).join('')}</div>
+        </div>`).join('')}
+    </div>`;
   }
 
   // B2C view shows either today's live orders or tomorrow's held (post-cut-off)
