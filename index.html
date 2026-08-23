@@ -2018,8 +2018,8 @@
       </div>
     </div>
 
-    <!-- Today / Tomorrow switch -->
-    <div style="display:inline-flex;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:3px;margin-bottom:14px;gap:2px">
+    <!-- Today / Tomorrow switch (hidden while a warehouse is closed — merged view) -->
+    <div id="b2cDayToggle" style="display:inline-flex;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:3px;margin-bottom:14px;gap:2px">
       <button id="b2cDayToday" class="b2c-day-btn active" onclick="setB2cDay('today')">Today</button>
       <button id="b2cDayTomorrow" class="b2c-day-btn" onclick="setB2cDay('tomorrow')">Tomorrow</button>
     </div>
@@ -3298,11 +3298,11 @@
     ov.id = 'brandModal';
     ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto';
     ov.addEventListener('click', e => { if (e.target === ov) closeBrandModal(); });
-    const wmsUrl = wmsStatusUrl('B2C', meta.ids(), statusKey === 'total' ? 'All' : meta.label, { ...b2cWmsWhOpts(), ...wmsCdRange(day === 'today' ? 'pre' : 'post', opsConfig.mp_cutoff) });
+    const wmsUrl = wmsStatusUrl('B2C', meta.ids(), statusKey === 'total' ? 'All' : meta.label, { ...b2cWmsWhOpts(), ...wmsCdRange(day === 'both' ? null : (day === 'today' ? 'pre' : 'post'), opsConfig.mp_cutoff) });
     ov.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;max-width:720px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5)">
       <div style="display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border)">
         <div style="flex:1;min-width:0">
-          <div style="font-size:1.05rem;font-weight:700;color:var(--text)">${escHtml(meta.label)} · ${day === 'today' ? 'Today' : 'Tomorrow'}</div>
+          <div style="font-size:1.05rem;font-weight:700;color:var(--text)">${escHtml(meta.label)} · ${day === 'both' ? 'Today + Tomorrow' : (day === 'today' ? 'Today' : 'Tomorrow')}</div>
           <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Order numbers by brand · ${escHtml(scopeLbl)}</div>
         </div>
         <a href="${wmsUrl}" target="_blank" style="text-decoration:none;font-size:.78rem;padding:7px 12px;border:1px solid var(--border);border-radius:8px;color:var(--text);white-space:nowrap">Open in WMS ↗</a>
@@ -3316,7 +3316,7 @@
     let orders = [];
     try {
       const statusFilter = statusKey === 'total' ? '' : ('&status=eq.' + encodeURIComponent(statusKey));
-      const dayFilter = '&is_tomorrow=is.' + (day === 'tomorrow' ? 'true' : 'false');
+      const dayFilter = day === 'both' ? '' : ('&is_tomorrow=is.' + (day === 'tomorrow' ? 'true' : 'false'));
       const base = SB_URL + '/b2c_orders?select=order_id,wh,brand,client_id,is_priority_mp,is_nonmp,is_next_day' + statusFilter + dayFilter + '&order=order_id.asc';
       const PAGE = 1000;   // page past PostgREST's 1000-row response cap so nothing is dropped
       for (let off = 0; off <= 30000; off += PAGE) {
@@ -3410,13 +3410,37 @@
     const flow = document.getElementById('b2cFlowBox');   if (flow) flow.style.display = isTom ? 'none' : '';
     const risk = document.getElementById('b2cRiskBanner'); if (risk && isTom) risk.innerHTML = '';
   }
+  // Closed-day merge: today's live queue + tomorrow's post-cut-off held orders are
+  // ALL worked the next operating day, so a closed warehouse shows them summed per
+  // status (splitting them while closed is misleading). today = o[s+v], tomorrow =
+  // o[s+'_tomorrow'+v]; summing recovers the full pre-split status count.
+  function mergeTodayTomorrowRow(r) {
+    const o = { wh: r.wh, wh_id: r.wh_id || '', type: r.type || 'warehouse', country: r.country };
+    ['new', 'rfp', 'picking', 'picked', 'packing'].forEach(s => ['', '_nonmp', '_prioritymp'].forEach(v =>
+      o[s + v] = Number(r[s + v] || 0) + Number(r[s + '_tomorrow' + v] || 0)));
+    return o;
+  }
+  function sumStatusMaps(a, b) {
+    const out = {}; for (const k of ['new', 'rfp', 'picking', 'picked', 'packing']) out[k] = Number((a || {})[k] || 0) + Number((b || {})[k] || 0); return out;
+  }
   function renderB2C() {
+    // Closed today (hybrid detection) → merge today + tomorrow-held per status and
+    // hide the Today/Tomorrow toggle (the split is misleading while closed). Force
+    // the Today view since "Tomorrow" is meaningless when the merged view covers it.
+    const closed = !operatingTodayInfo().operating;
+    if (closed && b2cDay === 'tomorrow') {
+      b2cDay = 'today';
+      document.getElementById('b2cDayToday')?.classList.add('active');
+      document.getElementById('b2cDayTomorrow')?.classList.remove('active');
+    }
     const isTom = b2cDay === 'tomorrow';
     updateB2cDayChrome();
+    const tgl = document.getElementById('b2cDayToggle'); if (tgl) tgl.style.display = closed ? 'none' : '';
     const sel = getSelectedWhs();
 
-    // Today → live warehouse rows; Tomorrow → post-cut-off held counts.
-    const whRows = isTom ? tomorrowRows() : b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh);
+    // Today → live rows; Tomorrow → post-cut-off held; Closed → today+tomorrow merged.
+    const baseToday = b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh);
+    const whRows = isTom ? tomorrowRows() : (closed ? baseToday.map(mergeTodayTomorrowRow) : baseToday);
     const filtered = whRows.filter(r => inWhFilter(r.wh));
     const hasCountry = filtered.some(r => r.country);
 
@@ -3438,7 +3462,10 @@
     const fmt   = n => n.toLocaleString();
 
     if (!isTom) renderB2CRiskBanner(filtered);
-    document.getElementById('b2cKpis').innerHTML = b2cKpiCardsHtml(filtered, { interactive: !isTom, day: b2cDay, mpNextday: mpNextdayForStatuses(b2cDay, filtered.map(r => r.wh)), nextDay: nextDayForStatuses(b2cDay, filtered.map(r => r.wh)), wms: { ...b2cWmsWhOpts(), range: isTom ? 'post' : 'pre' } });
+    const _whs   = filtered.map(r => r.wh);
+    const _mpN   = closed ? sumStatusMaps(mpNextdayForStatuses('today', _whs), mpNextdayForStatuses('tomorrow', _whs)) : mpNextdayForStatuses(b2cDay, _whs);
+    const _nextN = closed ? sumStatusMaps(nextDayForStatuses('today', _whs), nextDayForStatuses('tomorrow', _whs)) : nextDayForStatuses(b2cDay, _whs);
+    document.getElementById('b2cKpis').innerHTML = b2cKpiCardsHtml(filtered, { interactive: !isTom, day: closed ? 'both' : b2cDay, mpNextday: _mpN, nextDay: _nextN, wms: { ...b2cWmsWhOpts(), range: closed ? null : (isTom ? 'post' : 'pre') } });
 
     // Table helpers
     const tdN = (n, color) => `<td style="padding:10px 14px;text-align:right;color:${color||'var(--text)'};font-size:.82rem">${fmt(n)}</td>`;
