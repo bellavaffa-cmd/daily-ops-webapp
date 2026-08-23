@@ -3643,7 +3643,7 @@
       if (deadline != null && opDays && opDays.length) { let g = 0; while (g++ < 8 && !opDays.includes(new Date(deadline).getDay())) deadline += DAY_MS; }
       return { ws, we, deadline };
     };
-    const custRow = (name, count, deadline) => {
+    const custRow = (name, count, deadline, url) => {
       const remain = deadline ? Math.round((deadline - _now) / 60000) : null;
       const dd = deadline ? new Date(deadline) : null;
       const when = dd ? `${DOW[dd.getDay()]} ${String(dd.getHours()).padStart(2, '0')}:${String(dd.getMinutes()).padStart(2, '0')}` : '—';
@@ -3656,19 +3656,30 @@
       } else { timeLbl = `${when} · passed`; verdict = count <= 0 ? '<span style="color:#86efac">done ✓</span>' : '<span style="color:#f87171">overdue</span>'; }
       return `<div style="padding:8px 0;border-top:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
-          <span style="font-size:.85rem;font-weight:700;color:var(--text)">${escHtml(name)}</span>
+          ${url ? `<a href="${url}" target="_blank" title="Open this cut-off's orders in WMS" style="font-size:.85rem;font-weight:700;color:var(--primary);text-decoration:none">${escHtml(name)}</a>` : `<span style="font-size:.85rem;font-weight:700;color:var(--text)">${escHtml(name)}</span>`}
           <span style="font-size:.85rem;font-weight:700;color:var(--text);white-space:nowrap">${fmt(count)} <span style="font-size:.72rem;font-weight:400;color:var(--muted)">open</span></span>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:2px;font-size:.72rem">
           <span style="color:var(--muted)">${timeLbl}</span><span style="white-space:nowrap">${verdict}</span>
         </div></div>`;
     };
+    // WMS deep-link for a cut-off: its tag(s) + the inflow created-date window, in
+    // the selected warehouse — so clicking the name opens exactly those orders.
+    const cutoffWmsUrl = (c, r) => {
+      const opts = { ...b2cWmsWhOpts() };
+      if (r && r.ws != null) opts.cdStart = new Date(r.ws).toISOString();
+      if (r && r.we != null) opts.cdEnd = new Date(r.we).toISOString();
+      let url = wmsStatusUrl('B2C', WMS_B2C_ALL_STATUS, 'All', opts);
+      const tags = Array.isArray(c.tags) ? c.tags : [];
+      if (tags.length) { const e2 = v => encodeURIComponent(encodeURIComponent(JSON.stringify(v))); url += '&tag=' + e2(tags) + '&tagqt=in&taglbl=' + encodeURIComponent((c.tag_names && c.tag_names.length ? c.tag_names : tags).join(', ')); }
+      return url;
+    };
     // Manager-defined custom cut-offs render as extra rows; their counts come from the
     // per-order fetch below, so the card is a builder we re-render once counts are known.
     const buildCutoffCard = (customCounts) => {
       const custom = Array.isArray(cfg.cutoffs) ? cfg.cutoffs.filter(_validCut) : [];
       const customRows = (customCounts && custom.length)
-        ? custom.map((c, i) => custRow(c.name, Number(customCounts[i] || 0), resolveCutoff(c).deadline)).join('')
+        ? custom.map((c, i) => { const r = resolveCutoff(c); return custRow(c.name, Number(customCounts[i] || 0), r.deadline, cutoffWmsUrl(c, r)); }).join('')
         : '';
       return `<div id="b2cInsightCutoff" class="card" style="padding:16px 18px"><div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Cut-off countdown${rate != null ? ` <span style="font-weight:400">· ${fmt(rate)}/hr packing</span>` : ''}</div>
         ${cutRow('Non-MP', cfg.nonmp_cutoff, openNon)}${cutRow('Priority MP', cfg.mp_cutoff, openMp)}${customRows}</div>`;
