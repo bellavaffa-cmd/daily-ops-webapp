@@ -2033,7 +2033,7 @@
     <div class="card" id="b2cFlowBox" style="padding:16px 18px;margin-bottom:20px;border:1px solid var(--brand,#94ffa1)">
       <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
         <div style="flex:0 1 auto;min-width:160px">
-          <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--brand,#94ffa1)">Hourly flow — new B2C orders vs picking &amp; packing</div>
+          <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--brand,#94ffa1)">Hourly flow</div>
           <div id="b2cFlowWindow" style="font-size:.7rem;color:var(--muted);margin-top:3px">Collecting data…</div>
         </div>
         <div style="flex:1;min-width:280px;display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px">
@@ -3873,6 +3873,16 @@
       ? `🟢 Open · ${cfg.operating_start}–${cfg.operating_end}`
       : `🔴 Closed · opens ${cfg.operating_start}`;
   }
+  // Short open/closed status (no hours) + "synced Xm ago" — the Hourly-flow subtitle.
+  function opsStatusShort() { return opsIsOpen() ? '🟢 Open' : '🔴 Closed'; }
+  function lastSyncText() {
+    const el = document.getElementById('lastSyncLabel');
+    const ts = el ? (+el.dataset.ts || 0) : 0;
+    if (!ts) return '';
+    const m = Math.floor((Date.now() - ts) / 60000);
+    return m < 1 ? 'synced just now' : ('synced ' + (m < 60 ? m + 'm' : (Math.floor(m / 60) + 'h ' + (m % 60) + 'm')) + ' ago');
+  }
+  function flowStatusLine() { const s = lastSyncText(); return opsStatusShort() + (s ? ' · ' + s : ''); }
 
   // Red banner when a type's cut-off has passed and orders of that type are
   // still open today. `filtered` = warehouse rows already in the current filter.
@@ -4074,7 +4084,7 @@
           else setEta(tStr(Date.now() + hrs * 3600 * 1000), fmtDur(hrs) + ' · ' + (hPick > hPack ? 'picking-bound' : 'packing-bound'), '#fbbf24');
         }
       }
-      wEl.textContent = `${opsStatusLabel()} · ${tStr(prev.t)} → ${tStr(latest.t)} · picking & packing count all order types`;
+      wEl.textContent = flowStatusLine();
     } else {
       if (pkEl) pkEl.textContent = '—';
       clEl.textContent = '—';
@@ -4082,9 +4092,7 @@
       const etaEl = document.getElementById('b2cFlowEta'), etaSub = document.getElementById('b2cFlowEtaSub');
       if (etaEl) { etaEl.textContent = '—'; etaEl.style.color = 'var(--text)'; }
       if (etaSub) etaSub.textContent = 'collecting rate…';
-      wEl.textContent = opsStatusLabel() + ' · ' + (latest
-        ? `Collecting… need ~1h of picking/packing history (last sync ${tStr(latest.t)})`
-        : (inflowArr[0] ? 'New orders shown; picking/packing needs the productivity sync' : 'Collecting data… (waiting for the first hourly sync)'));
+      wEl.textContent = flowStatusLine();
     }
   }
 
@@ -8009,10 +8017,9 @@ function fail(error) {
     for(const r of (b2cPackSnaps||[])){ if(!whMatch(r.warehouse_code))continue; const t=new Date(r.captured_at).getTime(); const k=r.warehouse_code+'@'+t; if(pseen.has(k))continue; pseen.add(k); const o=(prod[t]=prod[t]||{t,picked:0,packed:0,date:r.activity_date}); o.picked+=Number(r.picked_orders||0); o.packed+=Number(r.packed_orders||0); }
     const prodArr=Object.values(prod).sort((a,b)=>b.t-a.t); const latest=prodArr[0]; let prev=null,best=Infinity;
     if(latest){ const target=latest.t-3600000; for(let i=1;i<prodArr.length;i++){ const bkt=prodArr[i]; if(latest.date&&bkt.date&&bkt.date!==latest.date)continue; const gap=latest.t-bkt.t; if(gap<1800000||gap>6000000)continue; const d=Math.abs(bkt.t-target); if(d<best){best=d;prev=bkt;} } }
-    let picked='—',packed='—',net='—',netColor='var(--text)',windowStr='Collecting data…';
+    let picked='—',packed='—',net='—',netColor='var(--text)',windowStr=flowStatusLine();
     if(latest&&prev){ const packVal=Math.max(0,latest.packed-prev.packed); picked=fmt(Math.max(0,latest.picked-prev.picked)); packed=fmt(packVal);
-      if(newVal!=null){ const n=packVal-newVal; net=(n>0?'+':'')+fmt(n); netColor=n>0?'#86efac':(n<0?'#f87171':'var(--text)'); }
-      windowStr=`${tStr(prev.t)} → ${tStr(latest.t)} · picking & packing count all order types`; }
+      if(newVal!=null){ const n=packVal-newVal; net=(n>0?'+':'')+fmt(n); netColor=n>0?'#86efac':(n<0?'#f87171':'var(--text)'); } }
     return { inflow:newVal!=null?fmt(newVal):'—', picked, packed, net, netColor, windowStr };
   }
   function dashFlowHtml(selWh){
