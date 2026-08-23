@@ -93,6 +93,9 @@
       <div><label>Closes</label><input type="time" id="cfgClose"></div>
       <div><label>Timezone <span class="hint">(auto by country)</span></label><select id="cfgTz"></select></div>
     </div>
+    <div style="margin-top:12px"><label style="display:block;margin-bottom:6px">Operating days <span class="hint">(the past-cut-off alert is hidden on non-operating days)</span></label>
+      <div id="cfgDays" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+    </div>
     <div class="row" style="margin-top:12px"><button class="btn primary" onclick="saveOperating()">Save</button><span class="msg" id="operatingMsg"></span></div>
   </div>
 
@@ -394,6 +397,17 @@
     if (sel && ![...sel.options].some(o => o.value === tz)) sel.add(new Option(tz, tz));
     sel.value = tz;
     renderBreakRows(r.breaks);
+    renderOpDays(r.operating_days);
+  }
+  // Operating-day toggles (weekday numbers, JS getDay: 0=Sun … 6=Sat). No saved
+  // value → all 7 on (the past-cut-off alert never suppressed).
+  function renderOpDays(days) {
+    const DAYS = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [0, 'Sun']];
+    const set = Array.isArray(days) && days.length ? new Set(days.map(Number)) : new Set([0, 1, 2, 3, 4, 5, 6]);
+    const el = $('cfgDays'); if (!el) return;
+    el.innerHTML = DAYS.map(([n, lbl]) =>
+      `<label style="display:flex;align-items:center;gap:5px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:.82rem;background:var(--surface2)"><input type="checkbox" class="op-day" value="${n}"${set.has(n) ? ' checked' : ''}> ${lbl}</label>`
+    ).join('');
   }
   // Dynamic break windows — any number per warehouse.
   function breakRowHtml(s, e) {
@@ -410,10 +424,11 @@
   // Each card upserts only its own columns; PostgREST leaves omitted columns
   // untouched on an existing row, so the three saves don't clobber each other.
   async function saveOperating() {
+    const operating_days = [...$('cfgDays').querySelectorAll('.op-day:checked')].map(c => Number(c.value)).sort((a, b) => a - b);
     try {
       await sbSend('POST', '/warehouse_config?on_conflict=wh', [{
         wh: CURRENT_WH, operating_start: $('cfgOpen').value || '09:00', operating_end: $('cfgClose').value || '18:00',
-        tz: $('cfgTz').value || 'Asia/Manila', updated_at: new Date().toISOString()
+        tz: $('cfgTz').value || 'Asia/Manila', operating_days, updated_at: new Date().toISOString()
       }], 'resolution=merge-duplicates,return=minimal');
       flash('operatingMsg', 'Saved ✓', true);
     } catch (e) { flash('operatingMsg', 'Save failed', false); }

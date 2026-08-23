@@ -3929,6 +3929,15 @@
     const el = document.getElementById('b2cRiskBanner');
     if (!el || !opsConfig) return;
     const cfg = selectedOpsCfg();
+    // Non-operating day (e.g. weekend) → no cut-off risk. Weekday is evaluated in
+    // the warehouse's timezone. No operating_days set → treated as every day.
+    const opDays = Array.isArray(cfg.operating_days) ? cfg.operating_days.map(Number) : null;
+    if (opDays && opDays.length) {
+      let wd;
+      try { wd = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[new Intl.DateTimeFormat('en-US', { timeZone: cfg.tz || undefined, weekday: 'short' }).format(new Date())]; }
+      catch (e) { wd = new Date().getDay(); }
+      if (wd != null && !opDays.includes(wd)) { el.innerHTML = ''; return; }
+    }
     const KEYS = ['new', 'rfp', 'picking', 'picked', 'packing'];
     const sumType = suffix => (filtered || []).reduce((a, r) => a + KEYS.reduce((s, k) => s + (r[k + suffix] || 0), 0), 0);
     const now = nowMinsLocal();
