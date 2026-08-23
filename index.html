@@ -3586,7 +3586,7 @@
     const isOpWeekday = wd => !opDays || !opDays.length || opDays.includes(wd);
     const hm2min = s => { const m = /^(\d{1,2}):(\d{2})/.exec(s || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; };
     const dur = m => m <= 0 ? 'now' : (m < 60 ? m + 'm' : Math.floor(m / 60) + 'h ' + (m % 60) + 'm');
-    const cutRow = (lbl, cutStr, open) => {
+    const cutRow = (lbl, cutStr, open, url) => {
       const cm = hm2min(cutStr); if (cm == null) return '';
       let timeLbl, verdict;
       if (info.operating && nowMin < cm) {
@@ -3609,7 +3609,7 @@
       }
       return `<div style="padding:8px 0;border-top:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
-          <span style="font-size:.85rem;font-weight:700;color:var(--text)">${lbl}</span>
+          ${url ? `<a href="${url}" target="_blank" title="Open these orders in WMS" style="font-size:.85rem;font-weight:700;color:var(--primary);text-decoration:none">${lbl}</a>` : `<span style="font-size:.85rem;font-weight:700;color:var(--text)">${lbl}</span>`}
           <span style="font-size:.85rem;font-weight:700;color:var(--text);white-space:nowrap">${fmt(open)} <span style="font-size:.72rem;font-weight:400;color:var(--muted)">open</span></span>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:2px;font-size:.72rem">
@@ -3681,8 +3681,13 @@
       const customRows = (customCounts && custom.length)
         ? custom.map((c, i) => { const r = resolveCutoff(c); return custRow(c.name, Number(customCounts[i] || 0), r.deadline, cutoffWmsUrl(c, r)); }).join('')
         : '';
+      // Non-MP / Priority MP names deep-link to WMS: their tag + today's created-date
+      // range (all dates when closed/merged), in the selected warehouse.
+      const _wh = b2cWmsWhOpts();
+      const _nonUrl = wmsTagUrl('B2C', WMS_B2C_ALL_STATUS, 'All', 'Non-MP', { ..._wh, ...wmsCdRange(insClosed ? null : 'pre', cfg.nonmp_cutoff) });
+      const _mpUrl  = wmsTagUrl('B2C', WMS_B2C_ALL_STATUS, 'All', 'Priority MP', { ..._wh, ...wmsCdRange(insClosed ? null : 'pre', cfg.mp_cutoff) });
       return `<div id="b2cInsightCutoff" class="card" style="padding:16px 18px"><div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Cut-off countdown${rate != null ? ` <span style="font-weight:400">· ${fmt(rate)}/hr packing</span>` : ''}</div>
-        ${cutRow('Non-MP', cfg.nonmp_cutoff, openNon)}${cutRow('Priority MP', cfg.mp_cutoff, openMp)}${customRows}</div>`;
+        ${cutRow('Non-MP', cfg.nonmp_cutoff, openNon, _nonUrl)}${cutRow('Priority MP', cfg.mp_cutoff, openMp, _mpUrl)}${customRows}</div>`;
     };
     const cutoffHtml = buildCutoffCard(null);
 
