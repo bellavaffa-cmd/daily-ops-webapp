@@ -3388,19 +3388,17 @@
     const note = document.getElementById('b2cClosedNote'); if (note) note.style.display = 'none';
     if (isTom) { if (title) title.textContent = "Tomorrow's Order"; }
     else {
-      // Today view: if the (selected) warehouse isn't operating today, retitle to the
-      // next operating day, since these orders will be worked then — not "today".
-      const cfg = selectedOpsCfg();
-      const opDays = Array.isArray(cfg.operating_days) ? cfg.operating_days.map(Number) : null;
+      // Today view: if the (selected) warehouse isn't operating today (hybrid
+      // detection), retitle to the next operating day — these orders get worked then.
+      const info = operatingTodayInfo();
       const DOWF = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      let wdToday; try { wdToday = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[new Intl.DateTimeFormat('en-US', { timeZone: cfg.tz, weekday: 'short' }).format(new Date())]; } catch (e) { wdToday = new Date().getDay(); }
-      const isOpToday = !opDays || !opDays.length || opDays.includes(wdToday);
-      if (isOpToday) { if (title) title.textContent = "Today's Order"; }
+      if (info.operating) { if (title) title.textContent = "Today's Order"; }
       else {
-        let d = 1; while (d <= 7 && !opDays.includes((wdToday + d) % 7)) d++;
-        const wd = (wdToday + d) % 7;
+        const opDays = info.opDays || [];
+        let d = 1; while (d <= 7 && opDays.length && !opDays.includes((info.todayWd + d) % 7)) d++;
+        const wd = (info.todayWd + d) % 7;
         if (title) title.textContent = `${DOWF[wd]}'s Order`;
-        if (note) { note.textContent = `Closed today — showing ${DOWF[wd]}'s queue (next operating day, opens ${cfg.operating_start || '09:00'})`; note.style.display = ''; }
+        if (note) { note.textContent = `Closed today — showing ${DOWF[wd]}'s queue (next operating day, opens ${info.cfg.operating_start || '09:00'})`; note.style.display = ''; }
       }
     }
     if (isTom) {
@@ -3550,30 +3548,28 @@
     const openNon = sumTag('_nonmp'), openMp = sumTag('_prioritymp');
     const stats = b2cFlowStats(); const rate = stats.packedPerHr;
     const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    let nowMin, todayWd;
-    try { const p = new Intl.DateTimeFormat('en-GB', { timeZone: cfg.tz, hour12: false, hour: '2-digit', minute: '2-digit', weekday: 'short' }).formatToParts(new Date()); nowMin = (+p.find(x => x.type === 'hour').value % 24) * 60 + (+p.find(x => x.type === 'minute').value); todayWd = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[p.find(x => x.type === 'weekday').value]; }
-    catch (e) { const d = new Date(); nowMin = d.getHours() * 60 + d.getMinutes(); todayWd = d.getDay(); }
-    const opDays = Array.isArray(cfg.operating_days) ? cfg.operating_days.map(Number) : null;
-    const isOp = wd => !opDays || !opDays.length || opDays.includes(wd);
+    const info = operatingTodayInfo();
+    const nowMin = info.nowMin, todayWd = info.todayWd, opDays = info.opDays;
+    const isOpWeekday = wd => !opDays || !opDays.length || opDays.includes(wd);
     const hm2min = s => { const m = /^(\d{1,2}):(\d{2})/.exec(s || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; };
     const dur = m => m <= 0 ? 'now' : (m < 60 ? m + 'm' : Math.floor(m / 60) + 'h ' + (m % 60) + 'm');
     const cutRow = (lbl, cutStr, open) => {
       const cm = hm2min(cutStr); if (cm == null) return '';
       let timeLbl, verdict;
-      if (isOp(todayWd) && nowMin < cm) {
-        // Operating day, before cut-off → live countdown + verdict.
+      if (info.operating && nowMin < cm) {
+        // Operating today, before cut-off → live countdown + verdict.
         const remain = cm - nowMin;
         timeLbl = `${cutStr} · in ${dur(remain)}`;
         if (open <= 0) verdict = '<span style="color:#86efac">clear ✓</span>';
         else if (rate == null || rate <= 0) verdict = '<span style="color:var(--muted)">rate n/a</span>';
         else verdict = (open / rate * 60) <= remain ? '<span style="color:#86efac">on track ✓</span>' : '<span style="color:#fbbf24">at risk ✗</span>';
-      } else if (isOp(todayWd)) {
-        // Operating day, cut-off passed → missed-cut-off alert.
+      } else if (info.operating) {
+        // Operating today, cut-off passed → missed-cut-off alert.
         timeLbl = `${cutStr} · passed`;
         verdict = open <= 0 ? '<span style="color:#86efac">clear ✓</span>' : '<span style="color:#f87171">past cut-off</span>';
       } else {
-        // Non-operating day → count down to the next operating day's cut-off.
-        let d = 1; while (d <= 7 && !isOp((todayWd + d) % 7)) d++;
+        // Not operating today → count down to the next operating day's cut-off.
+        let d = 1; while (d <= 7 && opDays && opDays.length && !isOpWeekday((todayWd + d) % 7)) d++;
         const wd = (todayWd + d) % 7, remain = d * 1440 + cm - nowMin;
         timeLbl = `${DOW[wd]} ${cutStr} · in ${dur(remain)}`;
         verdict = open <= 0 ? '<span style="color:#86efac">none open</span>' : `<span style="color:var(--muted)">for ${DOW[wd]}</span>`;
@@ -3693,6 +3689,44 @@
   function opsFor(wh) { return (wh && whOps[wh]) || whOps['*'] || opsConfig; }
   // Config for the current B2C view: the selected warehouse if exactly one, else the default.
   function selectedOpsCfg() { const sel = (typeof getSelectedWhs === 'function' ? getSelectedWhs() : []); return sel.length === 1 ? opsFor(sel[0]) : (whOps['*'] || opsConfig); }
+
+  // Hybrid operating-day detection. `operating_days` is the weekly baseline;
+  // pick/pack activity overrides it (unexpected work → open; a quiet operating
+  // weekday past open+2h → treated as a holiday → closed). whActivityToday holds
+  // each warehouse's pick+pack count on ITS current local date.
+  let whActivityToday = {};
+  function _dateInTz(tz) { try { return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date()); } catch (e) { return new Intl.DateTimeFormat('en-CA').format(new Date()); } }
+  async function loadActivityToday() {
+    try {
+      const perf = await fetch(SB_URL + '/user_performance?select=warehouse_code,activity_date,picked_orders,packed_orders&order=activity_date.desc&limit=6000', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      const map = {}, todayByTz = {};
+      for (const r of (perf || [])) {
+        const wh = r.warehouse_code; if (!wh) continue;
+        const tz = (opsFor(wh) || {}).tz || 'Asia/Manila';
+        const today = todayByTz[tz] || (todayByTz[tz] = _dateInTz(tz));
+        if (r.activity_date === today) map[wh] = (map[wh] || 0) + Number(r.picked_orders || 0) + Number(r.packed_orders || 0);
+      }
+      whActivityToday = map;
+    } catch (e) { /* keep last */ }
+  }
+  const GRACE_MIN = 120;   // a quiet operating-weekday is a holiday only after open + 2h
+  function operatingTodayInfo() {
+    const sel = (typeof getSelectedWhs === 'function' ? getSelectedWhs() : []);
+    const wh = sel.length === 1 ? sel[0] : null;
+    const cfg = selectedOpsCfg();
+    const opDays = Array.isArray(cfg.operating_days) ? cfg.operating_days.map(Number) : null;
+    let todayWd, nowMin;
+    try { const p = new Intl.DateTimeFormat('en-GB', { timeZone: cfg.tz, hour12: false, hour: '2-digit', minute: '2-digit', weekday: 'short' }).formatToParts(new Date()); todayWd = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[p.find(x => x.type === 'weekday').value]; nowMin = (+p.find(x => x.type === 'hour').value % 24) * 60 + (+p.find(x => x.type === 'minute').value); }
+    catch (e) { const d = new Date(); todayWd = d.getDay(); nowMin = d.getHours() * 60 + d.getMinutes(); }
+    const wdOp = !opDays || !opDays.length || opDays.includes(todayWd);
+    const hasActivity = wh ? ((whActivityToday[wh] || 0) > 0) : true;   // "all warehouses" → treat as operating
+    const m = /^(\d{1,2}):(\d{2})/.exec(cfg.operating_start || '09:00'); const openMin = m ? (+m[1]) * 60 + (+m[2]) : 540;
+    let operating;
+    if (hasActivity) operating = true;                 // any pick/pack today → operational
+    else if (!wdOp) operating = false;                 // configured closed, no activity → closed
+    else operating = nowMin < (openMin + GRACE_MIN);   // configured open, no activity: grace before calling it a holiday
+    return { operating, todayWd, nowMin, cfg, opDays, wh, hasActivity };
+  }
 
   // Apply the Manager-Console role config: reveal the console link for
   // Admin/Manager, and for other roles hide any tabs role_tabs doesn't allow.
@@ -4104,15 +4138,9 @@
     const el = document.getElementById('b2cRiskBanner');
     if (!el || !opsConfig) return;
     const cfg = selectedOpsCfg();
-    // Non-operating day (e.g. weekend) → no cut-off risk. Weekday is evaluated in
-    // the warehouse's timezone. No operating_days set → treated as every day.
-    const opDays = Array.isArray(cfg.operating_days) ? cfg.operating_days.map(Number) : null;
-    if (opDays && opDays.length) {
-      let wd;
-      try { wd = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[new Intl.DateTimeFormat('en-US', { timeZone: cfg.tz || undefined, weekday: 'short' }).format(new Date())]; }
-      catch (e) { wd = new Date().getDay(); }
-      if (wd != null && !opDays.includes(wd)) { el.innerHTML = ''; return; }
-    }
+    // Non-operating day (weekend or holiday, hybrid activity/config detection) →
+    // no cut-off risk to flag.
+    if (!operatingTodayInfo().operating) { el.innerHTML = ''; return; }
     const KEYS = ['new', 'rfp', 'picking', 'picked', 'packing'];
     const sumType = suffix => (filtered || []).reduce((a, r) => a + KEYS.reduce((s, k) => s + (r[k + suffix] || 0), 0), 0);
     const now = nowMinsLocal();
@@ -4175,6 +4203,7 @@
           return o;
         }).filter(o => whAllowed(o.wh));   // hard-restrict to the user's warehouses
         populateViewWarehouseSelects(); // rebuild optgroups now that b2cData has real country info
+        await loadActivityToday();       // refresh per-warehouse pick/pack activity for hybrid operating-day detection
         renderB2C();
         renderB2B();       // b2b_data has no country field of its own; re-group once b2cData's arrives
         renderShortage();  // same — shortage_data has no country field either
