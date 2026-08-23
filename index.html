@@ -2060,6 +2060,9 @@
       </div>
     </div>
 
+    <!-- B2C insights: cut-off countdown, bottleneck, brands, aging, mix, trend, staffing -->
+    <div id="b2cInsights" style="margin-bottom:20px"></div>
+
     <!-- Warehouse Breakdown -->
     <div class="card" style="padding:0;overflow:hidden">
       <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Warehouse Breakdown</div>
@@ -3482,7 +3485,130 @@
       html = `<tr><td colspan="7" style="padding:22px;text-align:center;color:var(--muted);font-size:.85rem">No orders held for tomorrow — nothing has dropped after cut-off yet.</td></tr>`;
     }
     document.getElementById('b2cWHTable').innerHTML = html;
-    if (!isTom) renderB2CFlow();
+    if (!isTom) { renderB2CFlow(); renderB2CInsights(); }
+    else { const ins = document.getElementById('b2cInsights'); if (ins) ins.innerHTML = ''; }
+  }
+
+  // Current flow rates (inflow/hr, packed/hr, net) from the snapshot history,
+  // respecting the warehouse filter. Standalone so the insights cards can reuse it.
+  function b2cFlowStats() {
+    const dedupe = rows => { const seen = new Set(), out = []; for (const r of (rows || [])) { if (!inWhFilter(r.warehouse_code)) continue; const t = new Date(r.captured_at).getTime(); const k = r.warehouse_code + '@' + t; if (seen.has(k)) continue; seen.add(k); out.push({ t, r }); } return out; };
+    const inb = {}; for (const { t, r } of dedupe(b2cFlow)) (inb[t] = inb[t] || { t, val: 0 }).val += Number(r.inflow_1h || 0);
+    const inflowArr = Object.values(inb).sort((a, b) => b.t - a.t);
+    const prod = {}; for (const { t, r } of dedupe(b2cPackSnaps)) { const o = (prod[t] = prod[t] || { t, packed: 0, date: r.activity_date }); o.packed += Number(r.packed_orders || 0); }
+    const parr = Object.values(prod).sort((a, b) => b.t - a.t);
+    const latest = parr[0]; let prev = null, best = Infinity;
+    if (latest) { const target = latest.t - 3600000; for (let i = 1; i < parr.length; i++) { const bk = parr[i]; if (latest.date && bk.date && bk.date !== latest.date) continue; const gap = latest.t - bk.t; if (gap < 1800000 || gap > 6000000) continue; const d = Math.abs(bk.t - target); if (d < best) { best = d; prev = bk; } } }
+    const packedPerHr = (latest && prev) ? Math.max(0, latest.packed - prev.packed) : null;
+    const inflow = inflowArr[0] ? inflowArr[0].val : null;
+    return { inflow, packedPerHr, net: (packedPerHr != null && inflow != null) ? packedPerHr - inflow : null, inflowArr };
+  }
+
+  // The insights section under the KPI cards. Synchronous cards (cut-off, funnel,
+  // trend) paint immediately; brands/aging/mix/staffing fill in after their fetch.
+  async function renderB2CInsights() {
+    const host = document.getElementById('b2cInsights'); if (!host) return;
+    const fmt = n => Number(n || 0).toLocaleString();
+    const cfg = selectedOpsCfg();
+    const filtered = (b2cData || []).filter(r => (!r.type || r.type === 'warehouse') && r.wh && inWhFilter(r.wh));
+
+    // Bottleneck funnel
+    const stages = [
+      { k: 'new', lbl: 'Open', c: '#fb923c' }, { k: 'rfp', lbl: 'Ready to Pick', c: '#fcd34d' },
+      { k: 'picking', lbl: 'Picking', c: '#93c5fd' }, { k: 'picked', lbl: 'Ready to Pack', c: '#86efac' },
+      { k: 'packing', lbl: 'Packing', c: '#c4b5fd' },
+    ].map(s => ({ ...s, n: filtered.reduce((a, r) => a + (r[s.k] || 0), 0) }));
+    const maxStage = Math.max(1, ...stages.map(s => s.n));
+    const bn = stages.reduce((m, s) => s.n > m.n ? s : m, stages[0]);
+    const funnelHtml = `<div class="card" style="padding:16px 18px"><div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">Where orders are piling up</div>
+      ${stages.map(s => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="width:92px;font-size:.72rem;color:var(--muted)">${s.lbl}</div>
+        <div style="flex:1;background:var(--surface2);border-radius:5px;height:16px;overflow:hidden"><div style="height:100%;width:${(s.n / maxStage * 100).toFixed(1)}%;background:${s.c};opacity:${s.k === bn.k ? 1 : .45}"></div></div>
+        <div style="width:50px;text-align:right;font-size:.78rem;font-weight:700;color:var(--text)">${fmt(s.n)}</div></div>`).join('')}
+      <div style="font-size:.72rem;color:var(--muted);margin-top:6px">Biggest queue: <b style="color:${bn.c}">${bn.lbl}</b> (${fmt(bn.n)})</div></div>`;
+
+    // Cut-off countdown + clear verdict
+    const sumTag = suf => filtered.reduce((a, r) => a + ['new', 'rfp', 'picking', 'picked', 'packing'].reduce((s, k) => s + (r[k + suf] || 0), 0), 0);
+    const openNon = sumTag('_nonmp'), openMp = sumTag('_prioritymp');
+    const stats = b2cFlowStats(); const rate = stats.packedPerHr;
+    let nowMin; try { const p = new Intl.DateTimeFormat('en-GB', { timeZone: cfg.tz, hour12: false, hour: '2-digit', minute: '2-digit' }).formatToParts(new Date()); nowMin = (+p.find(x => x.type === 'hour').value % 24) * 60 + (+p.find(x => x.type === 'minute').value); } catch (e) { const d = new Date(); nowMin = d.getHours() * 60 + d.getMinutes(); }
+    const hm2min = s => { const m = /^(\d{1,2}):(\d{2})/.exec(s || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; };
+    const dur = m => m <= 0 ? 'now' : (m < 60 ? m + 'm' : Math.floor(m / 60) + 'h ' + (m % 60) + 'm');
+    const cutRow = (lbl, cutStr, open) => {
+      const cm = hm2min(cutStr); if (cm == null) return '';
+      const remain = cm - nowMin;
+      let verdict;
+      if (open <= 0) verdict = '<span style="color:#86efac">clear ✓</span>';
+      else if (remain <= 0) verdict = '<span style="color:#f87171">past cut-off</span>';
+      else if (rate == null || rate <= 0) verdict = '<span style="color:var(--muted)">rate n/a</span>';
+      else verdict = (open / rate * 60) <= remain ? '<span style="color:#86efac">on track ✓</span>' : '<span style="color:#fbbf24">at risk ✗</span>';
+      return `<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid var(--border)"><div><b style="color:var(--text)">${lbl}</b> <span style="color:var(--muted);font-size:.72rem">${cutStr} · ${remain <= 0 ? 'passed' : 'in ' + dur(remain)}</span></div><div style="text-align:right"><b style="color:var(--text)">${fmt(open)}</b> open · ${verdict}</div></div>`;
+    };
+    const cutoffHtml = `<div class="card" style="padding:16px 18px"><div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Cut-off countdown${rate != null ? ` <span style="font-weight:400">· ${fmt(rate)}/hr packing</span>` : ''}</div>
+      ${cutRow('Non-MP', cfg.nonmp_cutoff, openNon)}${cutRow('Priority MP', cfg.mp_cutoff, openMp)}</div>`;
+
+    // Inflow trend sparkline
+    const series = stats.inflowArr.slice(0, 16).reverse().map(b => b.val);
+    let sparkHtml = '<span style="color:var(--muted);font-size:.75rem">collecting…</span>';
+    if (series.length >= 2) { const mx = Math.max(1, ...series), W = 200, H = 44; const pts = series.map((v, i) => `${(i / (series.length - 1) * W).toFixed(1)},${(H - v / mx * H).toFixed(1)}`).join(' '); sparkHtml = `<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="#fb923c" stroke-width="2"/></svg>`; }
+    const trendHtml = `<div class="card" style="padding:16px 18px"><div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">New-order inflow trend</div>${sparkHtml}<div style="font-size:.72rem;color:var(--muted);margin-top:4px">orders created / hr · recent syncs</div></div>`;
+
+    host.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:4px">
+      ${cutoffHtml}${funnelHtml}
+      <div id="b2cInsightBrands" class="card" style="padding:16px 18px"><div style="color:var(--muted);font-size:.8rem">Loading brands…</div></div>
+      <div id="b2cInsightAging" class="card" style="padding:16px 18px"><div style="color:var(--muted);font-size:.8rem">Loading aging…</div></div>
+      <div id="b2cInsightMix" class="card" style="padding:16px 18px"><div style="color:var(--muted);font-size:.8rem">Loading mix…</div></div>
+      ${trendHtml}
+      <div id="b2cInsightStaff" class="card" style="padding:16px 18px"><div style="color:var(--muted);font-size:.8rem">Loading staffing…</div></div>
+    </div>`;
+
+    // Per-order fetch → aging, single/multi, top brands
+    try {
+      let orders = []; const base = SB_URL + '/b2c_orders?select=brand,client_id,created_at,total_qty,wh&is_tomorrow=is.false&order=created_at.asc';
+      for (let off = 0; off <= 30000; off += 1000) { const b = await fetch(base + '&limit=1000&offset=' + off, { headers: SB_HDR }).then(r => r.ok ? r.json() : []); orders = orders.concat(b); if (b.length < 1000) break; }
+      orders = orders.filter(o => inWhFilter(o.wh));
+      const now = Date.now();
+      // Aging
+      const buckets = { '<1h': 0, '1–2h': 0, '2–4h': 0, '4h+': 0 }; let oldest = 0;
+      for (const o of orders) { const t = Date.parse(o.created_at || ''); if (!t) continue; const h = (now - t) / 3600000; if (h > oldest) oldest = h; if (h < 1) buckets['<1h']++; else if (h < 2) buckets['1–2h']++; else if (h < 4) buckets['2–4h']++; else buckets['4h+']++; }
+      const agEl = document.getElementById('b2cInsightAging');
+      if (agEl) agEl.innerHTML = `<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">Order aging</div>
+        ${Object.entries(buckets).map(([k, v]) => `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:.82rem"><span style="color:${k === '4h+' ? '#f87171' : 'var(--muted)'}">${k}</span><b style="color:var(--text)">${fmt(v)}</b></div>`).join('')}
+        <div style="font-size:.72rem;color:var(--muted);margin-top:6px">Oldest open: <b style="color:${oldest >= 4 ? '#f87171' : 'var(--text)'}">${oldest < 1 ? Math.round(oldest * 60) + 'm' : oldest.toFixed(1) + 'h'}</b></div>`;
+      // Single vs multi
+      let single = 0, multi = 0, unk = 0; for (const o of orders) { const q = o.total_qty; if (q == null) unk++; else if (Number(q) === 1) single++; else multi++; }
+      const totm = single + multi; const mixEl = document.getElementById('b2cInsightMix');
+      if (mixEl) mixEl.innerHTML = `<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">Single vs multi item</div>
+        <div style="display:flex;height:18px;border-radius:5px;overflow:hidden;margin-bottom:8px"><div style="width:${totm ? single / totm * 100 : 50}%;background:#86efac"></div><div style="width:${totm ? multi / totm * 100 : 50}%;background:#c4b5fd"></div></div>
+        <div style="display:flex;justify-content:space-between;font-size:.82rem"><span style="color:#86efac">Single <b>${fmt(single)}</b></span><span style="color:#c4b5fd">Multi <b>${fmt(multi)}</b></span></div>${unk ? `<div style="font-size:.7rem;color:var(--muted);margin-top:4px">${fmt(unk)} unknown</div>` : ''}`;
+      // Top brands
+      const byBrand = {}; for (const o of orders) { const b = o.brand || '(no brand)'; (byBrand[b] = byBrand[b] || { n: 0, cid: null }); byBrand[b].n++; if (o.client_id) byBrand[b].cid = o.client_id; }
+      const top = Object.entries(byBrand).map(([brand, v]) => ({ brand, n: v.n, cid: v.cid })).sort((a, b) => b.n - a.n).slice(0, 8);
+      const maxB = Math.max(1, ...top.map(b => b.n)); const enc2 = v => encodeURIComponent(encodeURIComponent(JSON.stringify(v)));
+      const brEl = document.getElementById('b2cInsightBrands');
+      if (brEl) brEl.innerHTML = `<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">Top brands · open orders</div>
+        ${top.length ? top.map(b => { const url = b.cid ? (wmsStatusUrl('B2C', WMS_B2C_ALL_STATUS, 'All', b2cWmsWhOpts()) + '&cli=' + enc2([b.cid]) + '&cliqt=in&clilbl=' + encodeURIComponent(b.brand)) : null;
+          const name = url ? `<a href="${url}" target="_blank" style="color:var(--primary);text-decoration:none">${escHtml(b.brand)}</a>` : escHtml(b.brand);
+          return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px"><div style="flex:1;min-width:0;font-size:.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>
+            <div style="width:70px;background:var(--surface2);border-radius:4px;height:12px;overflow:hidden"><div style="height:100%;width:${(b.n / maxB * 100).toFixed(0)}%;background:var(--primary);opacity:.6"></div></div>
+            <div style="width:42px;text-align:right;font-size:.78rem;font-weight:700;color:var(--text)">${fmt(b.n)}</div></div>`; }).join('') : '<div style="color:var(--muted);font-size:.8rem">No open orders</div>'}`;
+    } catch (e) { /* leave loading placeholders */ }
+
+    // Staffing + yesterday pace (user_performance, latest 2 activity dates)
+    try {
+      const perf = await fetch(SB_URL + '/user_performance?select=warehouse_code,executed_by,activity_date,picked_orders,packed_orders&order=activity_date.desc&limit=6000', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      const rows = (perf || []).filter(r => inWhFilter(r.warehouse_code));
+      const dates = [...new Set(rows.map(r => r.activity_date))].sort().reverse();
+      const dayStat = d => { const rs = rows.filter(r => r.activity_date === d); const pk = new Set(), pc = new Set(); let packed = 0; for (const r of rs) { if (Number(r.picked_orders) > 0) pk.add(r.executed_by); if (Number(r.packed_orders) > 0) pc.add(r.executed_by); packed += Number(r.packed_orders || 0); } return { pickers: pk.size, packers: pc.size, packed }; };
+      const t = dates[0] ? dayStat(dates[0]) : { pickers: 0, packers: 0, packed: 0 };
+      const y = dates[1] ? dayStat(dates[1]) : null;
+      const stEl = document.getElementById('b2cInsightStaff');
+      if (stEl) stEl.innerHTML = `<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">Staffing &amp; output today</div>
+        <div style="display:flex;gap:16px;margin-bottom:8px">
+          <div><div style="font-size:1.5rem;font-weight:700;color:var(--text)">${t.pickers}</div><div style="font-size:.7rem;color:var(--muted)">pickers</div></div>
+          <div><div style="font-size:1.5rem;font-weight:700;color:var(--text)">${t.packers}</div><div style="font-size:.7rem;color:var(--muted)">packers</div></div>
+          <div><div style="font-size:1.5rem;font-weight:700;color:var(--text)">${fmt(t.packed)}</div><div style="font-size:.7rem;color:var(--muted)">packed</div></div></div>
+        ${y ? `<div style="font-size:.72rem;color:var(--muted)">Yesterday (full day): <b style="color:var(--text)">${fmt(y.packed)}</b> packed · ${y.packers} packers</div>` : ''}`;
+    } catch (e) { /* leave placeholder */ }
   }
 
   // ── Tomorrow's held orders: B2C orders that dropped after their cut-off ────
