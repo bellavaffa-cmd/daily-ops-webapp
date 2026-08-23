@@ -3311,7 +3311,7 @@
     try {
       const statusFilter = statusKey === 'total' ? '' : ('&status=eq.' + encodeURIComponent(statusKey));
       const dayFilter = '&is_tomorrow=is.' + (day === 'tomorrow' ? 'true' : 'false');
-      const base = SB_URL + '/b2c_orders?select=order_id,wh,brand,is_priority_mp,is_nonmp,is_next_day' + statusFilter + dayFilter + '&order=order_id.asc';
+      const base = SB_URL + '/b2c_orders?select=order_id,wh,brand,client_id,is_priority_mp,is_nonmp,is_next_day' + statusFilter + dayFilter + '&order=order_id.asc';
       const PAGE = 1000;   // page past PostgREST's 1000-row response cap so nothing is dropped
       for (let off = 0; off <= 30000; off += PAGE) {
         const batch = await fetch(base + '&limit=' + PAGE + '&offset=' + off, { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
@@ -3326,7 +3326,7 @@
       (byBrand[brand] = byBrand[brand] || []).push(o);
     }
     const list = Object.keys(byBrand)
-      .map(brand => ({ brand, orders: byBrand[brand] }))
+      .map(brand => ({ brand, orders: byBrand[brand], clientId: (byBrand[brand].find(o => o.client_id) || {}).client_id || null }))
       .sort((x, y) => y.orders.length - x.orders.length || x.brand.localeCompare(y.brand));
     const grandCount = list.reduce((a, r) => a + r.orders.length, 0);
     const fmt = n => Number(n || 0).toLocaleString();
@@ -3334,6 +3334,11 @@
     if (!body) return;
     if (!list.length) { body.innerHTML = '<div style="color:var(--muted);padding:24px 0;text-align:center">No orders in this bucket yet.</div>'; return; }
     const whShort = w => { const m = /\(([^)]+)\)/.exec(w || ''); return m ? m[1] : (w || ''); };
+    // Brand link = the same status list as this card + a client filter; order
+    // link opens that one order (both mirror WMS's own URL params).
+    const _enc2 = v => encodeURIComponent(encodeURIComponent(JSON.stringify(v)));
+    const brandWmsUrl = (brand, clientId) => clientId ? (wmsUrl + '&cli=' + _enc2([clientId]) + '&cliqt=in&clilbl=' + encodeURIComponent(brand)) : wmsUrl;
+    const orderWmsUrl = code => 'https://wms.golocad.com/en/wms/shipment-order/list?code=' + encodeURIComponent(code) + '&codeqt=eq&ps=100';
     const tagCell = o => {
       // A Next-Day order is shown as Next Day only — not also tagged MP.
       if (o.is_next_day) return '<span style="color:#f0abfc">Next Day</span>';
@@ -3348,10 +3353,10 @@
         <tbody>
           ${list.map((r, i) => `
             <tr onclick="toggleBrandGroup(${i}, this)" style="cursor:pointer">
-              <td colspan="4" style="padding:10px;font-size:.82rem;font-weight:700;color:var(--text);background:var(--surface2);border-bottom:1px solid var(--border)"><span class="bg-caret" style="display:inline-block;width:1em;color:var(--muted);font-size:.72rem">▸</span> ${escHtml(r.brand)} <span style="color:var(--muted);font-weight:400">· ${fmt(r.orders.length)}</span></td>
+              <td colspan="4" style="padding:10px;font-size:.82rem;font-weight:700;color:var(--text);background:var(--surface2);border-bottom:1px solid var(--border)"><span class="bg-caret" style="display:inline-block;width:1em;color:var(--muted);font-size:.72rem">▸</span> ${r.clientId ? `<a href="${brandWmsUrl(r.brand, r.clientId)}" target="_blank" onclick="event.stopPropagation()" title="Open ${escHtml(r.brand)} in WMS" style="color:var(--primary);text-decoration:none">${escHtml(r.brand)}</a>` : escHtml(r.brand)} <span style="color:var(--muted);font-weight:400">· ${fmt(r.orders.length)}</span></td>
             </tr>
             ${r.orders.map(o => `<tr data-bg="${i}" style="display:none;border-bottom:1px solid var(--border)">
-              <td style="padding:5px 8px 5px 24px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.78rem;color:var(--text);white-space:nowrap">${escHtml(o.order_id)}</td>
+              <td style="padding:5px 8px 5px 24px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.78rem;white-space:nowrap"><a href="${orderWmsUrl(o.order_id)}" target="_blank" title="Open order in WMS" style="color:var(--primary);text-decoration:none">${escHtml(o.order_id)}</a></td>
               <td style="padding:5px 8px;font-size:.75rem;color:var(--muted);white-space:nowrap">${escHtml(whShort(o.wh))}</td>
               <td style="padding:5px 8px;font-size:.75rem;white-space:nowrap">${tagCell(o)}</td>
               <td style="width:100%"></td>

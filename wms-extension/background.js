@@ -571,6 +571,7 @@ async function performSync(isB2B) {
             wh:             o.warehouseCode,
             status:         B2C_SM_AGG[o.shipmentOrderStatusId],
             brand:          o.clientDisplayName || null,
+            client_id:      (function () { const c = String(o.clientIdentifier || o.clientId || o.client || ''); return /^[0-9a-fA-F-]{36}$/.test(c) ? c : null; })(),   // client GUID for the WMS brand deep-link
             created_at:     o.createdDateTime || o.shipmentOrderDate || null,
             is_priority_mp: isMp,
             is_nonmp:       orderHasTag(o, 'nonmp'),
