@@ -3579,7 +3579,7 @@
     if (series.length >= 2) { const mx = Math.max(1, ...series), W = 200, H = 44; const pts = series.map((v, i) => `${(i / (series.length - 1) * W).toFixed(1)},${(H - v / mx * H).toFixed(1)}`).join(' '); sparkHtml = `<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="#fb923c" stroke-width="2"/></svg>`; }
     const trendHtml = `<div class="card" style="padding:16px 18px"><div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">New-order inflow trend</div>${sparkHtml}<div style="font-size:.72rem;color:var(--muted);margin-top:4px">orders created / hr · recent syncs</div></div>`;
 
-    host.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:4px">
+    host.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px;margin-top:4px">
       ${cutoffHtml}${funnelHtml}
       <div id="b2cInsightBrands" class="card" style="padding:16px 18px"><div style="color:var(--muted);font-size:.8rem">Loading brands…</div></div>
       <div id="b2cInsightAging" class="card" style="padding:16px 18px"><div style="color:var(--muted);font-size:.8rem">Loading aging…</div></div>
