@@ -6997,6 +6997,20 @@
     document.getElementById('sidebar')?.classList.remove('open');
     document.getElementById('sidebarOverlay')?.classList.remove('open');
   }
+  // Click/tap outside the sidebar closes it: the mobile drawer, and (per user
+  // preference) the desktop panel too — which collapses so content reflows to fill.
+  // Clicks inside the sidebar and on the hamburger are excluded so they aren't fought.
+  // Desktop auto-collapse is session-only (not persisted) — an incidental content
+  // click shouldn't permanently change the nav preference; the hamburger still does.
+  document.addEventListener('pointerdown', (e) => {
+    const sb = document.getElementById('sidebar');
+    if (!sb || sb.contains(e.target) || (e.target.closest && e.target.closest('.hamburger'))) return;
+    if (_navIsDesktop()) {
+      if (!document.body.classList.contains('nav-collapsed')) document.body.classList.add('nav-collapsed');
+    } else if (sb.classList.contains('open')) {
+      closeSidebar();
+    }
+  }, true);
   function toggleNavGroup(headerEl) {
     headerEl.closest('.snav-group')?.classList.toggle('collapsed');
   }
