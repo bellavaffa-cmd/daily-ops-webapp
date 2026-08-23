@@ -4203,7 +4203,9 @@
           return o;
         }).filter(o => whAllowed(o.wh));   // hard-restrict to the user's warehouses
         populateViewWarehouseSelects(); // rebuild optgroups now that b2cData has real country info
-        await loadActivityToday();       // refresh per-warehouse pick/pack activity for hybrid operating-day detection
+        // Refresh hybrid operating-day activity in the background — NEVER block the
+        // render on it (a slow/failing user_performance fetch must not blank the page).
+        loadActivityToday().then(() => { try { renderB2C(); } catch (e) {} });
         renderB2C();
         renderB2B();       // b2b_data has no country field of its own; re-group once b2cData's arrives
         renderShortage();  // same — shortage_data has no country field either
