@@ -4354,7 +4354,7 @@
       ${statuses.map(s => {
         const isTotal  = s.key === 'total';
         const excluded = !isTotal && b2bExcl.has(s.key);
-        const url = wmsStatusUrl('B2B', isTotal ? WMS_ALL_STATUS : [WMS_STATUS_ID[s.label]], isTotal ? 'All' : s.label);
+        const url = wmsStatusUrl('B2B', isTotal ? WMS_ALL_STATUS : [WMS_STATUS_ID[s.label]], isTotal ? 'All' : s.label, b2cWmsWhOpts());
         const subtitle = isTotal
           ? (b2bExcl.size ? `excludes ${b2bExcl.size} status${b2bExcl.size > 1 ? 'es' : ''}` : 'across all statuses')
           : (excluded ? 'Excluded from total' : pct(s.count, total) + ' of total');
@@ -7973,9 +7973,11 @@ function fail(error) {
       {key:'ready_ship',label:'Ready to Ship',count:tot.ready_ship,color:'#5eead4'},
       {key:'total',label:'Total Orders',count:total,color:'var(--text)'},
     ];
+    const _row = selWh ? (b2cData || []).find(r => r.wh === selWh && r.wh_id) : null;
+    const wms = { whIds: _row ? [_row.wh_id] : [], whLbl: selWh || '' };
     return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(133px,1fr));gap:12px">${st.map(s=>{
       const isTot=s.key==='total', ex=!isTot&&excl.has(s.key);
-      const url=wmsStatusUrl('B2B',isTot?WMS_ALL_STATUS:[WMS_STATUS_ID[s.label]],isTot?'All':s.label);
+      const url=wmsStatusUrl('B2B',isTot?WMS_ALL_STATUS:[WMS_STATUS_ID[s.label]],isTot?'All':s.label, wms);
       const sub=isTot?'across all statuses':(ex?'Excluded from total':pct(s.count,total)+' of total');
       return `<a class="card kpi-link" href="${url}" target="_blank" title="Open in WMS" style="padding:16px 18px;text-decoration:none;color:inherit;display:block${ex?';opacity:.5':''}"><div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px${ex?';text-decoration:line-through':''}">${s.label}</div><div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${_dfmt(s.count)}</div><div style="font-size:.72rem;color:var(--muted);margin-top:5px">${sub}</div></a>`;
     }).join('')}</div>`;
