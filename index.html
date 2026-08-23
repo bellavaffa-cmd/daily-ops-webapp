@@ -3623,8 +3623,11 @@
     // Staffing + yesterday pace (user_performance, latest 2 activity dates)
     try {
       const perf = await fetch(SB_URL + '/user_performance?select=warehouse_code,executed_by,activity_date,picked_orders,packed_orders&order=activity_date.desc&limit=6000', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
-      const rows = (perf || []).filter(r => inWhFilter(r.warehouse_code));
-      const dates = [...new Set(rows.map(r => r.activity_date))].sort().reverse();
+      const all = (perf || []);
+      const rows = all.filter(r => inWhFilter(r.warehouse_code));
+      // "Today"/"yesterday" = the latest operational dates across ALL warehouses, so a
+      // filtered warehouse with no activity today correctly shows 0 (not its last active day).
+      const dates = [...new Set(all.map(r => r.activity_date))].sort().reverse();
       const dayStat = d => { const rs = rows.filter(r => r.activity_date === d); const pk = new Set(), pc = new Set(); let packed = 0; for (const r of rs) { if (Number(r.picked_orders) > 0) pk.add(r.executed_by); if (Number(r.packed_orders) > 0) pc.add(r.executed_by); packed += Number(r.packed_orders || 0); } return { pickers: pk.size, packers: pc.size, packed }; };
       const t = dates[0] ? dayStat(dates[0]) : { pickers: 0, packers: 0, packed: 0 };
       const y = dates[1] ? dayStat(dates[1]) : null;
