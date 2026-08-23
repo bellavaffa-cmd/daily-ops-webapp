@@ -3550,23 +3550,6 @@
     return { inflow, packedPerHr, net: (packedPerHr != null && inflow != null) ? packedPerHr - inflow : null, inflowArr };
   }
 
-  // Does a b2c_orders row match a custom cut-off's parsed WMS filter? Criteria are
-  // AND across types (status / tag / brand), IN within a type. The Manager Console
-  // parses the pasted WMS URL into { statuses, tags, clients }. Legacy single-tag
-  // configs (tag_id) still work. A filter with no supported criteria matches nothing.
-  function orderMatchesCutoff(o, c) {
-    const f = (c && c.filter) || (c && c.tag_id ? { tags: [c.tag_id] } : null);
-    if (!f) return false;
-    const hasAny = (f.statuses && f.statuses.length) || (f.tags && f.tags.length) || (f.clients && f.clients.length);
-    if (!hasAny) return false;
-    if (f.statuses && f.statuses.length && !f.statuses.includes(o.status)) return false;
-    if (f.clients && f.clients.length && !f.clients.includes(o.client_id)) return false;
-    if (f.tags && f.tags.length) {
-      const ids = Array.isArray(o.tags) ? o.tags.map(t => t && t.id) : [];
-      if (!f.tags.some(t => ids.includes(t))) return false;
-    }
-    return true;
-  }
   // The insights section under the KPI cards. Synchronous cards (cut-off, funnel,
   // trend) paint immediately; brands/aging/mix/staffing fill in after their fetch.
   async function renderB2CInsights() {
@@ -3635,40 +3618,32 @@
         </div>
       </div>`;
     };
-    // A custom cut-off with window 'after' counts orders that ARRIVED after its
-    // cut-off today (the post-cut-off inflow rolling to tomorrow) — so it reads as
-    // "received … till midnight" and counts down to midnight, not to the cut-off.
-    const afterRow = (lbl, cutStr, count) => {
-      const toMid = Math.max(0, 1440 - nowMin);
-      return `<div style="padding:8px 0;border-top:1px solid var(--border)">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
-          <span style="font-size:.85rem;font-weight:700;color:var(--text)">${lbl}</span>
-          <span style="font-size:.85rem;font-weight:700;color:var(--text);white-space:nowrap">${fmt(count)} <span style="font-size:.72rem;font-weight:400;color:var(--muted)">received</span></span>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:2px;font-size:.72rem">
-          <span style="color:var(--muted)">after ${cutStr} · till midnight</span>
-          <span style="white-space:nowrap;color:var(--muted)">${dur(toMid)} left</span>
-        </div>
-      </div>`;
-    };
-    // A "received after" cut-off can also carry a next-day fulfilment deadline
-    // ("…must be fulfilled by 2pm the next day"). Then the batch = orders that came
-    // in after the most-recent cut-off (carried across midnight until its deadline),
-    // and the row counts down to fulfil_by on the day AFTER that cut-off.
+    // ── Manager-defined custom cut-offs (reworked model) ──────────────────────
+    // Each cut-off: { name, tags[], inflow:{from,fromDay,to,toDay}, cutoff:{time,day} }.
+    // Orders carrying ANY of the tags that flowed in during the inflow window are due
+    // by the cut-off time/day. Days are same/next relative to the current day, resolved
+    // to the most-recent occurrence so a batch stays visible until its deadline
+    // (carry-over). A deadline landing on a non-operating day rolls to the next
+    // operating day. Counts come from the per-order fetch below; the card is a builder.
     const _now = Date.now();
-    const _atToday = hhmm => { const m = /^(\d{1,2}):(\d{2})/.exec(hhmm || ''); if (!m) return null; const d = new Date(); d.setHours(+m[1], +m[2], 0, 0); return d.getTime(); };
-    const _midnightAfter = ts => { const d = new Date(ts); d.setHours(24, 0, 0, 0); return d.getTime(); };
-    const cutoffMeta = c => {
-      const cut = _atToday(c.time);
-      if (c.window === 'after' && c.fulfill_by) {
-        let lastCut = cut; if (cut != null && _now < cut) lastCut -= 86400000;   // cut-off not reached today → use yesterday's
-        let deadline = null;
-        if (lastCut != null) { const dd = new Date(lastCut); dd.setDate(dd.getDate() + 1); const fm = /^(\d{1,2}):(\d{2})/.exec(c.fulfill_by); if (fm) { dd.setHours(+fm[1], +fm[2], 0, 0); deadline = dd.getTime(); } }
-        return { mode: 'fulfill', start: lastCut, end: lastCut != null ? _midnightAfter(lastCut) : null, deadline };
-      }
-      return { mode: c.window === 'after' ? 'after' : 'before', cut };
+    const DAY_MS = 86400000;
+    const _validCut = c => c && c.name && Array.isArray(c.tags) && c.tags.length && c.inflow && c.cutoff && c.cutoff.time;
+    const resolveCutoff = c => {
+      const inf = c.inflow || {}, cut = c.cutoff || {};
+      const off = d => d === 'next' ? 1 : 0;
+      const at = (days, hhmm) => { const m = /^(\d{1,2}):(\d{2})/.exec(hhmm || ''); if (!m) return null; const d = new Date(); d.setDate(d.getDate() + days); d.setHours(+m[1], +m[2], 0, 0); return d.getTime(); };
+      // Pick the batch base day: today, or yesterday if today's window hasn't opened
+      // yet — so a not-yet-fulfilled batch stays on screen until its deadline passes.
+      let base = 0, ws = at(base + off(inf.fromDay), inf.from);
+      if (ws != null && ws > _now) { base = -1; ws = at(base + off(inf.fromDay), inf.from); }
+      let we = at(base + off(inf.toDay), inf.to);
+      if (ws != null && we != null && we <= ws) we += DAY_MS;   // window ends the next calendar day
+      let deadline = at(base + off(cut.day), cut.time);
+      const opDays = Array.isArray(cfg.operating_days) ? cfg.operating_days.map(Number) : null;
+      if (deadline != null && opDays && opDays.length) { let g = 0; while (g++ < 8 && !opDays.includes(new Date(deadline).getDay())) deadline += DAY_MS; }
+      return { ws, we, deadline };
     };
-    const fulfillRow = (lbl, count, deadline) => {
+    const custRow = (name, count, deadline) => {
       const remain = deadline ? Math.round((deadline - _now) / 60000) : null;
       const dd = deadline ? new Date(deadline) : null;
       const when = dd ? `${DOW[dd.getDay()]} ${String(dd.getHours()).padStart(2, '0')}:${String(dd.getMinutes()).padStart(2, '0')}` : '—';
@@ -3681,8 +3656,8 @@
       } else { timeLbl = `${when} · passed`; verdict = count <= 0 ? '<span style="color:#86efac">done ✓</span>' : '<span style="color:#f87171">overdue</span>'; }
       return `<div style="padding:8px 0;border-top:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
-          <span style="font-size:.85rem;font-weight:700;color:var(--text)">${lbl}</span>
-          <span style="font-size:.85rem;font-weight:700;color:var(--text);white-space:nowrap">${fmt(count)} <span style="font-size:.72rem;font-weight:400;color:var(--muted)">to fulfil</span></span>
+          <span style="font-size:.85rem;font-weight:700;color:var(--text)">${escHtml(name)}</span>
+          <span style="font-size:.85rem;font-weight:700;color:var(--text);white-space:nowrap">${fmt(count)} <span style="font-size:.72rem;font-weight:400;color:var(--muted)">open</span></span>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:2px;font-size:.72rem">
           <span style="color:var(--muted)">${timeLbl}</span><span style="white-space:nowrap">${verdict}</span>
@@ -3691,9 +3666,9 @@
     // Manager-defined custom cut-offs render as extra rows; their counts come from the
     // per-order fetch below, so the card is a builder we re-render once counts are known.
     const buildCutoffCard = (customCounts) => {
-      const custom = Array.isArray(cfg.cutoffs) ? cfg.cutoffs.filter(c => c && c.name && c.time) : [];
+      const custom = Array.isArray(cfg.cutoffs) ? cfg.cutoffs.filter(_validCut) : [];
       const customRows = (customCounts && custom.length)
-        ? custom.map((c, i) => { const cnt = Number(customCounts[i] || 0); const m = cutoffMeta(c); return m.mode === 'fulfill' ? fulfillRow(c.name, cnt, m.deadline) : (m.mode === 'after' ? afterRow(c.name, c.time, cnt) : cutRow(c.name, c.time, cnt)); }).join('')
+        ? custom.map((c, i) => custRow(c.name, Number(customCounts[i] || 0), resolveCutoff(c).deadline)).join('')
         : '';
       return `<div id="b2cInsightCutoff" class="card" style="padding:16px 18px"><div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Cut-off countdown${rate != null ? ` <span style="font-weight:400">· ${fmt(rate)}/hr packing</span>` : ''}</div>
         ${cutRow('Non-MP', cfg.nonmp_cutoff, openNon)}${cutRow('Priority MP', cfg.mp_cutoff, openMp)}${customRows}</div>`;
@@ -3723,21 +3698,20 @@
       // Aging / single-multi / brands keep the MP-driven today-vs-tomorrow behaviour:
       // today only while operating, both when closed (merged).
       const dayOrders = insClosed ? orders : orders.filter(o => o.is_tomorrow === false);
-      // Custom cut-offs: apply EACH cut-off's OWN time as its today/tomorrow boundary —
-      // an order created after today@cut-off rolls to tomorrow, mirroring the MP split.
-      // Operating → count that cut-off's "today"; closed → count both (merged view).
-      const _cuts = Array.isArray(cfg.cutoffs) ? cfg.cutoffs.filter(c => c && c.name && c.time) : [];
+      // Custom cut-offs: count open orders carrying any of the cut-off's tags that
+      // flowed in during its resolved inflow window, then re-render the card.
+      const _cuts = Array.isArray(cfg.cutoffs) ? cfg.cutoffs.filter(_validCut) : [];
       if (_cuts.length) {
-        const metas = _cuts.map(cutoffMeta);
+        const res = _cuts.map(resolveCutoff);
+        const tagSets = _cuts.map(c => new Set(c.tags));
         const cc = _cuts.map(() => 0);
         for (const o of orders) {
           const created = Date.parse(o.created_at || '');
+          const ids = Array.isArray(o.tags) ? o.tags.map(t => t && t.id) : [];
           _cuts.forEach((c, i) => {
-            if (!orderMatchesCutoff(o, c)) return;
-            const m = metas[i];
-            if (m.mode === 'fulfill') { if (created && m.start != null && created > m.start && created <= m.end) cc[i]++; }   // the after-cut-off batch, carried until its next-day deadline
-            else if (m.mode === 'after') { if (created && m.cut && created > m.cut) cc[i]++; }                                 // post-cut-off inflow (created after today@cut-off)
-            else { const rolled = created && m.cut && created > m.cut; if (insClosed || !rolled) cc[i]++; }                    // due before cut-off (today; both when closed)
+            const r = res[i];
+            if (r.ws == null || r.we == null || !created || created < r.ws || created > r.we) return;
+            if (ids.some(id => tagSets[i].has(id))) cc[i]++;
           });
         }
         const cel = document.getElementById('b2cInsightCutoff'); if (cel) cel.outerHTML = buildCutoffCard(cc);

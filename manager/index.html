@@ -109,7 +109,7 @@
     </div>
     <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
       <label style="display:block;margin-bottom:2px">Custom cut-offs</label>
-      <p class="hint" style="margin-top:0">Build a filter in WMS's order list, copy its URL, and paste it here. Choose <b>due before</b> (orders that must clear before the cut-off) or <b>received after</b> (orders that arrive after the cut-off, till midnight — e.g. Next Day orders rolling to tomorrow). Countable criteria: status, tag, brand (carrier/channel/address filters aren't synced).</p>
+      <p class="hint" style="margin-top:0">Define orders by <b>tag(s)</b> and the <b>time window they flowed in</b>, with a <b>cut-off</b> deadline. <i>Same day</i> = today, <i>next day</i> = tomorrow (resolved live; a batch stays visible until its deadline). E.g. Next-Day orders that flowed in 16:15→23:59 (same day) with a cut-off of 14:00 the next day. Shown on the dashboard's Cut-off countdown with the open count + countdown + on-track/at-risk.</p>
       <div id="cutoffRows"></div>
       <button class="btn" style="margin-top:2px" onclick="addCutoffRow()">+ Add cut-off</button>
     </div>
@@ -409,6 +409,7 @@
     sel.value = tz;
     renderBreakRows(r.breaks);
     renderOpDays(r.operating_days);
+    await loadCutoffTags();
     renderCutoffRows(r.cutoffs);
   }
   // Operating-day toggles (weekday numbers, JS getDay: 0=Sun … 6=Sat). No saved
@@ -433,60 +434,61 @@
     $('breakRows').innerHTML = rows.map(b => breakRowHtml(b && b.start, b && b.end)).join('');
   }
   function addBreakRow() { $('breakRows').insertAdjacentHTML('beforeend', breakRowHtml('', '')); }
-  // ── Custom cut-offs (each = a pasted WMS order-list filter URL) ────────────
-  // Parse the params WMS uses (sos=status ids, tag=tag GUIDs, cli=client GUIDs — each
-  // double-URL-encoded) into criteria we can count against b2c_orders. Other filter
-  // fields (carrier, channel, address…) aren't synced per order, so they're ignored.
-  const _WMS_STATUS_KEY = { 6: 'new', 8: 'rfp', 9: 'picking', 12: 'picked', 13: 'packing' };  // WMS status id → b2c_orders.status
-  function parseWmsFilter(url) {
-    const out = { statuses: [], tags: [], clients: [], labels: [], summary: '' };
-    if (!url) return out;
-    let qs; try { qs = new URL(url).searchParams; } catch (e) { try { qs = new URLSearchParams(url.split('?')[1] || ''); } catch (e2) { return out; } }
-    const dec = v => { try { return JSON.parse(decodeURIComponent(v)); } catch (e) { return null; } };
-    const sos = qs.get('sos'); if (sos) { out.statuses = (dec(sos) || []).map(n => _WMS_STATUS_KEY[Number(n)]).filter(Boolean); const l = qs.get('soslbl'); if (l && out.statuses.length) out.labels.push(l); }
-    const tag = qs.get('tag'); if (tag) { out.tags = (dec(tag) || []).map(String); const l = qs.get('taglbl'); if (l && out.tags.length) out.labels.push(l); }
-    const cli = qs.get('cli'); if (cli) { out.clients = (dec(cli) || []).map(String); const l = qs.get('clilbl'); if (l && out.clients.length) out.labels.push(l); }
-    out.summary = out.labels.join(' · ');
-    return out;
+  // ── Custom cut-offs (tags + inflow window + cut-off deadline) ─────────────
+  // Each cut-off: orders carrying ANY of the selected tags that flowed in during the
+  // inflow window (from-to time, each same/next day) are due by the cut-off time/day.
+  // Days are same/next relative to the current day; the dashboard resolves them live.
+  let _cutoffTags = [];   // [{id, name}] distinct WMS tags → the tag picker
+  async function loadCutoffTags() {
+    try { const r = await fetch(SB + '/rpc/distinct_order_tags', { method: 'POST', headers: HDR, body: '{}' }); _cutoffTags = r.ok ? (await r.json()) : []; }
+    catch (e) { _cutoffTags = []; }
   }
-  const _cutoffHasCriteria = f => !!(f && (f.statuses.length || f.tags.length || f.clients.length));
-  function cutoffRowHtml(name, time, url, summary, win, fulfill) {
-    const w = win === 'after' ? 'after' : 'before';
-    return `<div class="cutoff-row" style="display:flex;gap:6px;align-items:center;margin-bottom:4px;flex-wrap:wrap">
-      <input class="co-name" placeholder="Name (e.g. Express)" value="${esc(name || '')}" style="flex:1 1 110px;min-width:90px">
-      <input type="time" class="co-time" title="Cut-off time" value="${esc(time || '')}">
-      <select class="co-window" title="Which orders to count for this cut-off" style="flex:0 1 auto">
-        <option value="before"${w === 'before' ? ' selected' : ''}>due before</option>
-        <option value="after"${w === 'after' ? ' selected' : ''}>received after (till midnight)</option>
-      </select>
-      <span class="hint" style="flex:0 0 auto">fulfil by (next day)</span><input type="time" class="co-fulfill" title="Optional: fulfilment deadline on the NEXT day (only used with 'received after') — e.g. 14:00 = 2pm next day" value="${esc(fulfill || '')}" style="flex:0 1 auto">
-      <input class="co-url" placeholder="Paste WMS order-list filter URL" value="${esc(url || '')}" oninput="updateCutoffSummary(this)" style="flex:2 1 200px;min-width:160px">
-      <button class="btn icon" title="Remove cut-off" onclick="this.closest('.cutoff-row').remove()">✕</button>
-      <div class="co-summary hint" style="flex:1 1 100%;margin:2px 0 8px">${summary ? '✓ ' + esc(summary) : ''}</div></div>`;
+  function dayOptions(sel) {
+    return `<option value="same"${sel !== 'next' ? ' selected' : ''}>same day</option><option value="next"${sel === 'next' ? ' selected' : ''}>next day</option>`;
   }
-  function updateCutoffSummary(input) {
-    const el = input.closest('.cutoff-row').querySelector('.co-summary');
-    const v = input.value.trim();
-    if (!v) { el.textContent = ''; el.style.color = ''; return; }
-    const f = parseWmsFilter(v);
-    if (_cutoffHasCriteria(f)) { el.textContent = '✓ ' + (f.summary || 'matches this filter'); el.style.color = '#4ade80'; }
-    else { el.textContent = '⚠ No countable criteria (status / tag / brand) — carrier, channel & address filters aren’t synced.'; el.style.color = '#f87171'; }
+  function tagChecksHtml(selected) {
+    const set = new Set(Array.isArray(selected) ? selected : []);
+    if (!_cutoffTags.length) return '<span class="hint">No order tags synced yet.</span>';
+    return _cutoffTags.map(t => `<label style="display:inline-flex;align-items:center;gap:4px;margin:0 12px 4px 0;font-size:.82rem;color:var(--text)"><input type="checkbox" class="co-tag" value="${esc(t.id)}" data-name="${esc(t.name || '')}"${set.has(t.id) ? ' checked' : ''}> ${esc(t.name || t.id)}</label>`).join('');
+  }
+  function cutoffRowHtml(c) {
+    c = c || {}; const inf = c.inflow || {}, cut = c.cutoff || {};
+    return `<div class="cutoff-row" style="border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:10px">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <input class="co-name" placeholder="Name (e.g. Next-Day late)" value="${esc(c.name || '')}" style="flex:1 1 160px">
+        <button class="btn icon" title="Remove cut-off" onclick="this.closest('.cutoff-row').remove()">✕</button>
+      </div>
+      <div style="margin-bottom:8px"><span class="hint">Tags (any of)</span><div class="co-tags" style="margin-top:4px">${tagChecksHtml(c.tags)}</div></div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+        <span class="hint" style="flex:0 0 auto">Flowed in from</span>
+        <input type="time" class="co-from" value="${esc(inf.from || '')}">
+        <select class="co-fromday">${dayOptions(inf.fromDay)}</select>
+        <span class="hint" style="flex:0 0 auto">to</span>
+        <input type="time" class="co-to" value="${esc(inf.to || '')}">
+        <select class="co-today">${dayOptions(inf.toDay)}</select>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <span class="hint" style="flex:0 0 auto">Cut-off at</span>
+        <input type="time" class="co-cut" value="${esc(cut.time || '')}">
+        <select class="co-cutday">${dayOptions(cut.day)}</select>
+      </div></div>`;
   }
   function renderCutoffRows(cutoffs) {
     const arr = Array.isArray(cutoffs) ? cutoffs : [];
-    $('cutoffRows').innerHTML = arr.map(c => cutoffRowHtml(c && c.name, c && c.time, c && c.url, c && c.summary, c && c.window, c && c.fulfill_by)).join('');
+    $('cutoffRows').innerHTML = arr.map(c => cutoffRowHtml(c)).join('');
   }
-  function addCutoffRow() { $('cutoffRows').insertAdjacentHTML('beforeend', cutoffRowHtml('', '', '', '', 'before', '')); }
+  function addCutoffRow() { $('cutoffRows').insertAdjacentHTML('beforeend', cutoffRowHtml({ inflow: { fromDay: 'same', toDay: 'same' }, cutoff: { day: 'next' } })); }
   function collectCutoffs() {
     return [...document.querySelectorAll('#cutoffRows .cutoff-row')].map(row => {
-      const url = row.querySelector('.co-url').value.trim();
-      const f = parseWmsFilter(url);
-      const win = (row.querySelector('.co-window') || {}).value === 'after' ? 'after' : 'before';
-      const fulfill = row.querySelector('.co-fulfill').value;
-      const c = { name: row.querySelector('.co-name').value.trim(), time: row.querySelector('.co-time').value, window: win, url, filter: { statuses: f.statuses, tags: f.tags, clients: f.clients }, summary: f.summary };
-      if (win === 'after' && fulfill) c.fulfill_by = fulfill;   // next-day fulfilment deadline (received-after only)
-      return c;
-    }).filter(c => c.name && c.time && _cutoffHasCriteria(c.filter));   // keep only complete, countable rows
+      const checks = [...row.querySelectorAll('.co-tag:checked')];
+      return {
+        name: row.querySelector('.co-name').value.trim(),
+        tags: checks.map(c => c.value),
+        tag_names: checks.map(c => c.getAttribute('data-name') || ''),
+        inflow: { from: row.querySelector('.co-from').value, fromDay: row.querySelector('.co-fromday').value, to: row.querySelector('.co-to').value, toDay: row.querySelector('.co-today').value },
+        cutoff: { time: row.querySelector('.co-cut').value, day: row.querySelector('.co-cutday').value }
+      };
+    }).filter(c => c.name && c.tags.length && c.inflow.from && c.inflow.to && c.cutoff.time);   // keep only complete rows
   }
   // Each card upserts only its own columns; PostgREST leaves omitted columns
   // untouched on an existing row, so the three saves don't clobber each other.
