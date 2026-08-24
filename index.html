@@ -3759,7 +3759,9 @@
             <div style="width:42px;text-align:right;font-size:.78rem;font-weight:700;color:var(--text)">${fmt(b.n)}</div></div>`; }).join('') : '<div style="color:var(--muted);font-size:.8rem">No open orders</div>'}`;
     } catch (e) { /* leave loading placeholders */ }
 
-    // Staffing + yesterday pace (user_performance, latest 2 activity dates)
+    // Staffing & output today. Pickers/packers = people ACTIVELY picking/packing in the
+    // last ~1h (per-user snapshot deltas); someone who has stopped drops out of those but
+    // still counts in total manpower (anyone who picked or packed at all today).
     try {
       const perf = await fetch(SB_URL + '/user_performance?select=warehouse_code,executed_by,activity_date,picked_orders,packed_orders&order=activity_date.desc&limit=6000', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
       const all = (perf || []);
@@ -3767,16 +3769,43 @@
       // "Today"/"yesterday" = the latest operational dates across ALL warehouses, so a
       // filtered warehouse with no activity today correctly shows 0 (not its last active day).
       const dates = [...new Set(all.map(r => r.activity_date))].sort().reverse();
-      const dayStat = d => { const rs = rows.filter(r => r.activity_date === d); const pk = new Set(), pc = new Set(); let packed = 0; for (const r of rs) { if (Number(r.picked_orders) > 0) pk.add(r.executed_by); if (Number(r.packed_orders) > 0) pc.add(r.executed_by); packed += Number(r.packed_orders || 0); } return { pickers: pk.size, packers: pc.size, packed }; };
-      const t = dates[0] ? dayStat(dates[0]) : { pickers: 0, packers: 0, packed: 0 };
-      const y = dates[1] ? dayStat(dates[1]) : null;
+      const dayRoster = d => { const rs = rows.filter(r => r.activity_date === d); const pk = new Set(), pc = new Set(); let packed = 0; for (const r of rs) { if (Number(r.picked_orders) > 0) pk.add(r.executed_by); if (Number(r.packed_orders) > 0) pc.add(r.executed_by); packed += Number(r.packed_orders || 0); } return { pickers: pk.size, packers: pc.size, packed }; };
+      const t = dates[0] ? dayRoster(dates[0]) : { pickers: 0, packers: 0, packed: 0 };
+      const y = dates[1] ? dayRoster(dates[1]) : null;
+
+      // Who is ACTIVE now (picked/packed something in the last ~1h) from user_perf_snapshot.
+      let activePickers = 0, activePackers = 0;
+      try {
+        const snapCut = new Date(Date.now() - 3 * 3600e3).toISOString();
+        const snaps = await fetch(SB_URL + '/user_perf_snapshot?select=warehouse_code,executed_by,executed_by_name,activity_date,picked_orders,packed_orders,captured_at&captured_at=gte.' + encodeURIComponent(snapCut) + '&order=captured_at.desc', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+        const byPerson = {};
+        for (const s of (snaps || [])) {
+          if (!inWhFilter(s.warehouse_code)) continue;
+          const key = s.executed_by_name || ('#' + s.executed_by);
+          const p = (byPerson[key] = byPerson[key] || {});
+          const tt = new Date(s.captured_at).getTime();
+          const b = (p[tt] = p[tt] || { t: tt, po: 0, ko: 0, date: s.activity_date });
+          b.po += Number(s.picked_orders || 0); b.ko += Number(s.packed_orders || 0);
+        }
+        for (const key of Object.keys(byPerson)) {
+          const arr = Object.values(byPerson[key]).sort((a, b) => b.t - a.t);
+          const latest = arr[0]; if (!latest) continue;
+          let prev = null, best = Infinity; const target = latest.t - 3600e3;
+          for (let i = 1; i < arr.length; i++) { const b = arr[i]; if (b.date !== latest.date) continue; const gap = latest.t - b.t; if (gap < 30 * 60e3 || gap > 100 * 60e3) continue; const d = Math.abs(b.t - target); if (d < best) { best = d; prev = b; } }
+          if (prev) { if (latest.po - prev.po > 0) activePickers++; if (latest.ko - prev.ko > 0) activePackers++; }
+        }
+      } catch (e) { /* no snapshots → 0 active */ }
+
+      const cell = (n, lbl, title) => `<div${title ? ` title="${title}"` : ''}><div style="font-size:1.5rem;font-weight:700;color:var(--text)">${n}</div><div style="font-size:.7rem;color:var(--muted)">${lbl}</div></div>`;
       const stEl = document.getElementById('b2cInsightStaff');
       if (stEl) stEl.innerHTML = `<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">Staffing &amp; output today</div>
-        <div style="display:flex;gap:16px;margin-bottom:8px">
-          <div><div style="font-size:1.5rem;font-weight:700;color:var(--text)">${t.pickers}</div><div style="font-size:.7rem;color:var(--muted)">pickers</div></div>
-          <div><div style="font-size:1.5rem;font-weight:700;color:var(--text)">${t.packers}</div><div style="font-size:.7rem;color:var(--muted)">packers</div></div>
-          <div><div style="font-size:1.5rem;font-weight:700;color:var(--text)">${fmt(t.packed)}</div><div style="font-size:.7rem;color:var(--muted)">packed</div></div></div>
-        ${y ? `<div style="font-size:.72rem;color:var(--muted)">Yesterday (full day): <b style="color:var(--text)">${fmt(y.packed)}</b> packed · ${y.packers} packers</div>` : ''}`;
+        <div style="display:flex;gap:16px;margin-bottom:8px;flex-wrap:wrap">
+          ${cell(activePickers, 'pickers', 'Actively picking in the last hour')}
+          ${cell(activePackers, 'packers', 'Actively packing in the last hour')}
+          ${cell(activePickers + activePackers, 'manpower', 'Total manpower = active pickers + active packers (last hour)')}
+          ${cell(fmt(t.packed), 'packed')}
+        </div>
+        ${y ? `<div style="font-size:.72rem;color:var(--muted)">Yesterday (full day): <b style="color:var(--text)">${fmt(y.packed)}</b> packed · ${y.pickers + y.packers} manpower</div>` : ''}`;
     } catch (e) { /* leave placeholder */ }
   }
 
