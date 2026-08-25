@@ -1431,7 +1431,7 @@
               <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Filters every tab to this warehouse (and pre-fills error reports)</div>
             </div>
             <select id="settingsDefaultWarehouse" onchange="setDefaultWarehouse(this.value)" style="font-size:.8rem;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;max-width:200px">
-              <option value="">All Warehouses</option>
+              <option value="" disabled>Select warehouse…</option>
             </select>
           </div>
 
@@ -1544,12 +1544,9 @@
     <div class="modal" style="max-width:500px;max-height:90vh;overflow-y:auto">
       <div style="text-align:center;margin-bottom:22px">
         <div style="font-size:1.1rem;font-weight:700;color:var(--text);margin-bottom:5px">Select your warehouse</div>
-        <div style="font-size:.82rem;color:var(--muted)">Choose which warehouse to track, or view all</div>
+        <div style="font-size:.82rem;color:var(--muted)">Choose which warehouse to track</div>
       </div>
       <div id="warehousePickerList"></div>
-      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);text-align:center">
-        <button class="btn btn-ghost" onclick="selectWarehouse('')" style="font-size:.82rem">View All Warehouses</button>
-      </div>
     </div>
   </div>
 
@@ -1846,7 +1843,7 @@
           </div>
           <select id="warehouseFilter" onchange="renderTable()"
             style="font-size:.82rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);max-width:160px">
-            <option value="">All warehouses</option>
+            <option value="" disabled>Select warehouse…</option>
           </select>
           <button class="btn btn-ghost btn-sm" id="refreshBtn" onclick="manualRefresh()" title="Sync now">
             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" style="vertical-align:middle;margin-right:4px"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.36-3.36L23 10M1 14l5.13 4.36A9 9 0 0020.49 15"/></svg>
@@ -2010,7 +2007,7 @@
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;justify-content:flex-end">
         <div class="wh-multi" style="flex:0 1 220px;min-width:150px;max-width:260px">
           <button type="button" class="wh-multi-btn" onclick="toggleWhPanel('b2c',event)">
-            <span id="whBtnLabel-b2c" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">All Warehouses</span>
+            <span id="whBtnLabel-b2c" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Select warehouse</span>
             <span style="color:var(--muted);flex:none">▾</span>
           </button>
           <div id="whPanel-b2c" class="wh-panel" style="display:none"></div>
@@ -2100,7 +2097,7 @@
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;justify-content:flex-end">
         <div class="wh-multi" style="flex:0 1 220px;min-width:150px;max-width:260px">
           <button type="button" class="wh-multi-btn" onclick="toggleWhPanel('b2b',event)">
-            <span id="whBtnLabel-b2b" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">All Warehouses</span>
+            <span id="whBtnLabel-b2b" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Select warehouse</span>
             <span style="color:var(--muted);flex:none">▾</span>
           </button>
           <div id="whPanel-b2b" class="wh-panel" style="display:none"></div>
@@ -2171,7 +2168,7 @@
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;justify-content:flex-end">
         <div class="wh-multi" style="flex:0 1 220px;min-width:150px;max-width:260px">
           <button type="button" class="wh-multi-btn" onclick="toggleWhPanel('shortage',event)">
-            <span id="whBtnLabel-shortage" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">All Warehouses</span>
+            <span id="whBtnLabel-shortage" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Select warehouse</span>
             <span style="color:var(--muted);flex:none">▾</span>
           </button>
           <div id="whPanel-shortage" class="wh-panel" style="display:none"></div>
@@ -2242,6 +2239,20 @@
         </div>
         <select id="productivityViewWarehouse" onchange="onProdWarehouseChange(this.value)"
           style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;flex:0 1 180px;min-width:120px;max-width:200px"></select>
+        <button type="button" onclick="openProdExport()" title="Export productivity to Excel (.xlsx)" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer;white-space:nowrap">⬇ Export</button>
+      </div>
+    </div>
+
+    <!-- Export modal -->
+    <div id="prodExportModal" style="position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:flex-start;justify-content:center;padding:48px 16px;overflow:auto;z-index:9000" onclick="if(event.target===this)closeProdExport()">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;max-width:440px;width:100%;padding:18px 20px;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-size:1.05rem;font-weight:700;color:var(--text)">Export productivity (.xlsx)</div><button onclick="closeProdExport()" aria-label="Close" style="background:none;border:none;color:var(--muted);font-size:1.4rem;cursor:pointer;line-height:1">×</button></div>
+        <p style="font-size:.75rem;color:var(--muted);margin:0 0 12px">Orders &amp; items picked/packed per person. Two sheets: <b>Per hour</b> (recent days) and <b>Per day</b> (full range). Follows the warehouse filter above.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:12px">
+          <label style="font-size:.78rem;color:var(--muted)">From<br><input type="date" id="prodExpFrom" style="margin-top:3px;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></label>
+          <label style="font-size:.78rem;color:var(--muted)">To<br><input type="date" id="prodExpTo" style="margin-top:3px;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></label>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px"><button type="button" onclick="runProdExport()" style="font-size:.85rem;font-weight:600;padding:8px 16px;border-radius:8px;border:none;background:var(--primary);color:var(--on-primary,#0b1f12);cursor:pointer">Download .xlsx</button><span id="prodExpMsg" style="font-size:.78rem;color:var(--muted)"></span></div>
       </div>
     </div>
 
@@ -2330,7 +2341,7 @@
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;justify-content:flex-end">
         <div class="wh-multi" style="flex:0 1 220px;min-width:150px;max-width:260px">
           <button type="button" class="wh-multi-btn" onclick="toggleWhPanel('jobs',event)">
-            <span id="whBtnLabel-jobs" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">All Warehouses</span>
+            <span id="whBtnLabel-jobs" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Select warehouse</span>
             <span style="color:var(--muted);flex:none">▾</span>
           </button>
           <div id="whPanel-jobs" class="wh-panel" style="display:none"></div>
@@ -2900,9 +2911,9 @@
     // No cached scope and no active profile login → show nothing until identity
     // resolves (a WMS bridge or the login gate), so data never flashes pre-login.
     try { if (!localStorage.getItem('instanceProfileId')) return new Set(); } catch (e) {}
-    return null;
+    return new Set();   // fail-closed: no cached scope → see nothing until identity resolves to a warehouse list
   })();
-  function whAllowed(wh) { return !_whAllow || _whAllow.has(wh); }
+  function whAllowed(wh) { return !!_whAllow && _whAllow.has(wh); }
   function tabAllowed(view) { return (!_profileTabs || _profileTabs.has(view)) && (!_roleTabs || _roleTabs.has(view)); }
   // The device's chosen instance profile (a named warehouse + tab scope). Stored
   // per-device in localStorage; resolved from Supabase once and cached.
@@ -2973,8 +2984,23 @@
     return legacy ? [legacy] : [];
   }
   function inWhFilter(wh) {
-    const sel = getSelectedWhs();
-    return sel.length === 0 || sel.includes(wh);
+    return getSelectedWhs().includes(wh);   // no "All Warehouses": empty selection matches nothing
+  }
+  // Guarantee at least one allowed warehouse is selected (there is no "All" view):
+  // drop any no-longer-allowed picks, and if that leaves none, default to the user's
+  // Default Warehouse (if allowed) or their first accessible warehouse. Updates only
+  // localStorage; the caller re-renders. Returns true when the selection changed.
+  function ensureWhSelection() {
+    const allowed = (typeof b2cData !== 'undefined' ? (b2cData || []) : []).filter(r => (!r.type || r.type === 'warehouse') && r.wh && whAllowed(r.wh)).map(r => r.wh);
+    if (!allowed.length) return false;   // no data / access not resolved yet
+    let cur = getSelectedWhs().filter(whAllowed);
+    if (!cur.length) { const d = localStorage.getItem('defaultWarehouse'); cur = [(d && whAllowed(d)) ? d : allowed[0]]; }
+    const next = JSON.stringify([...new Set(cur)]);
+    if (localStorage.getItem('whFilterSet') === next) return false;
+    localStorage.setItem('whFilterSet', next);
+    localStorage.setItem('b2cWarehousePicked', '1');
+    localStorage.setItem('prodWarehouseFilter', cur[0] || '');
+    return true;
   }
   function setSelectedWhs(arr) {
     const uniq = [...new Set(arr)];
@@ -2982,7 +3008,7 @@
     localStorage.setItem('b2cWarehousePicked', '1');
     // Mirror onto the Productivity tab's single-warehouse filter: exactly one
     // warehouse → scope to it; all or multiple → all warehouses.
-    localStorage.setItem('prodWarehouseFilter', uniq.length === 1 ? uniq[0] : '');
+    localStorage.setItem('prodWarehouseFilter', uniq[0] || '');   // productivity is single-warehouse → follow the first selected
     renderWarehouseFilters();
     renderB2C(); renderB2B(); renderB2BOrders(); renderShortage(); renderShortageOrders();
     if (typeof renderJobs === 'function') renderJobs();
@@ -2999,7 +3025,7 @@
     const cur = localStorage.getItem('defaultWarehouse') || '';
     const { byCountry, other } = whGroups();
     const opt = w => `<option value="${escHtml(w)}">${escHtml(w)}</option>`;
-    let html = '<option value="">All Warehouses</option>';
+    let html = '';   // no "All Warehouses" — a specific default is required
     Object.keys(byCountry).sort().forEach(c => {
       const whs = byCountry[c].filter(whAllowed);
       if (whs.length) html += `<optgroup label="${escHtml(c)}">${whs.map(opt).join('')}</optgroup>`;
@@ -3025,7 +3051,7 @@
   seedDefaultWhFilter();
   // Keep the Productivity single-warehouse filter in step with the shared filter
   // on load (one → that warehouse, all/multiple → all), so it follows the default.
-  try { const _s = getSelectedWhs(); localStorage.setItem('prodWarehouseFilter', _s.length === 1 ? _s[0] : ''); } catch (e) {}
+  try { const _s = getSelectedWhs(); localStorage.setItem('prodWarehouseFilter', _s[0] || ''); } catch (e) {}
   // Warehouses were renamed in WMS to embed a country code in the name, e.g.
   // "LOCAD DIP FC (AE-DIP)", "LOCAD Al Sulay FC (KSA-AL)". When the sync doesn't
   // supply a country, derive it from that leading "(XX-…)" code so the warehouse
@@ -3082,9 +3108,7 @@
         <input type="text" class="wh-search" placeholder="Search warehouse…" value="${esc(_whSearch)}" autocomplete="off" spellcheck="false"
           oninput="onWhSearch(this.value)" onclick="event.stopPropagation()"
           style="width:100%;box-sizing:border-box;font-size:.8rem;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
-      </div>
-      <div class="wh-opt" data-act="all">${box(sel.size === 0)}<span style="font-weight:700">All Warehouses</span></div>
-      <div style="height:1px;background:var(--border);margin:4px 2px"></div>`;
+      </div>`;
     const section = (country, whs) => {
       const n = whs.filter(w => sel.has(w)).length;
       const all = n === whs.length && whs.length > 0, some = n > 0 && !all;
@@ -3099,7 +3123,7 @@
 
   function warehouseBtnLabel() {
     const sel = getSelectedWhs();
-    if (sel.length === 0) return 'All Warehouses';
+    if (sel.length === 0) return 'Select warehouse';
     if (sel.length === 1) return sel[0];
     // If the selection is exactly every warehouse of a single country, name it.
     const { byCountry } = whGroups();
@@ -3424,6 +3448,7 @@
     const out = {}; for (const k of ['new', 'rfp', 'picking', 'picked', 'packing']) out[k] = Number((a || {})[k] || 0) + Number((b || {})[k] || 0); return out;
   }
   function renderB2C() {
+    if (ensureWhSelection()) renderWarehouseFilters();   // keep ≥1 allowed warehouse selected (no "All" view)
     // Closed today (hybrid detection) → merge today + tomorrow-held per status and
     // hide the Today/Tomorrow toggle (the split is misleading while closed). Force
     // the Today view since "Tomorrow" is meaningless when the merged view covers it.
@@ -3956,7 +3981,7 @@
         const nm = rows && rows[0] && rows[0].name;
         if (nm) _liveWmsLabel = _liveWmsLabel || nm;
         userWhs = (Array.isArray(w) && w.length) ? _whCodes(w) : null;
-        if (userWhs) applyWhRestriction(userWhs); else clearWhRestriction();
+        if (userWhs) applyWhRestriction(userWhs); else applyWhRestriction([], true);   // no WMS warehouse list → see nothing (fail-closed)
         updateProfileStatusUI({ wms: true, id: loggedInWms, label: nm || _liveWmsLabel });
         return;
       }
@@ -3975,7 +4000,7 @@
         }
         refreshTabVisibility();
         const profWhs = (Array.isArray(profile.warehouses) && profile.warehouses.length) ? _whCodes(profile.warehouses) : null;
-        if (profWhs) applyWhRestriction(profWhs); else clearWhRestriction();
+        if (profWhs) applyWhRestriction(profWhs); else applyWhRestriction([], true);   // profile with no warehouse list → see nothing (fail-closed)
         updateProfileStatusUI({ profile });
         return;
       }
@@ -5239,12 +5264,11 @@
     (shortageData || []).forEach(r => { if (r.wh) names.add(r.wh); });
     (jobData || []).forEach(r => { if (r.wh) names.add(r.wh); });
     (userPerf || []).forEach(r => { if (r.warehouse_code) names.add(r.warehouse_code); });
-    const whs = [...names].sort();
-    const keep = whs.includes(selWh) ? selWh : '';
+    const whs = [...names].filter(whAllowed).sort();
+    const keep = whs.includes(selWh) ? selWh : (whs[0] || '');   // no "All" — default to the first allowed warehouse
     // Only rewrite options when the warehouse set actually changed, so the 8s
     // refresh doesn't collapse the dropdown while the user has it open.
-    const html = `<option value="">All warehouses</option>` +
-      whs.map(w => `<option value="${escHtml(w)}">${escHtml(w)}</option>`).join('');
+    const html = whs.map(w => `<option value="${escHtml(w)}">${escHtml(w)}</option>`).join('');
     if (el.dataset.opts !== html) { el.innerHTML = html; el.dataset.opts = html; }
     el.value = keep;
     if (keep !== selWh) localStorage.setItem('overviewWarehouseFilter', keep);
@@ -5397,10 +5421,9 @@
     if (!el) return;
     const sel = localStorage.getItem('prodWarehouseFilter') || '';
     const whs = [...new Set(userPerf.map(r => r.warehouse_code).filter(Boolean))].sort();
-    el.innerHTML = `<option value="">All warehouses</option>` +
-      whs.map(w => `<option value="${escHtml(w)}">${escHtml(w)}</option>`).join('');
-    // Keep the current selection if it still exists in the data, else fall back to All.
-    el.value = whs.includes(sel) ? sel : '';
+    el.innerHTML = whs.map(w => `<option value="${escHtml(w)}">${escHtml(w)}</option>`).join('');
+    // No "All" — keep the current selection if it still exists, else the first warehouse.
+    el.value = whs.includes(sel) ? sel : (whs[0] || '');
     if (el.value !== sel) localStorage.setItem('prodWarehouseFilter', el.value);
   }
 
@@ -5648,6 +5671,74 @@
     }
   }
 
+  // ── XLSX export (dependency-free: STORE zip + inline strings) ─────────────
+  function _crc32(u8) { let c, crc = -1; for (let i = 0; i < u8.length; i++) { c = (crc ^ u8[i]) & 0xff; for (let k = 0; k < 8; k++) c = c & 1 ? (c >>> 1) ^ 0xEDB88320 : c >>> 1; crc = (crc >>> 8) ^ c; } return (crc ^ -1) >>> 0; }
+  function _u32(n) { return [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255]; }
+  function _u16(n) { return [n & 255, (n >>> 8) & 255]; }
+  function _zipStore(files) {
+    const enc = new TextEncoder(); const parts = [], central = []; let offset = 0;
+    for (const f of files) {
+      const nameB = enc.encode(f.name), crc = _crc32(f.bytes), sz = f.bytes.length;
+      const lfh = new Uint8Array([].concat([0x50,0x4b,0x03,0x04], _u16(20), _u16(0), _u16(0), _u16(0), _u16(0), _u32(crc), _u32(sz), _u32(sz), _u16(nameB.length), _u16(0)));
+      parts.push(lfh, nameB, f.bytes);
+      central.push(new Uint8Array([].concat([0x50,0x4b,0x01,0x02], _u16(20), _u16(20), _u16(0), _u16(0), _u16(0), _u16(0), _u32(crc), _u32(sz), _u32(sz), _u16(nameB.length), _u16(0), _u16(0), _u16(0), _u16(0), _u32(0), _u32(offset))), nameB);
+      offset += lfh.length + nameB.length + f.bytes.length;
+    }
+    let cdSize = 0; for (const p of central) cdSize += p.length;
+    const eocd = new Uint8Array([].concat([0x50,0x4b,0x05,0x06], _u16(0), _u16(0), _u16(files.length), _u16(files.length), _u32(cdSize), _u32(offset), _u16(0)));
+    const all = [...parts, ...central, eocd]; let total = 0; for (const p of all) total += p.length;
+    const out = new Uint8Array(total); let o = 0; for (const p of all) { out.set(p, o); o += p.length; } return out;
+  }
+  function _xmlEsc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function _colRef(n) { let s = ''; n++; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26 | 0; } return s; }
+  function _sheetXml(rows) {
+    let x = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>';
+    rows.forEach((row, r) => { x += `<row r="${r + 1}">`; row.forEach((v, c) => { const ref = _colRef(c) + (r + 1); if (typeof v === 'number' && isFinite(v)) x += `<c r="${ref}"><v>${v}</v></c>`; else x += `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${_xmlEsc(v == null ? '' : v)}</t></is></c>`; }); x += '</row>'; });
+    return x + '</sheetData></worksheet>';
+  }
+  function buildXlsx(sheets) {
+    const enc = new TextEncoder(); const files = [];
+    const names = sheets.map((s, i) => (s.name || ('Sheet' + (i + 1))).slice(0, 31));
+    files.push({ name: '[Content_Types].xml', bytes: enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' + sheets.map((s,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('') + '</Types>') });
+    files.push({ name: '_rels/.rels', bytes: enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>') });
+    files.push({ name: 'xl/workbook.xml', bytes: enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>' + names.map((n,i)=>`<sheet name="${_xmlEsc(n)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('') + '</sheets></workbook>') });
+    files.push({ name: 'xl/_rels/workbook.xml.rels', bytes: enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' + sheets.map((s,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('') + '</Relationships>') });
+    sheets.forEach((s, i) => files.push({ name: `xl/worksheets/sheet${i+1}.xml`, bytes: enc.encode(_sheetXml(s.rows || [])) }));
+    return _zipStore(files);
+  }
+  function downloadXlsx(filename, sheets) {
+    const blob = new Blob([buildXlsx(sheets)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+  // Productivity export: orders & items picked/packed per person, per hour + per day.
+  function openProdExport() {
+    const iso = d => d.toISOString().slice(0, 10); const to = new Date(), from = new Date(); from.setDate(from.getDate() - 6);
+    const f = document.getElementById('prodExpFrom'), t = document.getElementById('prodExpTo');
+    if (f && !f.value) f.value = iso(from); if (t && !t.value) t.value = iso(to);
+    const m = document.getElementById('prodExpMsg'); if (m) m.textContent = '';
+    document.getElementById('prodExportModal').style.display = 'flex';
+  }
+  function closeProdExport() { const m = document.getElementById('prodExportModal'); if (m) m.style.display = 'none'; }
+  async function runProdExport() {
+    const from = document.getElementById('prodExpFrom').value, to = document.getElementById('prodExpTo').value, msg = document.getElementById('prodExpMsg');
+    if (!from || !to || from > to) { msg.style.color = '#f87171'; msg.textContent = 'Pick a valid From–To range.'; return; }
+    msg.style.color = 'var(--muted)'; msg.textContent = 'Building…';
+    const selWh = localStorage.getItem('prodWarehouseFilter') || '';
+    const whF = selWh ? '&warehouse_code=eq.' + encodeURIComponent(selWh) : '';
+    const pageAll = async base => { let out = []; for (let off = 0; off <= 200000; off += 1000) { const b = await fetch(base + '&limit=1000&offset=' + off, { headers: SB_HDR }).then(r => r.ok ? r.json() : []); out = out.concat(b); if (b.length < 1000) break; } return out; };
+    const nm = r => r.executed_by_name || r.executed_by || '';
+    try {
+      const day = await pageAll(SB_URL + '/user_performance?select=executed_by,executed_by_name,warehouse_code,activity_date,picked_orders,picked_items,packed_orders,packed_items&activity_date=gte.' + from + '&activity_date=lte.' + to + whF + '&order=activity_date.asc,executed_by_name.asc');
+      const dayRows = [['Person', 'Warehouse', 'Date', 'Picked orders', 'Picked items', 'Packed orders', 'Packed items']];
+      for (const r of day) dayRows.push([nm(r), r.warehouse_code || '', r.activity_date || '', Number(r.picked_orders || 0), Number(r.picked_items || 0), Number(r.packed_orders || 0), Number(r.packed_items || 0)]);
+      const hr = await pageAll(SB_URL + '/user_perf_hourly?select=executed_by,executed_by_name,warehouse_code,activity_date,hour_local,picked_orders,picked_items,packed_orders,packed_items&activity_date=gte.' + from + '&activity_date=lte.' + to + whF + '&order=activity_date.asc,hour_local.asc,executed_by_name.asc');
+      const hrRows = [['Person', 'Warehouse', 'Date', 'Hour', 'Picked orders', 'Picked items', 'Packed orders', 'Packed items']];
+      for (const r of hr) hrRows.push([nm(r), r.warehouse_code || '', r.activity_date || '', String(r.hour_local || '').slice(11, 16), Number(r.picked_orders || 0), Number(r.picked_items || 0), Number(r.packed_orders || 0), Number(r.packed_items || 0)]);
+      downloadXlsx('productivity_' + from + '_to_' + to + '.xlsx', [{ name: 'Per hour', rows: hrRows }, { name: 'Per day', rows: dayRows }]);
+      msg.style.color = '#4ade80'; msg.textContent = `Done — ${day.length} daily rows, ${hr.length} hourly rows.`;
+    } catch (e) { msg.style.color = '#f87171'; msg.textContent = 'Export failed: ' + (e.message || e); }
+  }
   // ── Per-user hourly productivity (from user_perf_snapshot) ──────────────
   // Each snapshot is a user's cumulative TODAY totals at a sync time; diffs give
   // the hourly rate. Buckets are keyed by sync time, summed over the warehouse
@@ -5965,9 +6056,10 @@
     const el = document.getElementById('csWarehouse'); if (!el) return;
     let sel = ''; try { sel = localStorage.getItem('csWarehouseFilter') || ''; } catch (e) {}
     const whs = [...new Set(csData.map(r => r.wh).filter(Boolean))].sort();
-    const html = '<option value="">All warehouses</option>' + whs.map(w => `<option value="${escHtml(w)}">${escHtml(w)}</option>`).join('');
+    const html = whs.map(w => `<option value="${escHtml(w)}">${escHtml(w)}</option>`).join('');
     if (el.dataset.opts !== html) { el.innerHTML = html; el.dataset.opts = html; }
-    el.value = whs.includes(sel) ? sel : '';
+    el.value = whs.includes(sel) ? sel : (whs[0] || '');   // no "All" — default to the first allowed warehouse
+    if (el.value !== sel) { try { localStorage.setItem('csWarehouseFilter', el.value); } catch (e) {} }
   }
   function renderCustomerSuccess() {
     if (!document.getElementById('csKpis')) return;
@@ -7947,9 +8039,9 @@ function fail(error) {
     const current = sel.value;
     // Build list from b2cData + any warehouse names seen in errors
     const names = b2cData.filter(r => r.type === 'warehouse' && r.wh).map(r => r.wh);
-    errors.forEach(e => { if (e.warehouse && !names.includes(e.warehouse)) names.push(e.warehouse); });
+    errors.forEach(e => { if (e.warehouse && whAllowed(e.warehouse) && !names.includes(e.warehouse)) names.push(e.warehouse); });
     names.sort();
-    sel.innerHTML = '<option value="">All warehouses</option>';
+    sel.innerHTML = '';   // no "All warehouses"
     names.forEach(wh => {
       const opt = document.createElement('option');
       opt.value = wh; opt.textContent = wh;
@@ -8810,7 +8902,6 @@ function fail(error) {
     const names=dashWhNames(), x=_dashMenuPos.x, y=_dashMenuPos.y;
     dashMenu(x,y,[{label:'‹ Back',onClick:()=>dashWidgetMenu(inst,x,y)},{sep:true},
       {label:'Follow dashboard',check:true,checked:inst.wh===undefined,onClick:()=>dashSetWh(inst,undefined)},
-      {label:'All warehouses',check:true,checked:inst.wh==='',onClick:()=>dashSetWh(inst,'')},
       ...names.map(nm=>({label:nm,check:true,checked:inst.wh===nm,onClick:()=>dashSetWh(inst,nm)}))]);
   }
   function dashColMenu(inst){
@@ -8875,7 +8966,7 @@ function fail(error) {
         {label:'Small',onClick:()=>add({w:4})},{label:'Medium',onClick:()=>add({w:6})},{label:'Large',onClick:()=>add({w:8})},{label:'Full width',onClick:()=>add({w:12})} ])},
       {label:'Set warehouse…', arrow:true, onClick:()=>{ const names=dashWhNames(); dashMenu(_dashMenuPos.x,_dashMenuPos.y,[
         {label:'‹ Back',onClick:()=>dashHomeBoxMenu(box,_dashMenuPos.x,_dashMenuPos.y)},{sep:true},
-        {label:'Follow dashboard',onClick:()=>add()},{label:'All warehouses',onClick:()=>add({wh:''})},
+        {label:'Follow dashboard',onClick:()=>add()},
         ...names.map(nm=>({label:nm,onClick:()=>add({wh:nm})})) ]); }},
       {sep:true},
       {label:'Add to dashboard', onClick:()=>add()},
