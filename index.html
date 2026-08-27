@@ -5651,24 +5651,30 @@
     return `<div><div style="font-size:.64rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">${label}</div><div style="font-size:1.3rem;font-weight:700;color:var(--text)">${val}${d}</div></div>`;
   }
   function _otMonLbl(m) { return MONTHS_ABBR[Number(m.slice(5, 7)) - 1] + ' ' + m.slice(2, 4); }
-  // Simple SVG bar chart. items: [{label, short, value, forecast}]. Forecast bars hatched.
+  // Simple SVG bar chart. items: [{label, short, value, forecast}]. Forecast bars
+  // hatched. Each bar is labelled with its value (compact k/M; vertical when narrow).
   function _otBarChart(items, color) {
     if (!items.length) return '<div style="color:var(--muted);font-size:.8rem;padding:10px 2px">No data yet.</div>';
     const fmt = v => Number(v || 0).toLocaleString();
+    const cfmt = v => { v = Number(v || 0); if (v >= 1e6) return (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M'; if (v >= 1e4) return Math.round(v / 1e3) + 'k'; if (v >= 1e3) return (v / 1e3).toFixed(1).replace(/\.0$/, '') + 'k'; return String(Math.round(v)); };
     const max = Math.max(1, ...items.map(i => i.value));
     const n = items.length, bw = Math.max(6, Math.min(30, Math.floor(660 / n))), gap = Math.max(2, Math.round(bw * 0.28));
-    const ch = 168, top = 12, bottom = 26, plot = ch - top - bottom, cw = 34 + n * (bw + gap);
-    let bars = '', labels = '';
+    const wide = bw >= 22;                 // horizontal value labels only fit on wide bars
+    const ch = 196, top = 42, bottom = 26, plot = ch - top - bottom, cw = 34 + n * (bw + gap);
+    let bars = '', vals = '', labels = '';
     const every = Math.max(1, Math.ceil(n / 12));
     items.forEach((it, i) => {
       const h = Math.round((it.value / max) * plot), x = 30 + i * (bw + gap), y = top + (plot - h);
+      const cx = x + bw / 2, ly = y - 4, vColor = it.forecast ? 'var(--muted)' : 'var(--text)';
       bars += `<rect x="${x}" y="${y}" width="${bw}" height="${Math.max(h, it.value > 0 ? 1 : 0)}" rx="2" fill="${it.forecast ? 'url(#otHatch)' : color}"><title>${it.label}: ${fmt(it.value)}${it.forecast ? ' (forecast)' : ''}</title></rect>`;
-      if (n <= 14 || i % every === 0 || i === n - 1) labels += `<text x="${x + bw / 2}" y="${ch - 8}" font-size="9" style="fill:var(--muted)" text-anchor="middle">${it.short || it.label}</text>`;
+      if (it.value > 0) vals += wide
+        ? `<text x="${cx}" y="${ly}" font-size="9.5" style="fill:${vColor}" text-anchor="middle">${cfmt(it.value)}</text>`
+        : `<text x="${cx}" y="${ly}" font-size="8.5" style="fill:${vColor}" text-anchor="start" transform="rotate(-90 ${cx} ${ly})">${cfmt(it.value)}</text>`;
+      if (n <= 14 || i % every === 0 || i === n - 1) labels += `<text x="${cx}" y="${ch - 8}" font-size="9" style="fill:var(--muted)" text-anchor="middle">${it.short || it.label}</text>`;
     });
     return `<svg viewBox="0 0 ${cw} ${ch}" width="100%" style="max-width:${cw}px;min-width:${Math.min(cw, 340)}px">
       <defs><pattern id="otHatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="${color}" opacity="0.16"/><line x1="0" y1="0" x2="0" y2="5" stroke="${color}" stroke-width="2.4" opacity="0.85"/></pattern></defs>
-      <text x="0" y="13" font-size="9" style="fill:var(--muted)">${fmt(max)}</text>
-      ${bars}${labels}</svg>`;
+      ${bars}${vals}${labels}</svg>`;
   }
   function renderOrderTrend() {
     const card = document.getElementById('orderTrendCard'); if (!card) return;
