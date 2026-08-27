@@ -5647,7 +5647,25 @@
     opts = opts || {};
     const c = opts.color || 'var(--text)';
     const tag = opts.forecast ? ' <span style="font-size:.56rem;font-weight:700;color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:0 3px;vertical-align:middle">FORECAST</span>' : '';
-    return `<div><div style="font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:2px">${label}${tag}</div><div style="font-size:1.65rem;font-weight:800;color:${c};line-height:1.02">${val}</div></div>`;
+    const sub = opts.sub ? `<div style="font-size:.64rem;color:var(--muted);margin-top:1px"${opts.subTitle ? ` title="${opts.subTitle}"` : ''}>${opts.sub}</div>` : '';
+    return `<div><div style="font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:2px">${label}${tag}</div><div style="font-size:1.65rem;font-weight:800;color:${c};line-height:1.02">${val}</div>${sub}</div>`;
+  }
+  // Backtested forecast accuracy = 100% − weighted abs error, walking the same
+  // weekday-seasonal method forward over history (predict each day from prior days).
+  // Returns null until there's enough history to be meaningful.
+  function _otAccuracy(series) {
+    if (!series || series.length < 10) return null;
+    let absErr = 0, tot = 0, evaluated = 0;
+    for (let i = 7; i < series.length; i++) {
+      const hist = series.slice(0, i);
+      const wd = new Date(series[i].day + 'T00:00:00').getDay();
+      const same = hist.filter(s => new Date(s.day + 'T00:00:00').getDay() === wd).slice(-4);
+      const recentMean = hist.slice(-14).reduce((a, s) => a + s.v, 0) / Math.min(14, hist.length);
+      const pred = same.length ? same.reduce((a, s) => a + s.v, 0) / same.length : recentMean;
+      absErr += Math.abs(series[i].v - pred); tot += series[i].v; evaluated++;
+    }
+    if (!evaluated || tot <= 0) return null;
+    return Math.max(0, Math.min(100, Math.round((1 - absErr / tot) * 100)));
   }
   // Hover tooltip for the trend chart. Wired once per card; reads each bar's data-t.
   function _otWireTip(card, chartEl) {
@@ -5755,20 +5773,25 @@
     const allDays = [...new Set([...Object.keys(recvByDay), ...Object.keys(doneByDay)])].sort();
     if (!allDays.length) { sumEl.innerHTML = ''; chartEl.innerHTML = '<div style="color:var(--muted);font-size:.8rem;padding:10px 2px">No order history yet — fills in daily.</div>'; return; }
 
+    // Continuous daily series for both metrics — powers the daily view and the
+    // backtested forecast accuracy. Trim leading empties so a young series (e.g.
+    // B2C received) isn't diluted to ~0 by months of zeros.
+    const first = new Date(allDays[0] + 'T00:00:00'), end = new Date(allDays[allDays.length - 1] + 'T00:00:00');
+    const dayList = []; for (let d = new Date(first); d <= end && dayList.length < 400; d.setDate(d.getDate() + 1)) dayList.push(localDateStr(new Date(d)));
+    const recvS = dayList.map(k => ({ day: k, v: recvByDay[k] || 0 })), doneS = dayList.map(k => ({ day: k, v: doneByDay[k] || 0 }));
+    const trimLead = arr => { let i = 0; while (i < arr.length && arr[i].v === 0) i++; return arr.slice(i); };
+    const recvAcc = _otAccuracy(trimLead(recvS)), doneAcc = _otAccuracy(trimLead(doneS));
+    const accSub = a => a != null ? a + '% accurate' : 'accuracy: building…';
+    const accTitle = 'Backtested: 100% − weighted error of this forecast method vs actuals over history';
+
     if (mode === 'daily') {
-      const first = new Date(allDays[0] + 'T00:00:00'), end = new Date(allDays[allDays.length - 1] + 'T00:00:00');
-      const dayList = []; for (let d = new Date(first); d <= end && dayList.length < 120; d.setDate(d.getDate() + 1)) dayList.push(localDateStr(new Date(d)));
-      const recvS = dayList.map(k => ({ day: k, v: recvByDay[k] || 0 })), doneS = dayList.map(k => ({ day: k, v: doneByDay[k] || 0 }));
-      // Forecast off each series' own active range — trim leading empty days so a
-      // young series (e.g. B2C received) isn't diluted to ~0 by months of zeros.
-      const trimLead = arr => { let i = 0; while (i < arr.length && arr[i].v === 0) i++; return arr.slice(i); };
       const recvFc = _otFcDaily(trimLead(recvS)), doneFc = _otFcDaily(trimLead(doneS));
       const show = dayList.slice(-45);
       const slots = show.map(k => ({ label: k, short: k.slice(5), forecast: false, bars: [{ value: recvByDay[k] || 0, color: RECV, name: 'Received' }, { value: doneByDay[k] || 0, color: DONE, name: 'Completed' }] }));
       for (let i = 0; i < 7; i++) slots.push({ label: recvFc[i].day, short: recvFc[i].day.slice(5), forecast: true, bars: [{ value: recvFc[i].v, color: RECV, hatch: true, name: 'Received' }, { value: doneFc[i].v, color: DONE, hatch: true, name: 'Completed' }] });
       const rL7 = recvS.slice(-7).reduce((a, s) => a + s.v, 0), dL7 = doneS.slice(-7).reduce((a, s) => a + s.v, 0);
       const rN7 = recvFc.reduce((a, s) => a + s.v, 0), dN7 = doneFc.reduce((a, s) => a + s.v, 0);
-      sumEl.innerHTML = _otStat('Received · 7d', fmt(rL7), { color: RECV }) + _otStat('Completed · 7d', fmt(dL7), { color: DONE }) + _otStat('Received · next 7', fmt(rN7), { color: RECV, forecast: true }) + _otStat('Completed · next 7', fmt(dN7), { color: DONE, forecast: true });
+      sumEl.innerHTML = _otStat('Received · 7d', fmt(rL7), { color: RECV }) + _otStat('Completed · 7d', fmt(dL7), { color: DONE }) + _otStat('Received · next 7', fmt(rN7), { color: RECV, forecast: true, sub: accSub(recvAcc), subTitle: accTitle }) + _otStat('Completed · next 7', fmt(dN7), { color: DONE, forecast: true, sub: accSub(doneAcc), subTitle: accTitle });
       chartEl.innerHTML = legend + _otBarChart(slots, { colors: [RECV, DONE], labels: false });
     } else {
       const rMon = {}, dMon = {};
@@ -5784,7 +5807,7 @@
       const nd = new Date(Number(cur.slice(0, 4)), Number(cur.slice(5, 7)), 1), nextM = localDateStr(nd).slice(0, 7);
       const slots = months.slice(-12).map(m => ({ label: m, short: _otMonLbl(m), forecast: false, bars: [{ value: rMon[m] || 0, color: RECV, name: 'Received' }, { value: dMon[m] || 0, color: DONE, name: 'Completed' }] }));
       slots.push({ label: nextM, short: _otMonLbl(nextM), forecast: true, bars: [{ value: rNext, color: RECV, hatch: true, name: 'Received' }, { value: dNext, color: DONE, hatch: true, name: 'Completed' }] });
-      sumEl.innerHTML = _otStat('Received · month', fmt(rMon[cur] || 0), { color: RECV }) + _otStat('Completed · month', fmt(dMon[cur] || 0), { color: DONE }) + _otStat('Received · next', fmt(rNext), { color: RECV, forecast: true }) + _otStat('Completed · next', fmt(dNext), { color: DONE, forecast: true });
+      sumEl.innerHTML = _otStat('Received · month', fmt(rMon[cur] || 0), { color: RECV }) + _otStat('Completed · month', fmt(dMon[cur] || 0), { color: DONE }) + _otStat('Received · next', fmt(rNext), { color: RECV, forecast: true, sub: accSub(recvAcc), subTitle: accTitle }) + _otStat('Completed · next', fmt(dNext), { color: DONE, forecast: true, sub: accSub(doneAcc), subTitle: accTitle });
       chartEl.innerHTML = legend + _otBarChart(slots, { colors: [RECV, DONE], labels: true });
     }
   }
