@@ -2273,6 +2273,26 @@
     <!-- KPI Cards -->
     <div id="productivityKpis" style="margin-bottom:16px"></div>
 
+    <!-- Completed orders — trend & forecast -->
+    <style>
+      #orderTrendCard .ot-toggle{font-size:.75rem;padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:pointer}
+      #orderTrendCard .ot-toggle.active{background:var(--primary);color:var(--on-primary,#0b1f12);border-color:var(--primary);font-weight:600}
+    </style>
+    <div class="card" id="orderTrendCard" style="padding:16px 18px;margin-bottom:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:10px">
+        <div>
+          <div style="font-size:.85rem;font-weight:600;color:var(--text)">Completed orders — trend &amp; forecast</div>
+          <div style="font-size:.7rem;color:var(--muted);margin-top:2px">Packed orders per warehouse · forecast is an estimate (dashed)</div>
+        </div>
+        <div style="display:flex;gap:4px">
+          <button type="button" id="otModeDaily" onclick="setOrderTrendMode('daily')" class="ot-toggle active">Daily</button>
+          <button type="button" id="otModeMonthly" onclick="setOrderTrendMode('monthly')" class="ot-toggle">Monthly</button>
+        </div>
+      </div>
+      <div id="orderTrendSummary" style="display:flex;gap:22px;flex-wrap:wrap;margin-bottom:10px"></div>
+      <div id="orderTrendChart" style="overflow-x:auto"></div>
+    </div>
+
     <!-- Hourly depletion rate -->
     <div class="card" id="prodHourlyBox" style="padding:16px 18px;margin-bottom:20px;border:1px solid var(--brand,#94ffa1)">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
@@ -2311,7 +2331,8 @@
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)">Orders</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)">Items</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)" title="Orders in the last ~1 hour">Last hr</th>
-              <th style="text-align:right;padding:10px 18px 10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)" title="Average orders per active hour today (pick rate in Picked mode, pack rate in Packed mode)">Rate/hr</th>
+              <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)" title="Orders per active hour TODAY (pick rate in Picked mode, pack rate in Packed mode)">Today/hr</th>
+              <th style="text-align:right;padding:10px 18px 10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)" title="Average orders per active hour over the last 30 days (typical speed)">Avg/hr</th>
             </tr>
           </thead>
           <tbody id="prodUserTable"></tbody>
@@ -2319,15 +2340,15 @@
       </div>
     </div>
 
-    <!-- 30-day daily × hourly heatmap -->
+    <!-- 90-day daily × hourly heatmap -->
     <div class="card" style="padding:0;overflow:hidden;margin-top:16px">
-      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Hourly by day — last 30 days</div>
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Hourly by day — last 90 days</div>
       <div id="prodHeatmap" style="overflow-x:auto;padding:12px 18px"></div>
     </div>
 
     <!-- Daily -->
     <div class="card fill-card" style="padding:0;overflow:hidden;margin-top:16px">
-      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Daily — last 30 days · <span id="prodDailyMode">Picked</span></div>
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Daily — last 90 days · <span id="prodDailyMode">Picked</span></div>
       <div class="fill-scroll" style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:.82rem">
           <thead>
@@ -5395,7 +5416,9 @@
   let userPerf = [];
   let prodSnaps = [];
   let userPerfSnaps = [];   // per-user cumulative snapshots → hourly per-user rate + chart
-  let hourlyDaily = [];     // [{day, hour, picked_orders, packed_orders}] — 30-day daily×hourly rollup (RPC)
+  let hourlyDaily = [];     // [{day, hour, picked_orders, packed_orders}] — 90-day daily×hourly rollup (RPC)
+  let userSpeedAvg = {};    // person -> { pickPerHr, packPerHr } avg over last 30d (user_speed_avg RPC)
+  let orderDaily = [];      // warehouse_order_daily rows — durable completed-orders ledger (trend + forecast)
   const MONTHS_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const dayLabel = ds => { const p = String(ds).split('-'); return p[2] ? `${p[2]} ${MONTHS_ABBR[+p[1]-1]}` : ds; };
@@ -5424,7 +5447,7 @@
       const r = await fetch(SB_URL + '/rpc/daily_hourly_productivity', {
         method: 'POST',
         headers: { ...SB_HDR, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ _days: 30, _tz: tz, _warehouses: whs })
+        body: JSON.stringify({ _days: 90, _tz: tz, _warehouses: whs })
       });
       hourlyDaily = r.ok ? await r.json() : [];
     } catch (e) { hourlyDaily = []; }
@@ -5459,7 +5482,7 @@
     const modeEl = document.getElementById('productivityMode');
     if (modeEl) { modeEl.textContent = 'Loading…'; modeEl.style.color = 'var(--muted)'; }
     try {
-      const cutoff = localDateStr(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
+      const cutoff = localDateStr(new Date(Date.now() - 90 * 24 * 60 * 60 * 1000));
       const url = SB_URL + '/user_performance?select=*&activity_date=gte.' + cutoff + '&order=activity_date.desc';
       // Snapshots from the last 6h let us compute the hourly depletion rate
       // (this sync's cumulative total minus the total ~1h ago).
@@ -5468,15 +5491,35 @@
       // Per-user snapshots over ~16h so the drill-down chart covers a full shift.
       const uSnapCutoff = new Date(Date.now() - 16 * 60 * 60 * 1000).toISOString();
       const uSnapUrl = SB_URL + '/user_perf_snapshot?select=*&captured_at=gte.' + encodeURIComponent(uSnapCutoff) + '&order=captured_at.desc';
-      const [res, snapRes, uSnapRes] = await Promise.all([
+      // Completed-orders ledger (durable) for the trend + forecast card — up to ~13 months.
+      const odCut = localDateStr(new Date(Date.now() - 400 * 24 * 60 * 60 * 1000));
+      const odUrl = SB_URL + '/warehouse_order_daily?select=warehouse_code,day,completed_orders,completed_items&day=gte.' + odCut + '&order=day.asc';
+      // Per-person average pick/pack speed over the last 30 days (durable hourly rollup).
+      const selWhP = localStorage.getItem('prodWarehouseFilter') || '';
+      const spWhs = selWhP ? [selWhP] : (_whAllow ? [..._whAllow] : null);
+      const spReq = fetch(SB_URL + '/rpc/user_speed_avg', { method: 'POST', headers: { ...SB_HDR, 'Content-Type': 'application/json' }, body: JSON.stringify({ _days: 30, _warehouses: spWhs }) });
+      const [res, snapRes, uSnapRes, odRes, spRes] = await Promise.all([
         fetch(url, { headers: SB_HDR }),
         fetch(snapUrl, { headers: SB_HDR }),
         fetch(uSnapUrl, { headers: SB_HDR }),
+        fetch(odUrl, { headers: SB_HDR }),
+        spReq,
       ]);
       if (!res.ok) throw new Error('HTTP ' + res.status);
       userPerf = (await res.json()).filter(r => whAllowed(r.warehouse_code));   // hard-restrict to the user's warehouses
       prodSnaps = (snapRes.ok ? await snapRes.json() : []).filter(r => whAllowed(r.warehouse_code));
       userPerfSnaps = (uSnapRes.ok ? await uSnapRes.json() : []).filter(r => whAllowed(r.warehouse_code));
+      orderDaily = (odRes.ok ? await odRes.json() : []).filter(r => whAllowed(r.warehouse_code));
+      // Build person -> avg pick/pack per active hour from the RPC aggregates.
+      userSpeedAvg = {};
+      const spRows = spRes.ok ? await spRes.json() : [];
+      for (const r of spRows) {
+        const nm = r.executed_by_name || ('#' + r.executed_by);
+        userSpeedAvg[nm] = {
+          pickPerHr: Number(r.pick_hours) > 0 ? Math.round(Number(r.picked_orders) / Number(r.pick_hours)) : 0,
+          packPerHr: Number(r.pack_hours) > 0 ? Math.round(Number(r.packed_orders) / Number(r.pack_hours)) : 0,
+        };
+      }
       populateProdWarehouseSelect();
       populateProdPersonSelect();
       renderProductivity();
@@ -5568,17 +5611,21 @@
         const lhOrders = lh ? (mode === 'packed' ? lh.ko : lh.po) : null;
         const rt = rate[u.name];
         const rph = rt ? (mode === 'packed' ? rt.packPerHr : rt.pickPerHr) : 0;
+        const av = userSpeedAvg[u.name];
+        const aph = av ? (mode === 'packed' ? av.packPerHr : av.pickPerHr) : 0;
         return `<tr style="border-top:1px solid var(--border);cursor:pointer" onclick="openUserHourly(this.dataset.person)" data-person="${escHtml(u.name)}" title="Hourly breakdown for ${escHtml(u.name)}">
           <td style="padding:7px 18px;color:var(--text);font-size:.82rem;white-space:nowrap">${escHtml(u.name)} <span style="color:var(--muted);font-size:.72rem">›</span></td>
           ${barCell(u.orders, maxO, modeColor)}
           ${barCell(u.items, maxI, '#94a3b8')}
           <td style="padding:7px 14px;text-align:right;font-size:.82rem;white-space:nowrap;color:${lhOrders ? modeColor : 'var(--muted)'}">${lhOrders != null ? fmt(lhOrders) : '—'}</td>
-          <td style="padding:7px 18px 7px 14px;text-align:right;font-size:.82rem;white-space:nowrap;color:${rph > 0 ? 'var(--text)' : 'var(--muted)'}">${rph > 0 ? fmt(rph) : '—'}</td>
+          <td style="padding:7px 14px;text-align:right;font-size:.82rem;white-space:nowrap;color:${rph > 0 ? 'var(--text)' : 'var(--muted)'}">${rph > 0 ? fmt(rph) : '—'}</td>
+          <td style="padding:7px 18px 7px 14px;text-align:right;font-size:.82rem;white-space:nowrap;color:${aph > 0 ? 'var(--text)' : 'var(--muted)'}">${aph > 0 ? fmt(aph) : '—'}</td>
         </tr>`;
-      }).join('') : `<tr><td colspan="5" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No data yet.</td></tr>`;
+      }).join('') : `<tr><td colspan="6" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No data yet.</td></tr>`;
     }
 
     renderHourlyRate(selWh);
+    renderOrderTrend();
 
     // Daily totals for the selected mode.
     const byDay = {};
@@ -5594,6 +5641,80 @@
     if (dEl) dEl.innerHTML = tableHtml(days, 'label');
 
     renderHourlyHeatmap();
+  }
+
+  // ── Completed-orders trend + forecast (from warehouse_order_daily) ─────────
+  function setOrderTrendMode(m) { localStorage.setItem('orderTrendMode', m); renderOrderTrend(); }
+  function _otStat(label, val, delta) {
+    let d = '';
+    if (typeof delta === 'number' && delta !== 0) { const up = delta > 0; d = ` <span style="font-size:.7rem;color:${up ? '#4ade80' : '#f87171'}">${up ? '▲' : '▼'}${Math.abs(delta)}%</span>`; }
+    return `<div><div style="font-size:.64rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">${label}</div><div style="font-size:1.3rem;font-weight:700;color:var(--text)">${val}${d}</div></div>`;
+  }
+  function _otMonLbl(m) { return MONTHS_ABBR[Number(m.slice(5, 7)) - 1] + ' ' + m.slice(2, 4); }
+  // Simple SVG bar chart. items: [{label, short, value, forecast}]. Forecast bars hatched.
+  function _otBarChart(items, color) {
+    if (!items.length) return '<div style="color:var(--muted);font-size:.8rem;padding:10px 2px">No data yet.</div>';
+    const fmt = v => Number(v || 0).toLocaleString();
+    const max = Math.max(1, ...items.map(i => i.value));
+    const n = items.length, bw = Math.max(6, Math.min(30, Math.floor(660 / n))), gap = Math.max(2, Math.round(bw * 0.28));
+    const ch = 168, top = 12, bottom = 26, plot = ch - top - bottom, cw = 34 + n * (bw + gap);
+    let bars = '', labels = '';
+    const every = Math.max(1, Math.ceil(n / 12));
+    items.forEach((it, i) => {
+      const h = Math.round((it.value / max) * plot), x = 30 + i * (bw + gap), y = top + (plot - h);
+      bars += `<rect x="${x}" y="${y}" width="${bw}" height="${Math.max(h, it.value > 0 ? 1 : 0)}" rx="2" fill="${it.forecast ? 'url(#otHatch)' : color}"><title>${it.label}: ${fmt(it.value)}${it.forecast ? ' (forecast)' : ''}</title></rect>`;
+      if (n <= 14 || i % every === 0 || i === n - 1) labels += `<text x="${x + bw / 2}" y="${ch - 8}" font-size="9" style="fill:var(--muted)" text-anchor="middle">${it.short || it.label}</text>`;
+    });
+    return `<svg viewBox="0 0 ${cw} ${ch}" width="100%" style="max-width:${cw}px;min-width:${Math.min(cw, 340)}px">
+      <defs><pattern id="otHatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="${color}" opacity="0.16"/><line x1="0" y1="0" x2="0" y2="5" stroke="${color}" stroke-width="2.4" opacity="0.85"/></pattern></defs>
+      <text x="0" y="13" font-size="9" style="fill:var(--muted)">${fmt(max)}</text>
+      ${bars}${labels}</svg>`;
+  }
+  function renderOrderTrend() {
+    const card = document.getElementById('orderTrendCard'); if (!card) return;
+    const sumEl = document.getElementById('orderTrendSummary'), chartEl = document.getElementById('orderTrendChart');
+    if (!sumEl || !chartEl) return;
+    const fmt = n => Number(n || 0).toLocaleString();
+    const color = '#5eead4';
+    const selWh = localStorage.getItem('prodWarehouseFilter') || '';
+    const mode = localStorage.getItem('orderTrendMode') === 'monthly' ? 'monthly' : 'daily';
+    document.getElementById('otModeDaily')?.classList.toggle('active', mode === 'daily');
+    document.getElementById('otModeMonthly')?.classList.toggle('active', mode === 'monthly');
+    const byDay = {};
+    (orderDaily || []).forEach(r => { if (!selWh || r.warehouse_code === selWh) byDay[r.day] = (byDay[r.day] || 0) + Number(r.completed_orders || 0); });
+    const days = Object.keys(byDay).sort();
+    if (!days.length) { sumEl.innerHTML = ''; chartEl.innerHTML = '<div style="color:var(--muted);font-size:.8rem;padding:10px 2px">No completed-order history yet — fills in daily.</div>'; return; }
+
+    if (mode === 'daily') {
+      // Continuous daily series (gaps = 0), most recent ~90 days.
+      const end = new Date(days[days.length - 1] + 'T00:00:00'), first = new Date(days[0] + 'T00:00:00');
+      const series = [];
+      for (let d = new Date(end); d >= first && series.length < 90; d.setDate(d.getDate() - 1)) { const k = localDateStr(d); series.unshift({ day: k, v: byDay[k] || 0 }); }
+      // Forecast next 7 days: weekday-seasonal avg of last 4 same-weekday actuals, else recent 14-day mean.
+      const byWd = {}; series.forEach(s => { const wd = new Date(s.day + 'T00:00:00').getDay(); (byWd[wd] = byWd[wd] || []).push(s.v); });
+      const recentMean = series.slice(-14).reduce((a, s) => a + s.v, 0) / Math.min(14, series.length) || 0;
+      const fc = []; const fd = new Date(series[series.length - 1].day + 'T00:00:00');
+      for (let i = 0; i < 7; i++) { fd.setDate(fd.getDate() + 1); const arr = (byWd[fd.getDay()] || []).slice(-4); fc.push({ day: localDateStr(new Date(fd)), v: arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : Math.round(recentMean) }); }
+      const disp = series.slice(-45).map(s => ({ label: s.day, short: s.day.slice(5), value: s.v, forecast: false }))
+        .concat(fc.map(s => ({ label: s.day, short: s.day.slice(5), value: s.v, forecast: true })));
+      const last7 = series.slice(-7).reduce((a, s) => a + s.v, 0), prev7 = series.slice(-14, -7).reduce((a, s) => a + s.v, 0), next7 = fc.reduce((a, s) => a + s.v, 0);
+      const delta = prev7 ? Math.round((last7 - prev7) / prev7 * 100) : 0;
+      sumEl.innerHTML = _otStat('Last 7 days', fmt(last7)) + _otStat('Prev 7 days', fmt(prev7), delta) + _otStat('Next 7 · forecast', fmt(next7));
+      chartEl.innerHTML = _otBarChart(disp, color);
+    } else {
+      const byMonth = {}; days.forEach(k => { const m = k.slice(0, 7); byMonth[m] = (byMonth[m] || 0) + byDay[k]; });
+      const months = Object.keys(byMonth).sort();
+      const today = localDateStr(), curMonth = today.slice(0, 7);
+      const complete = months.filter(m => m < curMonth), last3 = complete.slice(-3);
+      const fcVal = last3.length ? Math.round(last3.reduce((a, m) => a + byMonth[m], 0) / last3.length) : 0;
+      const dd = Number(today.slice(8, 10)), dim = new Date(Number(curMonth.slice(0, 4)), Number(curMonth.slice(5, 7)), 0).getDate();
+      const curActual = byMonth[curMonth] || 0, curProj = dd > 0 ? Math.round(curActual / dd * dim) : curActual;
+      const nd = new Date(Number(curMonth.slice(0, 4)), Number(curMonth.slice(5, 7)), 1), nextM = localDateStr(nd).slice(0, 7);
+      const disp = months.slice(-12).map(m => ({ label: m, short: _otMonLbl(m), value: byMonth[m], forecast: false }));
+      disp.push({ label: nextM, short: _otMonLbl(nextM), value: fcVal, forecast: true });
+      sumEl.innerHTML = _otStat('This month', fmt(curActual)) + _otStat('Proj. full month', fmt(curProj)) + _otStat('Next month · forecast', fmt(fcVal));
+      chartEl.innerHTML = _otBarChart(disp, color);
+    }
   }
 
   // 30-day daily × hourly heatmaps (Picked + Packed): rows = days (newest first), cols = hours,
