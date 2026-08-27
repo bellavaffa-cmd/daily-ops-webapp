@@ -7511,6 +7511,12 @@
         f.dataset.loaded = '1';
       }
     }
+    if (v === 'productivity') {
+      try { renderProdTrend(); } catch (e) {}   // paint immediately from cache
+      // If the completed-orders ledger hasn't loaded yet (opened before init/sync
+      // finished), fetch it now — it re-renders the card on arrival.
+      if (!(typeof orderDaily !== 'undefined' && orderDaily && orderDaily.length)) { try { fetchOrderLedgers(); } catch (e) {} }
+    }
     if (v === 'dash') { try { renderStats(); } catch(e){} try { initWarehouseFilter(); renderTable(); } catch(e){} }
     if (v === 'jobs') {
       try { renderJobs(); } catch(e){}
