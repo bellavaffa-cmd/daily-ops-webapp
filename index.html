@@ -5660,7 +5660,7 @@
     const max = Math.max(1, ...items.map(i => i.value));
     const n = items.length, bw = Math.max(6, Math.min(30, Math.floor(660 / n))), gap = Math.max(2, Math.round(bw * 0.28));
     const wide = bw >= 22;                 // horizontal value labels only fit on wide bars
-    const ch = 196, top = 42, bottom = 26, plot = ch - top - bottom, cw = 34 + n * (bw + gap);
+    const ch = 210, top = 54, bottom = 26, plot = ch - top - bottom, cw = 34 + n * (bw + gap);
     let bars = '', vals = '', labels = '';
     const every = Math.max(1, Math.ceil(n / 12));
     items.forEach((it, i) => {
@@ -5668,8 +5668,8 @@
       const cx = x + bw / 2, ly = y - 4, vColor = it.forecast ? 'var(--muted)' : 'var(--text)';
       bars += `<rect x="${x}" y="${y}" width="${bw}" height="${Math.max(h, it.value > 0 ? 1 : 0)}" rx="2" fill="${it.forecast ? 'url(#otHatch)' : color}"><title>${it.label}: ${fmt(it.value)}${it.forecast ? ' (forecast)' : ''}</title></rect>`;
       if (it.value > 0) vals += wide
-        ? `<text x="${cx}" y="${ly}" font-size="9.5" style="fill:${vColor}" text-anchor="middle">${cfmt(it.value)}</text>`
-        : `<text x="${cx}" y="${ly}" font-size="8.5" style="fill:${vColor}" text-anchor="start" transform="rotate(-90 ${cx} ${ly})">${cfmt(it.value)}</text>`;
+        ? `<text x="${cx}" y="${ly}" font-size="13" font-weight="600" style="fill:${vColor}" text-anchor="middle">${cfmt(it.value)}</text>`
+        : `<text x="${cx}" y="${ly}" font-size="11" font-weight="600" style="fill:${vColor}" text-anchor="start" transform="rotate(-90 ${cx} ${ly})">${cfmt(it.value)}</text>`;
       if (n <= 14 || i % every === 0 || i === n - 1) labels += `<text x="${cx}" y="${ch - 8}" font-size="9" style="fill:var(--muted)" text-anchor="middle">${it.short || it.label}</text>`;
     });
     return `<svg viewBox="0 0 ${cw} ${ch}" width="100%" style="max-width:${cw}px;min-width:${Math.min(cw, 340)}px">
