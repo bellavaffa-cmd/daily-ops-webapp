@@ -2058,6 +2058,26 @@
       </div>
     </div>
 
+    <!-- Orders — trend & forecast (B2C received vs completed) -->
+    <style>
+      #orderTrendCard .ot-toggle{font-size:.75rem;padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:pointer}
+      #orderTrendCard .ot-toggle.active{background:var(--primary);color:var(--on-primary,#0b1f12);border-color:var(--primary);font-weight:600}
+    </style>
+    <div class="card" id="orderTrendCard" style="padding:16px 18px;margin-bottom:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:10px">
+        <div>
+          <div style="font-size:.85rem;font-weight:600;color:var(--text)">Orders — trend &amp; forecast</div>
+          <div style="font-size:.7rem;color:var(--muted);margin-top:2px">B2C received (demand) vs completed/packed (throughput) · follows the warehouse filter · forecast is an estimate</div>
+        </div>
+        <div style="display:flex;gap:4px">
+          <button type="button" id="otModeDaily" onclick="setOrderTrendMode('daily')" class="ot-toggle active">Daily</button>
+          <button type="button" id="otModeMonthly" onclick="setOrderTrendMode('monthly')" class="ot-toggle">Monthly</button>
+        </div>
+      </div>
+      <div id="orderTrendSummary" style="display:flex;gap:22px;flex-wrap:wrap;margin-bottom:10px"></div>
+      <div id="orderTrendChart" style="overflow-x:auto"></div>
+    </div>
+
     <!-- B2C insights: cut-off countdown, bottleneck, brands, aging, mix, trend, staffing -->
     <div id="b2cInsights" style="margin-bottom:20px"></div>
 
@@ -2272,26 +2292,6 @@
 
     <!-- KPI Cards -->
     <div id="productivityKpis" style="margin-bottom:16px"></div>
-
-    <!-- Completed orders — trend & forecast -->
-    <style>
-      #orderTrendCard .ot-toggle{font-size:.75rem;padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:pointer}
-      #orderTrendCard .ot-toggle.active{background:var(--primary);color:var(--on-primary,#0b1f12);border-color:var(--primary);font-weight:600}
-    </style>
-    <div class="card" id="orderTrendCard" style="padding:16px 18px;margin-bottom:20px">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:10px">
-        <div>
-          <div style="font-size:.85rem;font-weight:600;color:var(--text)">Orders — trend &amp; forecast</div>
-          <div style="font-size:.7rem;color:var(--muted);margin-top:2px">B2C received (demand) vs completed/packed (throughput) per warehouse · forecast is an estimate</div>
-        </div>
-        <div style="display:flex;gap:4px">
-          <button type="button" id="otModeDaily" onclick="setOrderTrendMode('daily')" class="ot-toggle active">Daily</button>
-          <button type="button" id="otModeMonthly" onclick="setOrderTrendMode('monthly')" class="ot-toggle">Monthly</button>
-        </div>
-      </div>
-      <div id="orderTrendSummary" style="display:flex;gap:22px;flex-wrap:wrap;margin-bottom:10px"></div>
-      <div id="orderTrendChart" style="overflow-x:auto"></div>
-    </div>
 
     <!-- Hourly depletion rate -->
     <div class="card" id="prodHourlyBox" style="padding:16px 18px;margin-bottom:20px;border:1px solid var(--brand,#94ffa1)">
@@ -3594,6 +3594,7 @@
     document.getElementById('b2cWHTable').innerHTML = html;
     if (!isTom) { renderB2CFlow(); renderB2CInsights(); }
     else { const ins = document.getElementById('b2cInsights'); if (ins) ins.innerHTML = ''; }
+    try { renderOrderTrend(); } catch (e) { }
   }
 
   // Current flow rates (inflow/hr, packed/hr, net) from the snapshot history,
@@ -4439,6 +4440,7 @@
         renderStep('B2C', renderB2C);
         renderStep('B2B', renderB2B);       // b2b_data has no country field of its own; re-group once b2cData's arrives
         renderStep('Shortage', renderShortage);  // same — shortage_data has no country field either
+        fetchOrderLedgers();   // durable order ledgers → Orders trend & forecast card (background)
         if (localStorage.getItem('b2cWarehousePicked') === null) showWarehousePicker();
         const latest = rows.reduce((a, b) => (a.updated_at > b.updated_at ? a : b), rows[0]);
         if (latest && latest.updated_at) {
@@ -5493,27 +5495,20 @@
       const uSnapCutoff = new Date(Date.now() - 16 * 60 * 60 * 1000).toISOString();
       const uSnapUrl = SB_URL + '/user_perf_snapshot?select=*&captured_at=gte.' + encodeURIComponent(uSnapCutoff) + '&order=captured_at.desc';
       // Completed-orders ledger (durable) for the trend + forecast card — up to ~13 months.
-      const odCut = localDateStr(new Date(Date.now() - 400 * 24 * 60 * 60 * 1000));
-      const odUrl = SB_URL + '/warehouse_order_daily?select=warehouse_code,day,completed_orders,completed_items&day=gte.' + odCut + '&order=day.asc';
-      const bodUrl = SB_URL + '/b2c_order_daily?select=wh,day,received_orders,received_items&day=gte.' + odCut + '&order=day.asc';
       // Per-person average pick/pack speed over the last 30 days (durable hourly rollup).
       const selWhP = localStorage.getItem('prodWarehouseFilter') || '';
       const spWhs = selWhP ? [selWhP] : (_whAllow ? [..._whAllow] : null);
       const spReq = fetch(SB_URL + '/rpc/user_speed_avg', { method: 'POST', headers: { ...SB_HDR, 'Content-Type': 'application/json' }, body: JSON.stringify({ _days: 30, _warehouses: spWhs }) });
-      const [res, snapRes, uSnapRes, odRes, bodRes, spRes] = await Promise.all([
+      const [res, snapRes, uSnapRes, spRes] = await Promise.all([
         fetch(url, { headers: SB_HDR }),
         fetch(snapUrl, { headers: SB_HDR }),
         fetch(uSnapUrl, { headers: SB_HDR }),
-        fetch(odUrl, { headers: SB_HDR }),
-        fetch(bodUrl, { headers: SB_HDR }),
         spReq,
       ]);
       if (!res.ok) throw new Error('HTTP ' + res.status);
       userPerf = (await res.json()).filter(r => whAllowed(r.warehouse_code));   // hard-restrict to the user's warehouses
       prodSnaps = (snapRes.ok ? await snapRes.json() : []).filter(r => whAllowed(r.warehouse_code));
       userPerfSnaps = (uSnapRes.ok ? await uSnapRes.json() : []).filter(r => whAllowed(r.warehouse_code));
-      orderDaily = (odRes.ok ? await odRes.json() : []).filter(r => whAllowed(r.warehouse_code));
-      b2cOrderDaily = (bodRes.ok ? await bodRes.json() : []).filter(r => whAllowed(r.wh));
       // Build person -> avg pick/pack per active hour from the RPC aggregates.
       userSpeedAvg = {};
       const spRows = spRes.ok ? await spRes.json() : [];
@@ -5629,7 +5624,6 @@
     }
 
     renderHourlyRate(selWh);
-    renderOrderTrend();
 
     // Daily totals for the selected mode.
     const byDay = {};
@@ -5699,6 +5693,20 @@
     const defs = colors.map((c, idx) => `<pattern id="otHatch${idx}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="${c}" opacity="0.16"/><line x1="0" y1="0" x2="0" y2="5" stroke="${c}" stroke-width="2.4" opacity="0.85"/></pattern>`).join('');
     return `<svg viewBox="0 0 ${cw} ${ch}" width="100%" style="max-width:${cw}px;min-width:${Math.min(cw, 340)}px"><defs>${defs}</defs>${bars}${vals}${labels}</svg>`;
   }
+  // Load the durable order ledgers (received + completed) for the trend card on
+  // the B2C tab. Cheap (daily-grain), so refetched with each B2C data load.
+  async function fetchOrderLedgers() {
+    const cut = localDateStr(new Date(Date.now() - 400 * 24 * 60 * 60 * 1000));
+    try {
+      const [odRes, bodRes] = await Promise.all([
+        fetch(SB_URL + '/warehouse_order_daily?select=warehouse_code,day,completed_orders,completed_items&day=gte.' + cut + '&order=day.asc', { headers: SB_HDR }),
+        fetch(SB_URL + '/b2c_order_daily?select=wh,day,received_orders,received_items&day=gte.' + cut + '&order=day.asc', { headers: SB_HDR }),
+      ]);
+      orderDaily = (odRes.ok ? await odRes.json() : []).filter(r => whAllowed(r.warehouse_code));
+      b2cOrderDaily = (bodRes.ok ? await bodRes.json() : []).filter(r => whAllowed(r.wh));
+    } catch (e) { }
+    try { renderOrderTrend(); } catch (e) { }
+  }
   // Two series: B2C received (demand) + completed/packed (throughput).
   function renderOrderTrend() {
     const card = document.getElementById('orderTrendCard'); if (!card) return;
@@ -5710,13 +5718,12 @@
       <span><span style="display:inline-block;width:10px;height:10px;background:${RECV};border-radius:2px;margin-right:5px"></span>Received</span>
       <span><span style="display:inline-block;width:10px;height:10px;background:${DONE};border-radius:2px;margin-right:5px"></span>Completed (packed)</span>
       <span style="margin-left:auto">Hatched = forecast</span></div>`;
-    const selWh = localStorage.getItem('prodWarehouseFilter') || '';
     const mode = localStorage.getItem('orderTrendMode') === 'monthly' ? 'monthly' : 'daily';
     document.getElementById('otModeDaily')?.classList.toggle('active', mode === 'daily');
     document.getElementById('otModeMonthly')?.classList.toggle('active', mode === 'monthly');
-    const recvByDay = {}, doneByDay = {};
-    (b2cOrderDaily || []).forEach(r => { if (!selWh || r.wh === selWh) recvByDay[r.day] = (recvByDay[r.day] || 0) + Number(r.received_orders || 0); });
-    (orderDaily || []).forEach(r => { if (!selWh || r.warehouse_code === selWh) doneByDay[r.day] = (doneByDay[r.day] || 0) + Number(r.completed_orders || 0); });
+    const recvByDay = {}, doneByDay = {};   // follows the B2C warehouse multi-select
+    (b2cOrderDaily || []).forEach(r => { if (inWhFilter(r.wh)) recvByDay[r.day] = (recvByDay[r.day] || 0) + Number(r.received_orders || 0); });
+    (orderDaily || []).forEach(r => { if (inWhFilter(r.warehouse_code)) doneByDay[r.day] = (doneByDay[r.day] || 0) + Number(r.completed_orders || 0); });
     const allDays = [...new Set([...Object.keys(recvByDay), ...Object.keys(doneByDay)])].sort();
     if (!allDays.length) { sumEl.innerHTML = ''; chartEl.innerHTML = '<div style="color:var(--muted);font-size:.8rem;padding:10px 2px">No order history yet — fills in daily.</div>'; return; }
 
