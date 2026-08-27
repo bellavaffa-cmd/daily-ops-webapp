@@ -2311,6 +2311,7 @@
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)">Orders</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)">Items</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)" title="Orders in the last ~1 hour">Last hr</th>
+              <th style="text-align:right;padding:10px 18px 10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)" title="Average orders per active hour today (pick rate in Picked mode, pack rate in Packed mode)">Rate/hr</th>
             </tr>
           </thead>
           <tbody id="prodUserTable"></tbody>
@@ -5559,18 +5560,22 @@
     const uEl = document.getElementById('prodUserTable');
     if (uEl) {
       const lastHr = userLastHour(selWh);   // person -> { po,ko,pi,ki } over the last ~1h
+      const rate = userTodayRate(selWh);     // person -> avg pick/pack rate per active hour today
       const maxO = users.reduce((m, u) => Math.max(m, u.orders), 0);
       const maxI = users.reduce((m, u) => Math.max(m, u.items), 0);
       uEl.innerHTML = users.length ? users.map(u => {
         const lh = lastHr[u.name];
         const lhOrders = lh ? (mode === 'packed' ? lh.ko : lh.po) : null;
+        const rt = rate[u.name];
+        const rph = rt ? (mode === 'packed' ? rt.packPerHr : rt.pickPerHr) : 0;
         return `<tr style="border-top:1px solid var(--border);cursor:pointer" onclick="openUserHourly(this.dataset.person)" data-person="${escHtml(u.name)}" title="Hourly breakdown for ${escHtml(u.name)}">
           <td style="padding:7px 18px;color:var(--text);font-size:.82rem;white-space:nowrap">${escHtml(u.name)} <span style="color:var(--muted);font-size:.72rem">›</span></td>
           ${barCell(u.orders, maxO, modeColor)}
           ${barCell(u.items, maxI, '#94a3b8')}
           <td style="padding:7px 14px;text-align:right;font-size:.82rem;white-space:nowrap;color:${lhOrders ? modeColor : 'var(--muted)'}">${lhOrders != null ? fmt(lhOrders) : '—'}</td>
+          <td style="padding:7px 18px 7px 14px;text-align:right;font-size:.82rem;white-space:nowrap;color:${rph > 0 ? 'var(--text)' : 'var(--muted)'}">${rph > 0 ? fmt(rph) : '—'}</td>
         </tr>`;
-      }).join('') : `<tr><td colspan="4" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No data yet.</td></tr>`;
+      }).join('') : `<tr><td colspan="5" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No data yet.</td></tr>`;
     }
 
     renderHourlyRate(selWh);
@@ -5853,6 +5858,28 @@
         const d = Math.abs(b.t - target); if (d < best) { best = d; prev = b; }
       }
       if (prev) out[key] = { po: Math.max(0, latest.po - prev.po), ko: Math.max(0, latest.ko - prev.ko), pi: Math.max(0, latest.pi - prev.pi), ki: Math.max(0, latest.ki - prev.ki) };
+    }
+    return out;
+  }
+  // person -> average pick/pack rate per ACTIVE clock-hour today. Consecutive
+  // snapshot deltas are bucketed into their clock hour (same method as the
+  // per-person hourly modal); the rate is total ÷ number of hours that saw work.
+  function userTodayRate(selWh) {
+    const bp = userHourlyBuckets(selWh);
+    const today = localDateStr();
+    const out = {};
+    for (const key of Object.keys(bp)) {
+      const arr = Object.values(bp[key].buckets).filter(b => b.date === today).sort((a, b) => a.t - b.t);
+      const hrs = {};
+      for (let i = 1; i < arr.length; i++) {
+        const cur = arr[i], prev = arr[i - 1]; if (cur.date !== prev.date) continue;
+        const d = new Date(cur.t); d.setMinutes(0, 0, 0);
+        const h = (hrs[d.getTime()] = hrs[d.getTime()] || { p: 0, k: 0 });
+        h.p += Math.max(0, cur.po - prev.po); h.k += Math.max(0, cur.ko - prev.ko);
+      }
+      let pSum = 0, pHrs = 0, kSum = 0, kHrs = 0;
+      for (const hk of Object.keys(hrs)) { const h = hrs[hk]; if (h.p > 0) { pSum += h.p; pHrs++; } if (h.k > 0) { kSum += h.k; kHrs++; } }
+      out[key] = { pickPerHr: pHrs ? Math.round(pSum / pHrs) : 0, packPerHr: kHrs ? Math.round(kSum / kHrs) : 0, pickHrs: pHrs, packHrs: kHrs };
     }
     return out;
   }
