@@ -2297,8 +2297,8 @@
     <div class="card" id="prodTrendCard" style="padding:16px 18px;margin-bottom:20px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:10px">
         <div>
-          <div style="font-size:.85rem;font-weight:600;color:var(--text)">Completed orders — trend &amp; forecast</div>
-          <div style="font-size:.7rem;color:var(--muted);margin-top:2px">Packed orders per day (throughput) · follows the warehouse filter · forecast is an estimate</div>
+          <div id="prodTrendTitle" style="font-size:.85rem;font-weight:600;color:var(--text)">Picked orders — trend &amp; forecast</div>
+          <div style="font-size:.7rem;color:var(--muted);margin-top:2px">Orders per day · follows the Picked/Packed toggle &amp; warehouse filter · forecast is an estimate</div>
         </div>
         <div style="display:flex;gap:4px">
           <button type="button" id="prodTrendDaily" onclick="setProdTrendMode('daily')" class="ot-toggle active">Daily</button>
@@ -5765,7 +5765,7 @@
     const cut = localDateStr(new Date(Date.now() - 400 * 24 * 60 * 60 * 1000));
     try {
       const [odRes, bodRes] = await Promise.all([
-        fetch(SB_URL + '/warehouse_order_daily?select=warehouse_code,day,completed_orders,completed_items&day=gte.' + cut + '&order=day.asc', { headers: SB_HDR }),
+        fetch(SB_URL + '/warehouse_order_daily?select=warehouse_code,day,completed_orders,completed_items,picked_orders,picked_items&day=gte.' + cut + '&order=day.asc', { headers: SB_HDR }),
         fetch(SB_URL + '/b2c_order_daily?select=wh,day,received_orders,received_items&day=gte.' + cut + '&order=day.asc', { headers: SB_HDR }),
       ]);
       orderDaily = (odRes.ok ? await odRes.json() : []).filter(r => whAllowed(r.warehouse_code));
@@ -5780,12 +5780,18 @@
     (b2cOrderDaily || []).forEach(r => { if (inWhFilter(r.wh)) byDay[r.day] = (byDay[r.day] || 0) + Number(r.received_orders || 0); });
     renderTrend({ card: 'b2cTrendCard', sum: 'b2cTrendSummary', chart: 'b2cTrendChart', dailyBtn: 'b2cTrendDaily', monthlyBtn: 'b2cTrendMonthly', modeKey: 'b2cTrendMode', name: 'Received', color: '#86efac', byDay });
   }
-  // Productivity tab: completed/packed (throughput) — follows the productivity warehouse.
+  // Productivity tab: follows the Picked/Packed toggle — picked or packed orders
+  // per day, filtered by the productivity warehouse.
   function renderProdTrend() {
+    const packed = localStorage.getItem('prodMode') === 'packed';
+    const field = packed ? 'completed_orders' : 'picked_orders';
+    const name = packed ? 'Packed' : 'Picked', color = packed ? '#5eead4' : '#86efac';
+    const titleEl = document.getElementById('prodTrendTitle');
+    if (titleEl) titleEl.textContent = name + ' orders — trend & forecast';
     const selWh = localStorage.getItem('prodWarehouseFilter') || '';
     const byDay = {};
-    (orderDaily || []).forEach(r => { if (selWh ? r.warehouse_code === selWh : whAllowed(r.warehouse_code)) byDay[r.day] = (byDay[r.day] || 0) + Number(r.completed_orders || 0); });
-    renderTrend({ card: 'prodTrendCard', sum: 'prodTrendSummary', chart: 'prodTrendChart', dailyBtn: 'prodTrendDaily', monthlyBtn: 'prodTrendMonthly', modeKey: 'prodTrendMode', name: 'Completed', color: '#5eead4', byDay });
+    (orderDaily || []).forEach(r => { if (selWh ? r.warehouse_code === selWh : whAllowed(r.warehouse_code)) byDay[r.day] = (byDay[r.day] || 0) + Number(r[field] || 0); });
+    renderTrend({ card: 'prodTrendCard', sum: 'prodTrendSummary', chart: 'prodTrendChart', dailyBtn: 'prodTrendDaily', monthlyBtn: 'prodTrendMonthly', modeKey: 'prodTrendMode', name, color, byDay });
   }
   // Generic single-series trend + forecast + backtested accuracy.
   function renderTrend(o) {
