@@ -2247,7 +2247,12 @@
     <div id="prodExportModal" style="position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:flex-start;justify-content:center;padding:48px 16px;overflow:auto;z-index:9000" onclick="if(event.target===this)closeProdExport()">
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;max-width:440px;width:100%;padding:18px 20px;box-shadow:0 20px 60px rgba(0,0,0,.5)">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-size:1.05rem;font-weight:700;color:var(--text)">Export productivity (.xlsx)</div><button onclick="closeProdExport()" aria-label="Close" style="background:none;border:none;color:var(--muted);font-size:1.4rem;cursor:pointer;line-height:1">×</button></div>
-        <p style="font-size:.75rem;color:var(--muted);margin:0 0 12px">Orders &amp; items picked/packed per person. Two sheets: <b>Per hour</b> (recent days) and <b>Per day</b> (full range). Follows the warehouse filter above.</p>
+        <p style="font-size:.75rem;color:var(--muted);margin:0 0 10px">Tick the reports to include — each becomes a sheet in one <b>.xlsx</b>. Metrics are orders &amp; items picked/packed. Follows the warehouse filter above.</p>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <span style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Reports</span>
+          <span style="font-size:.72rem"><a href="javascript:void(0)" onclick="prodExpSelectAll(1)" style="color:var(--primary);text-decoration:none">All</a> · <a href="javascript:void(0)" onclick="prodExpSelectAll(0)" style="color:var(--muted);text-decoration:none">None</a></span>
+        </div>
+        <div id="prodReportChecks" style="max-height:230px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:12px;background:var(--surface2)"></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:12px">
           <label style="font-size:.78rem;color:var(--muted)">From<br><input type="date" id="prodExpFrom" style="margin-top:3px;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></label>
           <label style="font-size:.78rem;color:var(--muted)">To<br><input type="date" id="prodExpTo" style="margin-top:3px;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></label>
@@ -5712,7 +5717,70 @@
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   }
   // Productivity export: orders & items picked/packed per person, per hour + per day.
+  // ── Productivity report catalogue ───────────────────────────────────────
+  // Each report is a pure generator: (D, H) -> array-of-rows (row 0 = header).
+  //   D = per-day objects   {name, wh, date, po, pi, ko, ki}
+  //   H = per-hour objects  {name, wh, date, hour:"HH:MM", po, pi, ko, ki}
+  // po/pi = picked orders/items, ko/ki = packed orders/items.
+  // hourly:true reports need H (only ~recent days of hourly history exist).
+  const PROD_REPORTS = [
+    { key: 'ph', name: 'Person × Hour', hourly: true, desc: 'One row per person, day & hour', gen: (D, H) =>
+      [['Person', 'Warehouse', 'Date', 'Hour', 'Picked orders', 'Picked items', 'Packed orders', 'Packed items'],
+        ...H.map(r => [r.name, r.wh, r.date, r.hour, r.po, r.pi, r.ko, r.ki])] },
+    { key: 'pd', name: 'Person × Day', desc: 'One row per person & day', gen: (D, H) =>
+      [['Person', 'Warehouse', 'Date', 'Picked orders', 'Picked items', 'Packed orders', 'Packed items'],
+        ...D.map(r => [r.name, r.wh, r.date, r.po, r.pi, r.ko, r.ki])] },
+    { key: 'psum', name: 'Person summary', desc: 'Per-person totals over the range', gen: (D, H) => {
+      const g = {}; D.forEach(r => { const o = g[r.name] || (g[r.name] = { n: r.name, po: 0, pi: 0, ko: 0, ki: 0, days: new Set() }); o.po += r.po; o.pi += r.pi; o.ko += r.ko; o.ki += r.ki; o.days.add(r.date); });
+      return [['Person', 'Picked orders', 'Picked items', 'Packed orders', 'Packed items', 'Active days', 'Avg packed/day'],
+        ...Object.values(g).sort((a, b) => b.ko - a.ko).map(o => [o.n, o.po, o.pi, o.ko, o.ki, o.days.size, Math.round(o.ko / (o.days.size || 1))])]; } },
+    { key: 'whd', name: 'Warehouse × Day', desc: 'Per-warehouse daily totals', gen: (D, H) => {
+      const g = {}; D.forEach(r => { const k = r.wh + '|' + r.date; const o = g[k] || (g[k] = { wh: r.wh, date: r.date, po: 0, pi: 0, ko: 0, ki: 0, ppl: new Set() }); o.po += r.po; o.pi += r.pi; o.ko += r.ko; o.ki += r.ki; o.ppl.add(r.name); });
+      return [['Warehouse', 'Date', 'Picked orders', 'Picked items', 'Packed orders', 'Packed items', 'Staff'],
+        ...Object.values(g).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : (a.wh < b.wh ? -1 : 1)).map(o => [o.wh, o.date, o.po, o.pi, o.ko, o.ki, o.ppl.size])]; } },
+    { key: 'whh', name: 'Warehouse × Hour', hourly: true, desc: 'Per-warehouse hourly throughput', gen: (D, H) => {
+      const g = {}; H.forEach(r => { const k = r.wh + '|' + r.date + '|' + r.hour; const o = g[k] || (g[k] = { wh: r.wh, date: r.date, hour: r.hour, po: 0, pi: 0, ko: 0, ki: 0 }); o.po += r.po; o.pi += r.pi; o.ko += r.ko; o.ki += r.ki; });
+      return [['Warehouse', 'Date', 'Hour', 'Picked orders', 'Picked items', 'Packed orders', 'Packed items'],
+        ...Object.values(g).map(o => [o.wh, o.date, o.hour, o.po, o.pi, o.ko, o.ki])]; } },
+    { key: 'whsum', name: 'Warehouse summary', desc: 'Per-warehouse totals over the range', gen: (D, H) => {
+      const g = {}; D.forEach(r => { const o = g[r.wh] || (g[r.wh] = { wh: r.wh, po: 0, pi: 0, ko: 0, ki: 0, ppl: new Set(), days: new Set() }); o.po += r.po; o.pi += r.pi; o.ko += r.ko; o.ki += r.ki; o.ppl.add(r.name); o.days.add(r.date); });
+      return [['Warehouse', 'Picked orders', 'Picked items', 'Packed orders', 'Packed items', 'Distinct staff', 'Active days', 'Avg packed/day'],
+        ...Object.values(g).map(o => [o.wh, o.po, o.pi, o.ko, o.ki, o.ppl.size, o.days.size, Math.round(o.ko / (o.days.size || 1))])]; } },
+    { key: 'trend', name: 'Daily trend', desc: 'All-staff totals per day', gen: (D, H) => {
+      const g = {}; D.forEach(r => { const o = g[r.date] || (g[r.date] = { date: r.date, po: 0, pi: 0, ko: 0, ki: 0, ppl: new Set() }); o.po += r.po; o.pi += r.pi; o.ko += r.ko; o.ki += r.ki; o.ppl.add(r.name); });
+      return [['Date', 'Picked orders', 'Picked items', 'Packed orders', 'Packed items', 'Staff'],
+        ...Object.values(g).sort((a, b) => a.date < b.date ? -1 : 1).map(o => [o.date, o.po, o.pi, o.ko, o.ki, o.ppl.size])]; } },
+    { key: 'hprof', name: 'Hour-of-day profile', hourly: true, desc: 'Throughput by hour of day (peaks)', gen: (D, H) => {
+      const g = {}; H.forEach(r => { const hh = (r.hour || '').slice(0, 2); const o = g[hh] || (g[hh] = { hh, po: 0, pi: 0, ko: 0, ki: 0, days: new Set() }); o.po += r.po; o.pi += r.pi; o.ko += r.ko; o.ki += r.ki; o.days.add(r.date); });
+      return [['Hour', 'Picked orders', 'Picked items', 'Packed orders', 'Packed items', 'Days seen', 'Avg packed/day'],
+        ...Object.values(g).sort((a, b) => a.hh < b.hh ? -1 : 1).map(o => [o.hh + ':00', o.po, o.pi, o.ko, o.ki, o.days.size, Math.round(o.ko / (o.days.size || 1))])]; } },
+    { key: 'lead', name: 'Leaderboard', desc: 'People ranked by total output', gen: (D, H) => {
+      const g = {}; D.forEach(r => { const o = g[r.name] || (g[r.name] = { n: r.name, po: 0, pi: 0, ko: 0, ki: 0 }); o.po += r.po; o.pi += r.pi; o.ko += r.ko; o.ki += r.ki; });
+      return [['Rank', 'Person', 'Total orders', 'Picked orders', 'Packed orders', 'Picked items', 'Packed items'],
+        ...Object.values(g).sort((a, b) => (b.po + b.ko) - (a.po + a.ko)).map((o, i) => [i + 1, o.n, o.po + o.ko, o.po, o.ko, o.pi, o.ki])]; } },
+    { key: 'rate', name: 'Rate & efficiency', hourly: true, desc: 'Orders/hr, items-per-order per person', gen: (D, H) => {
+      const g = {}; D.forEach(r => { const o = g[r.name] || (g[r.name] = { n: r.name, po: 0, pi: 0, ko: 0, ki: 0, hrs: new Set() }); o.po += r.po; o.pi += r.pi; o.ko += r.ko; o.ki += r.ki; });
+      H.forEach(r => { const o = g[r.name]; if (o && (r.po || r.pi || r.ko || r.ki)) o.hrs.add(r.date + '|' + r.hour); });
+      return [['Person', 'Total orders', 'Active hours', 'Orders / hr', 'Items/order (pick)', 'Items/order (pack)'],
+        ...Object.values(g).sort((a, b) => (b.po + b.ko) - (a.po + a.ko)).map(o => { const tot = o.po + o.ko, hrs = o.hrs.size; return [o.n, tot, hrs, hrs ? Math.round(tot / hrs) : '', o.po ? +(o.pi / o.po).toFixed(1) : '', o.ko ? +(o.ki / o.ko).toFixed(1) : '']; })]; } },
+    { key: 'role', name: 'Role split', desc: 'Pickers vs packers: headcount + output', gen: (D, H) => {
+      const pk = { p: new Set(), po: 0, pi: 0 }, pc = { p: new Set(), ko: 0, ki: 0 };
+      D.forEach(r => { if (r.po > 0) pk.p.add(r.name); pk.po += r.po; pk.pi += r.pi; if (r.ko > 0) pc.p.add(r.name); pc.ko += r.ko; pc.ki += r.ki; });
+      return [['Role', 'People', 'Orders', 'Items'], ['Picking', pk.p.size, pk.po, pk.pi], ['Packing', pc.p.size, pc.ko, pc.ki]]; } },
+    { key: 'cover', name: 'Coverage gaps', hourly: true, desc: 'Per person/day: first/last active + idle hours', gen: (D, H) => {
+      const g = {}; H.forEach(r => { if (!(r.po || r.pi || r.ko || r.ki)) return; const k = r.name + '|' + r.date; const o = g[k] || (g[k] = { n: r.name, date: r.date, hrs: new Set() }); o.hrs.add(parseInt((r.hour || '0').slice(0, 2), 10)); });
+      return [['Person', 'Date', 'First active', 'Last active', 'Active hours', 'Idle hours (in span)'],
+        ...Object.values(g).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : (a.n < b.n ? -1 : 1)).map(o => { const hs = [...o.hrs].sort((x, y) => x - y); const f = hs[0], l = hs[hs.length - 1], span = l - f + 1; return [o.n, o.date, String(f).padStart(2, '0') + ':00', String(l).padStart(2, '0') + ':00', o.hrs.size, span - o.hrs.size]; })]; } },
+    { key: 'target', name: 'Target vs actual', desc: 'Actuals + blank Target column to fill', gen: (D, H) => {
+      const g = {}; D.forEach(r => { const o = g[r.name] || (g[r.name] = { n: r.name, ko: 0, po: 0 }); o.ko += r.ko; o.po += r.po; });
+      return [['Person', 'Packed orders (actual)', 'Picked orders (actual)', 'Target (fill in)', '% of target'],
+        ...Object.values(g).sort((a, b) => b.ko - a.ko).map(o => [o.n, o.ko, o.po, '', ''])]; } },
+  ];
+  function prodExpSelectAll(on) { document.querySelectorAll('#prodReportChecks input.prod-rep').forEach(c => c.checked = !!on); }
   function openProdExport() {
+    const def = { ph: 1, pd: 1 };
+    const box = document.getElementById('prodReportChecks');
+    if (box) box.innerHTML = PROD_REPORTS.map(r => `<label style="display:flex;align-items:baseline;gap:8px;padding:5px 2px;font-size:.82rem;color:var(--text);cursor:pointer"><input type="checkbox" class="prod-rep" value="${r.key}"${def[r.key] ? ' checked' : ''} style="accent-color:var(--primary)"><span><b style="font-weight:600">${r.name}</b>${r.hourly ? ' <span style="font-size:.66rem;color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:0 4px">hourly</span>' : ''}<br><span style="font-size:.7rem;color:var(--muted)">${r.desc}</span></span></label>`).join('');
     const iso = d => d.toISOString().slice(0, 10); const to = new Date(), from = new Date(); from.setDate(from.getDate() - 6);
     const f = document.getElementById('prodExpFrom'), t = document.getElementById('prodExpTo');
     if (f && !f.value) f.value = iso(from); if (t && !t.value) t.value = iso(to);
@@ -5723,20 +5791,26 @@
   async function runProdExport() {
     const from = document.getElementById('prodExpFrom').value, to = document.getElementById('prodExpTo').value, msg = document.getElementById('prodExpMsg');
     if (!from || !to || from > to) { msg.style.color = '#f87171'; msg.textContent = 'Pick a valid From–To range.'; return; }
+    const picks = [...document.querySelectorAll('#prodReportChecks input.prod-rep:checked')].map(c => c.value);
+    if (!picks.length) { msg.style.color = '#f87171'; msg.textContent = 'Tick at least one report.'; return; }
     msg.style.color = 'var(--muted)'; msg.textContent = 'Building…';
     const selWh = localStorage.getItem('prodWarehouseFilter') || '';
     const whF = selWh ? '&warehouse_code=eq.' + encodeURIComponent(selWh) : '';
-    const pageAll = async base => { let out = []; for (let off = 0; off <= 200000; off += 1000) { const b = await fetch(base + '&limit=1000&offset=' + off, { headers: SB_HDR }).then(r => r.ok ? r.json() : []); out = out.concat(b); if (b.length < 1000) break; } return out; };
+    const pageAll = async base => { let out = []; for (let off = 0; off <= 500000; off += 1000) { const b = await fetch(base + '&limit=1000&offset=' + off, { headers: SB_HDR }).then(r => r.ok ? r.json() : []); out = out.concat(b); if (b.length < 1000) break; } return out; };
     const nm = r => r.executed_by_name || r.executed_by || '';
+    const N = v => Number(v || 0);
+    const needHourly = PROD_REPORTS.some(r => picks.includes(r.key) && r.hourly);
     try {
-      const day = await pageAll(SB_URL + '/user_performance?select=executed_by,executed_by_name,warehouse_code,activity_date,picked_orders,picked_items,packed_orders,packed_items&activity_date=gte.' + from + '&activity_date=lte.' + to + whF + '&order=activity_date.asc,executed_by_name.asc');
-      const dayRows = [['Person', 'Warehouse', 'Date', 'Picked orders', 'Picked items', 'Packed orders', 'Packed items']];
-      for (const r of day) dayRows.push([nm(r), r.warehouse_code || '', r.activity_date || '', Number(r.picked_orders || 0), Number(r.picked_items || 0), Number(r.packed_orders || 0), Number(r.packed_items || 0)]);
-      const hr = await pageAll(SB_URL + '/user_perf_hourly?select=executed_by,executed_by_name,warehouse_code,activity_date,hour_local,picked_orders,picked_items,packed_orders,packed_items&activity_date=gte.' + from + '&activity_date=lte.' + to + whF + '&order=activity_date.asc,hour_local.asc,executed_by_name.asc');
-      const hrRows = [['Person', 'Warehouse', 'Date', 'Hour', 'Picked orders', 'Picked items', 'Packed orders', 'Packed items']];
-      for (const r of hr) hrRows.push([nm(r), r.warehouse_code || '', r.activity_date || '', String(r.hour_local || '').slice(11, 16), Number(r.picked_orders || 0), Number(r.picked_items || 0), Number(r.packed_orders || 0), Number(r.packed_items || 0)]);
-      downloadXlsx('productivity_' + from + '_to_' + to + '.xlsx', [{ name: 'Per hour', rows: hrRows }, { name: 'Per day', rows: dayRows }]);
-      msg.style.color = '#4ade80'; msg.textContent = `Done — ${day.length} daily rows, ${hr.length} hourly rows.`;
+      const dayRaw = await pageAll(SB_URL + '/user_performance?select=executed_by,executed_by_name,warehouse_code,activity_date,picked_orders,picked_items,packed_orders,packed_items&activity_date=gte.' + from + '&activity_date=lte.' + to + whF + '&order=activity_date.asc,executed_by_name.asc');
+      const D = dayRaw.map(r => ({ name: nm(r), wh: r.warehouse_code || '', date: r.activity_date || '', po: N(r.picked_orders), pi: N(r.picked_items), ko: N(r.packed_orders), ki: N(r.packed_items) }));
+      let H = [];
+      if (needHourly) {
+        const hrRaw = await pageAll(SB_URL + '/user_perf_hourly?select=executed_by,executed_by_name,warehouse_code,activity_date,hour_local,picked_orders,picked_items,packed_orders,packed_items&activity_date=gte.' + from + '&activity_date=lte.' + to + whF + '&order=activity_date.asc,hour_local.asc,executed_by_name.asc');
+        H = hrRaw.map(r => ({ name: nm(r), wh: r.warehouse_code || '', date: r.activity_date || '', hour: String(r.hour_local || '').slice(11, 16), po: N(r.picked_orders), pi: N(r.picked_items), ko: N(r.packed_orders), ki: N(r.packed_items) }));
+      }
+      const sheets = PROD_REPORTS.filter(r => picks.includes(r.key)).map(r => ({ name: r.name.replace(/[\\\/\?\*\[\]:]/g, ' ').slice(0, 31), rows: r.gen(D, H) }));
+      downloadXlsx('productivity_' + from + '_to_' + to + '.xlsx', sheets);
+      msg.style.color = '#4ade80'; msg.textContent = `Done — ${sheets.length} sheet(s), ${D.length} daily rows${needHourly ? ', ' + H.length + ' hourly rows' : ''}.`;
     } catch (e) { msg.style.color = '#f87171'; msg.textContent = 'Export failed: ' + (e.message || e); }
   }
   // ── Per-user hourly productivity (from user_perf_snapshot) ──────────────
