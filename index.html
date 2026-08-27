@@ -2252,7 +2252,16 @@
           <span style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Reports</span>
           <span style="font-size:.72rem"><a href="javascript:void(0)" onclick="prodExpSelectAll(1)" style="color:var(--primary);text-decoration:none">All</a> · <a href="javascript:void(0)" onclick="prodExpSelectAll(0)" style="color:var(--muted);text-decoration:none">None</a></span>
         </div>
-        <div id="prodReportChecks" style="max-height:230px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:12px;background:var(--surface2)"></div>
+        <style>
+          #prodReportChecks .prep{display:grid;grid-template-columns:16px 1fr auto;column-gap:10px;align-items:center;padding:7px 8px;border-radius:6px;cursor:pointer}
+          #prodReportChecks .prep + .prep{border-top:1px solid var(--border)}
+          #prodReportChecks .prep:hover{background:var(--surface)}
+          #prodReportChecks .prep input{grid-column:1;grid-row:1/3;align-self:center;margin:0;width:15px;height:15px;accent-color:var(--primary)}
+          #prodReportChecks .prep .nm{grid-column:2;grid-row:1;font-size:.83rem;font-weight:600;color:var(--text);line-height:1.3}
+          #prodReportChecks .prep .ds{grid-column:2;grid-row:2;font-size:.72rem;color:var(--muted);line-height:1.3}
+          #prodReportChecks .prep .hr{grid-column:3;grid-row:1/3;align-self:center;font-size:.62rem;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:2px 6px;white-space:nowrap}
+        </style>
+        <div id="prodReportChecks" style="max-height:250px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:4px;margin-bottom:12px;background:var(--surface2)"></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:12px">
           <label style="font-size:.78rem;color:var(--muted)">From<br><input type="date" id="prodExpFrom" style="margin-top:3px;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></label>
           <label style="font-size:.78rem;color:var(--muted)">To<br><input type="date" id="prodExpTo" style="margin-top:3px;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></label>
@@ -5780,7 +5789,7 @@
   function openProdExport() {
     const def = { ph: 1, pd: 1 };
     const box = document.getElementById('prodReportChecks');
-    if (box) box.innerHTML = PROD_REPORTS.map(r => `<label style="display:flex;align-items:baseline;gap:8px;padding:5px 2px;font-size:.82rem;color:var(--text);cursor:pointer"><input type="checkbox" class="prod-rep" value="${r.key}"${def[r.key] ? ' checked' : ''} style="accent-color:var(--primary)"><span><b style="font-weight:600">${r.name}</b>${r.hourly ? ' <span style="font-size:.66rem;color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:0 4px">hourly</span>' : ''}<br><span style="font-size:.7rem;color:var(--muted)">${r.desc}</span></span></label>`).join('');
+    if (box) box.innerHTML = PROD_REPORTS.map(r => `<label class="prep"><input type="checkbox" class="prod-rep" value="${r.key}"${def[r.key] ? ' checked' : ''}><span class="nm">${r.name}</span><span class="ds">${r.desc}</span>${r.hourly ? '<span class="hr">hourly</span>' : ''}</label>`).join('');
     const iso = d => d.toISOString().slice(0, 10); const to = new Date(), from = new Date(); from.setDate(from.getDate() - 6);
     const f = document.getElementById('prodExpFrom'), t = document.getElementById('prodExpTo');
     if (f && !f.value) f.value = iso(from); if (t && !t.value) t.value = iso(to);
