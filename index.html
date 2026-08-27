@@ -2058,24 +2058,24 @@
       </div>
     </div>
 
-    <!-- Orders — trend & forecast (B2C received vs completed) -->
+    <!-- B2C orders received — trend & forecast -->
     <style>
-      #orderTrendCard .ot-toggle{font-size:.75rem;padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:pointer}
-      #orderTrendCard .ot-toggle.active{background:var(--primary);color:var(--on-primary,#0b1f12);border-color:var(--primary);font-weight:600}
+      .ot-toggle{font-size:.75rem;padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:pointer}
+      .ot-toggle.active{background:var(--primary);color:var(--on-primary,#0b1f12);border-color:var(--primary);font-weight:600}
     </style>
-    <div class="card" id="orderTrendCard" style="padding:16px 18px;margin-bottom:20px">
+    <div class="card" id="b2cTrendCard" style="padding:16px 18px;margin-bottom:20px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:10px">
         <div>
-          <div style="font-size:.85rem;font-weight:600;color:var(--text)">Orders — trend &amp; forecast</div>
-          <div style="font-size:.7rem;color:var(--muted);margin-top:2px">B2C received (demand) vs completed/packed (throughput) · follows the warehouse filter · forecast is an estimate</div>
+          <div style="font-size:.85rem;font-weight:600;color:var(--text)">B2C orders received — trend &amp; forecast</div>
+          <div style="font-size:.7rem;color:var(--muted);margin-top:2px">New B2C orders per day (demand) · follows the warehouse filter · forecast is an estimate</div>
         </div>
         <div style="display:flex;gap:4px">
-          <button type="button" id="otModeDaily" onclick="setOrderTrendMode('daily')" class="ot-toggle active">Daily</button>
-          <button type="button" id="otModeMonthly" onclick="setOrderTrendMode('monthly')" class="ot-toggle">Monthly</button>
+          <button type="button" id="b2cTrendDaily" onclick="setB2CTrendMode('daily')" class="ot-toggle active">Daily</button>
+          <button type="button" id="b2cTrendMonthly" onclick="setB2CTrendMode('monthly')" class="ot-toggle">Monthly</button>
         </div>
       </div>
-      <div id="orderTrendSummary" style="display:flex;gap:22px;flex-wrap:wrap;margin-bottom:10px"></div>
-      <div id="orderTrendChart" style="overflow-x:auto"></div>
+      <div id="b2cTrendSummary" style="display:flex;gap:22px;flex-wrap:wrap;margin-bottom:10px"></div>
+      <div id="b2cTrendChart" style="overflow-x:auto"></div>
     </div>
 
     <!-- B2C insights: cut-off countdown, bottleneck, brands, aging, mix, trend, staffing -->
@@ -2292,6 +2292,22 @@
 
     <!-- KPI Cards -->
     <div id="productivityKpis" style="margin-bottom:16px"></div>
+
+    <!-- Completed orders — trend & forecast (throughput) -->
+    <div class="card" id="prodTrendCard" style="padding:16px 18px;margin-bottom:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:10px">
+        <div>
+          <div style="font-size:.85rem;font-weight:600;color:var(--text)">Completed orders — trend &amp; forecast</div>
+          <div style="font-size:.7rem;color:var(--muted);margin-top:2px">Packed orders per day (throughput) · follows the warehouse filter · forecast is an estimate</div>
+        </div>
+        <div style="display:flex;gap:4px">
+          <button type="button" id="prodTrendDaily" onclick="setProdTrendMode('daily')" class="ot-toggle active">Daily</button>
+          <button type="button" id="prodTrendMonthly" onclick="setProdTrendMode('monthly')" class="ot-toggle">Monthly</button>
+        </div>
+      </div>
+      <div id="prodTrendSummary" style="display:flex;gap:22px;flex-wrap:wrap;margin-bottom:10px"></div>
+      <div id="prodTrendChart" style="overflow-x:auto"></div>
+    </div>
 
     <!-- Hourly depletion rate -->
     <div class="card" id="prodHourlyBox" style="padding:16px 18px;margin-bottom:20px;border:1px solid var(--brand,#94ffa1)">
@@ -3594,7 +3610,7 @@
     document.getElementById('b2cWHTable').innerHTML = html;
     if (!isTom) { renderB2CFlow(); renderB2CInsights(); }
     else { const ins = document.getElementById('b2cInsights'); if (ins) ins.innerHTML = ''; }
-    try { renderOrderTrend(); } catch (e) { }
+    try { renderB2CTrend(); } catch (e) { }
   }
 
   // Current flow rates (inflow/hr, packed/hr, net) from the snapshot history,
@@ -5522,6 +5538,7 @@
       populateProdWarehouseSelect();
       populateProdPersonSelect();
       renderProductivity();
+      fetchOrderLedgers();  // completed-orders ledger → Productivity trend & forecast card
       fetchHourlyDaily();   // 30-day daily×hourly heatmap (independent RPC)
       if (modeEl) { modeEl.textContent = 'Supabase ●'; modeEl.style.color = 'var(--success)'; }
     } catch (err) {
@@ -5624,6 +5641,7 @@
     }
 
     renderHourlyRate(selWh);
+    renderProdTrend();
 
     // Daily totals for the selected mode.
     const byDay = {};
@@ -5642,13 +5660,16 @@
   }
 
   // ── Completed-orders trend + forecast (from warehouse_order_daily) ─────────
-  function setOrderTrendMode(m) { localStorage.setItem('orderTrendMode', m); renderOrderTrend(); }
+  function setB2CTrendMode(m) { localStorage.setItem('b2cTrendMode', m); renderB2CTrend(); }
+  function setProdTrendMode(m) { localStorage.setItem('prodTrendMode', m); renderProdTrend(); }
   function _otStat(label, val, opts) {
     opts = opts || {};
     const c = opts.color || 'var(--text)';
     const tag = opts.forecast ? ' <span style="font-size:.56rem;font-weight:700;color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:0 3px;vertical-align:middle">FORECAST</span>' : '';
+    let d = '';
+    if (typeof opts.delta === 'number' && opts.delta !== 0) { const up = opts.delta > 0; d = ` <span style="font-size:.7rem;color:${up ? '#4ade80' : '#f87171'}">${up ? '▲' : '▼'}${Math.abs(opts.delta)}%</span>`; }
     const sub = opts.sub ? `<div style="font-size:.64rem;color:var(--muted);margin-top:1px"${opts.subTitle ? ` title="${opts.subTitle}"` : ''}>${opts.sub}</div>` : '';
-    return `<div><div style="font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:2px">${label}${tag}</div><div style="font-size:1.65rem;font-weight:800;color:${c};line-height:1.02">${val}</div>${sub}</div>`;
+    return `<div><div style="font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:2px">${label}${tag}</div><div style="font-size:1.65rem;font-weight:800;color:${c};line-height:1.02">${val}${d}</div>${sub}</div>`;
   }
   // Backtested forecast accuracy = 100% − weighted abs error, walking the same
   // weekday-seasonal method forward over history (predict each day from prior days).
@@ -5750,65 +5771,63 @@
       orderDaily = (odRes.ok ? await odRes.json() : []).filter(r => whAllowed(r.warehouse_code));
       b2cOrderDaily = (bodRes.ok ? await bodRes.json() : []).filter(r => whAllowed(r.wh));
     } catch (e) { }
-    try { renderOrderTrend(); } catch (e) { }
+    try { renderB2CTrend(); } catch (e) { }
+    try { renderProdTrend(); } catch (e) { }
   }
-  // Two series: B2C received (demand) + completed/packed (throughput).
-  function renderOrderTrend() {
-    const card = document.getElementById('orderTrendCard'); if (!card) return;
-    const sumEl = document.getElementById('orderTrendSummary'), chartEl = document.getElementById('orderTrendChart');
+  // B2C tab: received (demand) — follows the B2C multi-select.
+  function renderB2CTrend() {
+    const byDay = {};
+    (b2cOrderDaily || []).forEach(r => { if (inWhFilter(r.wh)) byDay[r.day] = (byDay[r.day] || 0) + Number(r.received_orders || 0); });
+    renderTrend({ card: 'b2cTrendCard', sum: 'b2cTrendSummary', chart: 'b2cTrendChart', dailyBtn: 'b2cTrendDaily', monthlyBtn: 'b2cTrendMonthly', modeKey: 'b2cTrendMode', name: 'Received', color: '#86efac', byDay });
+  }
+  // Productivity tab: completed/packed (throughput) — follows the productivity warehouse.
+  function renderProdTrend() {
+    const selWh = localStorage.getItem('prodWarehouseFilter') || '';
+    const byDay = {};
+    (orderDaily || []).forEach(r => { if (selWh ? r.warehouse_code === selWh : whAllowed(r.warehouse_code)) byDay[r.day] = (byDay[r.day] || 0) + Number(r.completed_orders || 0); });
+    renderTrend({ card: 'prodTrendCard', sum: 'prodTrendSummary', chart: 'prodTrendChart', dailyBtn: 'prodTrendDaily', monthlyBtn: 'prodTrendMonthly', modeKey: 'prodTrendMode', name: 'Completed', color: '#5eead4', byDay });
+  }
+  // Generic single-series trend + forecast + backtested accuracy.
+  function renderTrend(o) {
+    const card = document.getElementById(o.card); if (!card) return;
+    const sumEl = document.getElementById(o.sum), chartEl = document.getElementById(o.chart);
     if (!sumEl || !chartEl) return;
     _otWireTip(card, chartEl);
     const fmt = n => Number(n || 0).toLocaleString();
-    const RECV = '#86efac', DONE = '#5eead4';
-    const legend = `<div style="display:flex;gap:16px;font-size:.72rem;color:var(--muted);margin:0 0 8px 2px">
-      <span><span style="display:inline-block;width:10px;height:10px;background:${RECV};border-radius:2px;margin-right:5px"></span>Received</span>
-      <span><span style="display:inline-block;width:10px;height:10px;background:${DONE};border-radius:2px;margin-right:5px"></span>Completed (packed)</span>
-      <span style="margin-left:auto">Hatched = forecast</span></div>`;
-    const mode = localStorage.getItem('orderTrendMode') === 'monthly' ? 'monthly' : 'daily';
-    document.getElementById('otModeDaily')?.classList.toggle('active', mode === 'daily');
-    document.getElementById('otModeMonthly')?.classList.toggle('active', mode === 'monthly');
-    const recvByDay = {}, doneByDay = {};   // follows the B2C warehouse multi-select
-    (b2cOrderDaily || []).forEach(r => { if (inWhFilter(r.wh)) recvByDay[r.day] = (recvByDay[r.day] || 0) + Number(r.received_orders || 0); });
-    (orderDaily || []).forEach(r => { if (inWhFilter(r.warehouse_code)) doneByDay[r.day] = (doneByDay[r.day] || 0) + Number(r.completed_orders || 0); });
-    const allDays = [...new Set([...Object.keys(recvByDay), ...Object.keys(doneByDay)])].sort();
-    if (!allDays.length) { sumEl.innerHTML = ''; chartEl.innerHTML = '<div style="color:var(--muted);font-size:.8rem;padding:10px 2px">No order history yet — fills in daily.</div>'; return; }
-
-    // Continuous daily series for both metrics — powers the daily view and the
-    // backtested forecast accuracy. Trim leading empties so a young series (e.g.
-    // B2C received) isn't diluted to ~0 by months of zeros.
-    const first = new Date(allDays[0] + 'T00:00:00'), end = new Date(allDays[allDays.length - 1] + 'T00:00:00');
+    const color = o.color, name = o.name, byDay = o.byDay;
+    const mode = localStorage.getItem(o.modeKey) === 'monthly' ? 'monthly' : 'daily';
+    document.getElementById(o.dailyBtn)?.classList.toggle('active', mode === 'daily');
+    document.getElementById(o.monthlyBtn)?.classList.toggle('active', mode === 'monthly');
+    const days = Object.keys(byDay).sort();
+    if (!days.length) { sumEl.innerHTML = ''; chartEl.innerHTML = '<div style="color:var(--muted);font-size:.8rem;padding:10px 2px">No history yet — fills in daily.</div>'; return; }
+    const first = new Date(days[0] + 'T00:00:00'), end = new Date(days[days.length - 1] + 'T00:00:00');
     const dayList = []; for (let d = new Date(first); d <= end && dayList.length < 400; d.setDate(d.getDate() + 1)) dayList.push(localDateStr(new Date(d)));
-    const recvS = dayList.map(k => ({ day: k, v: recvByDay[k] || 0 })), doneS = dayList.map(k => ({ day: k, v: doneByDay[k] || 0 }));
+    const S = dayList.map(k => ({ day: k, v: byDay[k] || 0 }));
     const trimLead = arr => { let i = 0; while (i < arr.length && arr[i].v === 0) i++; return arr.slice(i); };
-    const recvAcc = _otAccuracy(trimLead(recvS)), doneAcc = _otAccuracy(trimLead(doneS));
-    const accSub = a => a != null ? a + '% accurate' : 'accuracy: building…';
+    const acc = _otAccuracy(trimLead(S));
+    const accSub = acc != null ? acc + '% accurate' : 'accuracy: building…';
     const accTitle = 'Backtested: 100% − weighted error of this forecast method vs actuals over history';
 
     if (mode === 'daily') {
-      const recvFc = _otFcDaily(trimLead(recvS)), doneFc = _otFcDaily(trimLead(doneS));
-      const show = dayList.slice(-45);
-      const slots = show.map(k => ({ label: k, short: k.slice(5), forecast: false, bars: [{ value: recvByDay[k] || 0, color: RECV, name: 'Received' }, { value: doneByDay[k] || 0, color: DONE, name: 'Completed' }] }));
-      for (let i = 0; i < 7; i++) slots.push({ label: recvFc[i].day, short: recvFc[i].day.slice(5), forecast: true, bars: [{ value: recvFc[i].v, color: RECV, hatch: true, name: 'Received' }, { value: doneFc[i].v, color: DONE, hatch: true, name: 'Completed' }] });
-      const rL7 = recvS.slice(-7).reduce((a, s) => a + s.v, 0), dL7 = doneS.slice(-7).reduce((a, s) => a + s.v, 0);
-      const rN7 = recvFc.reduce((a, s) => a + s.v, 0), dN7 = doneFc.reduce((a, s) => a + s.v, 0);
-      sumEl.innerHTML = _otStat('Received · 7d', fmt(rL7), { color: RECV }) + _otStat('Completed · 7d', fmt(dL7), { color: DONE }) + _otStat('Received · next 7', fmt(rN7), { color: RECV, forecast: true, sub: accSub(recvAcc), subTitle: accTitle }) + _otStat('Completed · next 7', fmt(dN7), { color: DONE, forecast: true, sub: accSub(doneAcc), subTitle: accTitle });
-      chartEl.innerHTML = legend + _otBarChart(slots, { colors: [RECV, DONE], labels: false });
+      const fc = _otFcDaily(trimLead(S));
+      const slots = dayList.slice(-45).map(k => ({ label: k, short: k.slice(5), forecast: false, bars: [{ value: byDay[k] || 0, color, name }] }));
+      fc.forEach(f => slots.push({ label: f.day, short: f.day.slice(5), forecast: true, bars: [{ value: f.v, color, hatch: true, name }] }));
+      const last7 = S.slice(-7).reduce((a, s) => a + s.v, 0), prev7 = S.slice(-14, -7).reduce((a, s) => a + s.v, 0), next7 = fc.reduce((a, s) => a + s.v, 0);
+      const delta = prev7 ? Math.round((last7 - prev7) / prev7 * 100) : 0;
+      sumEl.innerHTML = _otStat('Last 7 days', fmt(last7), { color }) + _otStat('Prev 7 days', fmt(prev7), { color, delta }) + _otStat('Next 7', fmt(next7), { color, forecast: true, sub: accSub, subTitle: accTitle });
+      chartEl.innerHTML = _otBarChart(slots, { colors: [color], labels: false });
     } else {
-      const rMon = {}, dMon = {};
-      Object.keys(recvByDay).forEach(k => { const m = k.slice(0, 7); rMon[m] = (rMon[m] || 0) + recvByDay[k]; });
-      Object.keys(doneByDay).forEach(k => { const m = k.slice(0, 7); dMon[m] = (dMon[m] || 0) + doneByDay[k]; });
-      const months = [...new Set([...Object.keys(rMon), ...Object.keys(dMon)])].sort();
+      const byMonth = {}; days.forEach(k => { const m = k.slice(0, 7); byMonth[m] = (byMonth[m] || 0) + byDay[k]; });
+      const months = Object.keys(byMonth).sort();
       const cur = localDateStr().slice(0, 7);
-      // Forecast next month = mean of last 3 complete months; if none complete yet
-      // (young series), fall back to the current month projected to a full month.
-      const projCur = mon => { const dd = Number(localDateStr().slice(8, 10)), dim = new Date(Number(cur.slice(0, 4)), Number(cur.slice(5, 7)), 0).getDate(); return dd > 0 ? Math.round((mon[cur] || 0) / dd * dim) : (mon[cur] || 0); };
-      const fcOf = mon => { const comp = months.filter(m => m < cur && mon[m] != null), l3 = comp.slice(-3); return l3.length ? Math.round(l3.reduce((a, m) => a + mon[m], 0) / l3.length) : projCur(mon); };
-      const rNext = fcOf(rMon), dNext = fcOf(dMon);
+      const projCur = () => { const dd = Number(localDateStr().slice(8, 10)), dim = new Date(Number(cur.slice(0, 4)), Number(cur.slice(5, 7)), 0).getDate(); return dd > 0 ? Math.round((byMonth[cur] || 0) / dd * dim) : (byMonth[cur] || 0); };
+      const comp = months.filter(m => m < cur), l3 = comp.slice(-3);
+      const next = l3.length ? Math.round(l3.reduce((a, m) => a + byMonth[m], 0) / l3.length) : projCur();
       const nd = new Date(Number(cur.slice(0, 4)), Number(cur.slice(5, 7)), 1), nextM = localDateStr(nd).slice(0, 7);
-      const slots = months.slice(-12).map(m => ({ label: m, short: _otMonLbl(m), forecast: false, bars: [{ value: rMon[m] || 0, color: RECV, name: 'Received' }, { value: dMon[m] || 0, color: DONE, name: 'Completed' }] }));
-      slots.push({ label: nextM, short: _otMonLbl(nextM), forecast: true, bars: [{ value: rNext, color: RECV, hatch: true, name: 'Received' }, { value: dNext, color: DONE, hatch: true, name: 'Completed' }] });
-      sumEl.innerHTML = _otStat('Received · month', fmt(rMon[cur] || 0), { color: RECV }) + _otStat('Completed · month', fmt(dMon[cur] || 0), { color: DONE }) + _otStat('Received · next', fmt(rNext), { color: RECV, forecast: true, sub: accSub(recvAcc), subTitle: accTitle }) + _otStat('Completed · next', fmt(dNext), { color: DONE, forecast: true, sub: accSub(doneAcc), subTitle: accTitle });
-      chartEl.innerHTML = legend + _otBarChart(slots, { colors: [RECV, DONE], labels: true });
+      const slots = months.slice(-12).map(m => ({ label: m, short: _otMonLbl(m), forecast: false, bars: [{ value: byMonth[m], color, name }] }));
+      slots.push({ label: nextM, short: _otMonLbl(nextM), forecast: true, bars: [{ value: next, color, hatch: true, name }] });
+      sumEl.innerHTML = _otStat('This month', fmt(byMonth[cur] || 0), { color }) + _otStat('Proj. full month', fmt(projCur()), { color }) + _otStat('Next month', fmt(next), { color, forecast: true, sub: accSub, subTitle: accTitle });
+      chartEl.innerHTML = _otBarChart(slots, { colors: [color], labels: true });
     }
   }
 
