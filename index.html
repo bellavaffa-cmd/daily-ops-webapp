@@ -2281,8 +2281,8 @@
     <div class="card" id="orderTrendCard" style="padding:16px 18px;margin-bottom:20px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:10px">
         <div>
-          <div style="font-size:.85rem;font-weight:600;color:var(--text)">Completed orders — trend &amp; forecast</div>
-          <div style="font-size:.7rem;color:var(--muted);margin-top:2px">Packed orders per warehouse · forecast is an estimate (dashed)</div>
+          <div style="font-size:.85rem;font-weight:600;color:var(--text)">Orders — trend &amp; forecast</div>
+          <div style="font-size:.7rem;color:var(--muted);margin-top:2px">B2C received (demand) vs completed/packed (throughput) per warehouse · forecast is an estimate</div>
         </div>
         <div style="display:flex;gap:4px">
           <button type="button" id="otModeDaily" onclick="setOrderTrendMode('daily')" class="ot-toggle active">Daily</button>
@@ -5418,7 +5418,8 @@
   let userPerfSnaps = [];   // per-user cumulative snapshots → hourly per-user rate + chart
   let hourlyDaily = [];     // [{day, hour, picked_orders, packed_orders}] — 90-day daily×hourly rollup (RPC)
   let userSpeedAvg = {};    // person -> { pickPerHr, packPerHr } avg over last 30d (user_speed_avg RPC)
-  let orderDaily = [];      // warehouse_order_daily rows — durable completed-orders ledger (trend + forecast)
+  let orderDaily = [];      // warehouse_order_daily rows — durable completed(packed)-orders ledger
+  let b2cOrderDaily = [];   // b2c_order_daily rows — durable B2C received-orders ledger (trend + forecast)
   const MONTHS_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const dayLabel = ds => { const p = String(ds).split('-'); return p[2] ? `${p[2]} ${MONTHS_ABBR[+p[1]-1]}` : ds; };
@@ -5494,15 +5495,17 @@
       // Completed-orders ledger (durable) for the trend + forecast card — up to ~13 months.
       const odCut = localDateStr(new Date(Date.now() - 400 * 24 * 60 * 60 * 1000));
       const odUrl = SB_URL + '/warehouse_order_daily?select=warehouse_code,day,completed_orders,completed_items&day=gte.' + odCut + '&order=day.asc';
+      const bodUrl = SB_URL + '/b2c_order_daily?select=wh,day,received_orders,received_items&day=gte.' + odCut + '&order=day.asc';
       // Per-person average pick/pack speed over the last 30 days (durable hourly rollup).
       const selWhP = localStorage.getItem('prodWarehouseFilter') || '';
       const spWhs = selWhP ? [selWhP] : (_whAllow ? [..._whAllow] : null);
       const spReq = fetch(SB_URL + '/rpc/user_speed_avg', { method: 'POST', headers: { ...SB_HDR, 'Content-Type': 'application/json' }, body: JSON.stringify({ _days: 30, _warehouses: spWhs }) });
-      const [res, snapRes, uSnapRes, odRes, spRes] = await Promise.all([
+      const [res, snapRes, uSnapRes, odRes, bodRes, spRes] = await Promise.all([
         fetch(url, { headers: SB_HDR }),
         fetch(snapUrl, { headers: SB_HDR }),
         fetch(uSnapUrl, { headers: SB_HDR }),
         fetch(odUrl, { headers: SB_HDR }),
+        fetch(bodUrl, { headers: SB_HDR }),
         spReq,
       ]);
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -5510,6 +5513,7 @@
       prodSnaps = (snapRes.ok ? await snapRes.json() : []).filter(r => whAllowed(r.warehouse_code));
       userPerfSnaps = (uSnapRes.ok ? await uSnapRes.json() : []).filter(r => whAllowed(r.warehouse_code));
       orderDaily = (odRes.ok ? await odRes.json() : []).filter(r => whAllowed(r.warehouse_code));
+      b2cOrderDaily = (bodRes.ok ? await bodRes.json() : []).filter(r => whAllowed(r.wh));
       // Build person -> avg pick/pack per active hour from the RPC aggregates.
       userSpeedAvg = {};
       const spRows = spRes.ok ? await spRes.json() : [];
@@ -5651,75 +5655,96 @@
     return `<div><div style="font-size:.64rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">${label}</div><div style="font-size:1.3rem;font-weight:700;color:var(--text)">${val}${d}</div></div>`;
   }
   function _otMonLbl(m) { return MONTHS_ABBR[Number(m.slice(5, 7)) - 1] + ' ' + m.slice(2, 4); }
-  // Simple SVG bar chart. items: [{label, short, value, forecast}]. Forecast bars
-  // hatched. Each bar is labelled with its value (compact k/M; vertical when narrow).
-  function _otBarChart(items, color) {
-    if (!items.length) return '<div style="color:var(--muted);font-size:.8rem;padding:10px 2px">No data yet.</div>';
+  // Forecast next 7 days for a contiguous [{day,v}] series: weekday-seasonal avg of
+  // the last 4 same-weekday actuals, else the recent 14-day mean.
+  function _otFcDaily(series) {
+    if (!series.length) return [];
+    const byWd = {}; series.forEach(s => { const wd = new Date(s.day + 'T00:00:00').getDay(); (byWd[wd] = byWd[wd] || []).push(s.v); });
+    const recentMean = series.slice(-14).reduce((a, s) => a + s.v, 0) / Math.min(14, series.length) || 0;
+    const out = []; const fd = new Date(series[series.length - 1].day + 'T00:00:00');
+    for (let i = 0; i < 7; i++) { fd.setDate(fd.getDate() + 1); const arr = (byWd[fd.getDay()] || []).slice(-4); out.push({ day: localDateStr(new Date(fd)), v: arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : Math.round(recentMean) }); }
+    return out;
+  }
+  // Grouped SVG bar chart. slots: [{label, short, forecast, bars:[{value,color,hatch,name}]}].
+  // opts.colors = series colours (for hatch defs); opts.labels = draw per-bar value labels.
+  function _otBarChart(slots, opts) {
+    opts = opts || {};
+    if (!slots.length) return '<div style="color:var(--muted);font-size:.8rem;padding:10px 2px">No data yet.</div>';
     const fmt = v => Number(v || 0).toLocaleString();
     const cfmt = v => { v = Number(v || 0); if (v >= 1e6) return (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M'; if (v >= 1e4) return Math.round(v / 1e3) + 'k'; if (v >= 1e3) return (v / 1e3).toFixed(1).replace(/\.0$/, '') + 'k'; return String(Math.round(v)); };
-    const max = Math.max(1, ...items.map(i => i.value));
-    const n = items.length, bw = Math.max(6, Math.min(30, Math.floor(660 / n))), gap = Math.max(2, Math.round(bw * 0.28));
-    const wide = bw >= 22;                 // horizontal value labels only fit on wide bars
-    const ch = 210, top = 54, bottom = 26, plot = ch - top - bottom, cw = 34 + n * (bw + gap);
+    const seriesN = Math.max(1, ...slots.map(s => s.bars.length));
+    const max = Math.max(1, ...slots.flatMap(s => s.bars.map(b => b.value)));
+    const n = slots.length;
+    const slotW = Math.max(seriesN * 3, Math.min(70, Math.floor(680 / n))), gap = Math.max(3, Math.round(slotW * 0.3));
+    const innerGap = seriesN > 1 ? 2 : 0, sbw = Math.max(3, (slotW - innerGap * (seriesN - 1)) / seriesN);
+    const wide = sbw >= 20, showLabel = !!opts.labels;
+    const ch = 210, top = 54, bottom = 26, plot = ch - top - bottom, cw = 34 + n * (slotW + gap);
     let bars = '', vals = '', labels = '';
     const every = Math.max(1, Math.ceil(n / 12));
-    items.forEach((it, i) => {
-      const h = Math.round((it.value / max) * plot), x = 30 + i * (bw + gap), y = top + (plot - h);
-      const cx = x + bw / 2, ly = y - 4, vColor = it.forecast ? 'var(--muted)' : 'var(--text)';
-      bars += `<rect x="${x}" y="${y}" width="${bw}" height="${Math.max(h, it.value > 0 ? 1 : 0)}" rx="2" fill="${it.forecast ? 'url(#otHatch)' : color}"><title>${it.label}: ${fmt(it.value)}${it.forecast ? ' (forecast)' : ''}</title></rect>`;
-      if (it.value > 0) vals += wide
-        ? `<text x="${cx}" y="${ly}" font-size="13" font-weight="600" style="fill:${vColor}" text-anchor="middle">${cfmt(it.value)}</text>`
-        : `<text x="${cx}" y="${ly}" font-size="11" font-weight="600" style="fill:${vColor}" text-anchor="start" transform="rotate(-90 ${cx} ${ly})">${cfmt(it.value)}</text>`;
-      if (n <= 14 || i % every === 0 || i === n - 1) labels += `<text x="${cx}" y="${ch - 8}" font-size="9" style="fill:var(--muted)" text-anchor="middle">${it.short || it.label}</text>`;
+    slots.forEach((s, i) => {
+      const x0 = 30 + i * (slotW + gap);
+      s.bars.forEach((b, j) => {
+        const h = Math.round((b.value / max) * plot), x = x0 + j * (sbw + innerGap), y = top + (plot - h);
+        bars += `<rect x="${x}" y="${y}" width="${sbw}" height="${Math.max(h, b.value > 0 ? 1 : 0)}" rx="1.5" fill="${b.hatch ? 'url(#otHatch' + j + ')' : b.color}"><title>${b.name ? b.name + ' — ' : ''}${s.label}: ${fmt(b.value)}${s.forecast ? ' (forecast)' : ''}</title></rect>`;
+        if (showLabel && b.value > 0) {
+          const cx = x + sbw / 2, ly = y - 4, vColor = s.forecast ? 'var(--muted)' : 'var(--text)';
+          vals += wide
+            ? `<text x="${cx}" y="${ly}" font-size="12" font-weight="600" style="fill:${vColor}" text-anchor="middle">${cfmt(b.value)}</text>`
+            : `<text x="${cx}" y="${ly}" font-size="10" font-weight="600" style="fill:${vColor}" text-anchor="start" transform="rotate(-90 ${cx} ${ly})">${cfmt(b.value)}</text>`;
+        }
+      });
+      if (n <= 14 || i % every === 0 || i === n - 1) { const cx = x0 + slotW / 2; labels += `<text x="${cx}" y="${ch - 8}" font-size="9" style="fill:var(--muted)" text-anchor="middle">${s.short || s.label}</text>`; }
     });
-    return `<svg viewBox="0 0 ${cw} ${ch}" width="100%" style="max-width:${cw}px;min-width:${Math.min(cw, 340)}px">
-      <defs><pattern id="otHatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="${color}" opacity="0.16"/><line x1="0" y1="0" x2="0" y2="5" stroke="${color}" stroke-width="2.4" opacity="0.85"/></pattern></defs>
-      ${bars}${vals}${labels}</svg>`;
+    const colors = opts.colors || ['#5eead4'];
+    const defs = colors.map((c, idx) => `<pattern id="otHatch${idx}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="${c}" opacity="0.16"/><line x1="0" y1="0" x2="0" y2="5" stroke="${c}" stroke-width="2.4" opacity="0.85"/></pattern>`).join('');
+    return `<svg viewBox="0 0 ${cw} ${ch}" width="100%" style="max-width:${cw}px;min-width:${Math.min(cw, 340)}px"><defs>${defs}</defs>${bars}${vals}${labels}</svg>`;
   }
+  // Two series: B2C received (demand) + completed/packed (throughput).
   function renderOrderTrend() {
     const card = document.getElementById('orderTrendCard'); if (!card) return;
     const sumEl = document.getElementById('orderTrendSummary'), chartEl = document.getElementById('orderTrendChart');
     if (!sumEl || !chartEl) return;
     const fmt = n => Number(n || 0).toLocaleString();
-    const color = '#5eead4';
+    const RECV = '#86efac', DONE = '#5eead4';
+    const legend = `<div style="display:flex;gap:16px;font-size:.72rem;color:var(--muted);margin:0 0 8px 2px">
+      <span><span style="display:inline-block;width:10px;height:10px;background:${RECV};border-radius:2px;margin-right:5px"></span>Received</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:${DONE};border-radius:2px;margin-right:5px"></span>Completed (packed)</span>
+      <span style="margin-left:auto">Hatched = forecast</span></div>`;
     const selWh = localStorage.getItem('prodWarehouseFilter') || '';
     const mode = localStorage.getItem('orderTrendMode') === 'monthly' ? 'monthly' : 'daily';
     document.getElementById('otModeDaily')?.classList.toggle('active', mode === 'daily');
     document.getElementById('otModeMonthly')?.classList.toggle('active', mode === 'monthly');
-    const byDay = {};
-    (orderDaily || []).forEach(r => { if (!selWh || r.warehouse_code === selWh) byDay[r.day] = (byDay[r.day] || 0) + Number(r.completed_orders || 0); });
-    const days = Object.keys(byDay).sort();
-    if (!days.length) { sumEl.innerHTML = ''; chartEl.innerHTML = '<div style="color:var(--muted);font-size:.8rem;padding:10px 2px">No completed-order history yet — fills in daily.</div>'; return; }
+    const recvByDay = {}, doneByDay = {};
+    (b2cOrderDaily || []).forEach(r => { if (!selWh || r.wh === selWh) recvByDay[r.day] = (recvByDay[r.day] || 0) + Number(r.received_orders || 0); });
+    (orderDaily || []).forEach(r => { if (!selWh || r.warehouse_code === selWh) doneByDay[r.day] = (doneByDay[r.day] || 0) + Number(r.completed_orders || 0); });
+    const allDays = [...new Set([...Object.keys(recvByDay), ...Object.keys(doneByDay)])].sort();
+    if (!allDays.length) { sumEl.innerHTML = ''; chartEl.innerHTML = '<div style="color:var(--muted);font-size:.8rem;padding:10px 2px">No order history yet — fills in daily.</div>'; return; }
 
     if (mode === 'daily') {
-      // Continuous daily series (gaps = 0), most recent ~90 days.
-      const end = new Date(days[days.length - 1] + 'T00:00:00'), first = new Date(days[0] + 'T00:00:00');
-      const series = [];
-      for (let d = new Date(end); d >= first && series.length < 90; d.setDate(d.getDate() - 1)) { const k = localDateStr(d); series.unshift({ day: k, v: byDay[k] || 0 }); }
-      // Forecast next 7 days: weekday-seasonal avg of last 4 same-weekday actuals, else recent 14-day mean.
-      const byWd = {}; series.forEach(s => { const wd = new Date(s.day + 'T00:00:00').getDay(); (byWd[wd] = byWd[wd] || []).push(s.v); });
-      const recentMean = series.slice(-14).reduce((a, s) => a + s.v, 0) / Math.min(14, series.length) || 0;
-      const fc = []; const fd = new Date(series[series.length - 1].day + 'T00:00:00');
-      for (let i = 0; i < 7; i++) { fd.setDate(fd.getDate() + 1); const arr = (byWd[fd.getDay()] || []).slice(-4); fc.push({ day: localDateStr(new Date(fd)), v: arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : Math.round(recentMean) }); }
-      const disp = series.slice(-45).map(s => ({ label: s.day, short: s.day.slice(5), value: s.v, forecast: false }))
-        .concat(fc.map(s => ({ label: s.day, short: s.day.slice(5), value: s.v, forecast: true })));
-      const last7 = series.slice(-7).reduce((a, s) => a + s.v, 0), prev7 = series.slice(-14, -7).reduce((a, s) => a + s.v, 0), next7 = fc.reduce((a, s) => a + s.v, 0);
-      const delta = prev7 ? Math.round((last7 - prev7) / prev7 * 100) : 0;
-      sumEl.innerHTML = _otStat('Last 7 days', fmt(last7)) + _otStat('Prev 7 days', fmt(prev7), delta) + _otStat('Next 7 · forecast', fmt(next7));
-      chartEl.innerHTML = _otBarChart(disp, color);
+      const first = new Date(allDays[0] + 'T00:00:00'), end = new Date(allDays[allDays.length - 1] + 'T00:00:00');
+      const dayList = []; for (let d = new Date(first); d <= end && dayList.length < 120; d.setDate(d.getDate() + 1)) dayList.push(localDateStr(new Date(d)));
+      const recvS = dayList.map(k => ({ day: k, v: recvByDay[k] || 0 })), doneS = dayList.map(k => ({ day: k, v: doneByDay[k] || 0 }));
+      const recvFc = _otFcDaily(recvS), doneFc = _otFcDaily(doneS);
+      const show = dayList.slice(-45);
+      const slots = show.map(k => ({ label: k, short: k.slice(5), forecast: false, bars: [{ value: recvByDay[k] || 0, color: RECV, name: 'Received' }, { value: doneByDay[k] || 0, color: DONE, name: 'Completed' }] }));
+      for (let i = 0; i < 7; i++) slots.push({ label: recvFc[i].day, short: recvFc[i].day.slice(5), forecast: true, bars: [{ value: recvFc[i].v, color: RECV, hatch: true, name: 'Received' }, { value: doneFc[i].v, color: DONE, hatch: true, name: 'Completed' }] });
+      const rL7 = recvS.slice(-7).reduce((a, s) => a + s.v, 0), dL7 = doneS.slice(-7).reduce((a, s) => a + s.v, 0);
+      const rN7 = recvFc.reduce((a, s) => a + s.v, 0), dN7 = doneFc.reduce((a, s) => a + s.v, 0);
+      sumEl.innerHTML = _otStat('Received · 7d', fmt(rL7)) + _otStat('Completed · 7d', fmt(dL7)) + _otStat('Received · next 7', fmt(rN7)) + _otStat('Completed · next 7', fmt(dN7));
+      chartEl.innerHTML = legend + _otBarChart(slots, { colors: [RECV, DONE], labels: false });
     } else {
-      const byMonth = {}; days.forEach(k => { const m = k.slice(0, 7); byMonth[m] = (byMonth[m] || 0) + byDay[k]; });
-      const months = Object.keys(byMonth).sort();
-      const today = localDateStr(), curMonth = today.slice(0, 7);
-      const complete = months.filter(m => m < curMonth), last3 = complete.slice(-3);
-      const fcVal = last3.length ? Math.round(last3.reduce((a, m) => a + byMonth[m], 0) / last3.length) : 0;
-      const dd = Number(today.slice(8, 10)), dim = new Date(Number(curMonth.slice(0, 4)), Number(curMonth.slice(5, 7)), 0).getDate();
-      const curActual = byMonth[curMonth] || 0, curProj = dd > 0 ? Math.round(curActual / dd * dim) : curActual;
-      const nd = new Date(Number(curMonth.slice(0, 4)), Number(curMonth.slice(5, 7)), 1), nextM = localDateStr(nd).slice(0, 7);
-      const disp = months.slice(-12).map(m => ({ label: m, short: _otMonLbl(m), value: byMonth[m], forecast: false }));
-      disp.push({ label: nextM, short: _otMonLbl(nextM), value: fcVal, forecast: true });
-      sumEl.innerHTML = _otStat('This month', fmt(curActual)) + _otStat('Proj. full month', fmt(curProj)) + _otStat('Next month · forecast', fmt(fcVal));
-      chartEl.innerHTML = _otBarChart(disp, color);
+      const rMon = {}, dMon = {};
+      Object.keys(recvByDay).forEach(k => { const m = k.slice(0, 7); rMon[m] = (rMon[m] || 0) + recvByDay[k]; });
+      Object.keys(doneByDay).forEach(k => { const m = k.slice(0, 7); dMon[m] = (dMon[m] || 0) + doneByDay[k]; });
+      const months = [...new Set([...Object.keys(rMon), ...Object.keys(dMon)])].sort();
+      const cur = localDateStr().slice(0, 7);
+      const fcOf = mon => { const comp = months.filter(m => m < cur && mon[m] != null), l3 = comp.slice(-3); return l3.length ? Math.round(l3.reduce((a, m) => a + mon[m], 0) / l3.length) : 0; };
+      const rNext = fcOf(rMon), dNext = fcOf(dMon);
+      const nd = new Date(Number(cur.slice(0, 4)), Number(cur.slice(5, 7)), 1), nextM = localDateStr(nd).slice(0, 7);
+      const slots = months.slice(-12).map(m => ({ label: m, short: _otMonLbl(m), forecast: false, bars: [{ value: rMon[m] || 0, color: RECV, name: 'Received' }, { value: dMon[m] || 0, color: DONE, name: 'Completed' }] }));
+      slots.push({ label: nextM, short: _otMonLbl(nextM), forecast: true, bars: [{ value: rNext, color: RECV, hatch: true, name: 'Received' }, { value: dNext, color: DONE, hatch: true, name: 'Completed' }] });
+      sumEl.innerHTML = _otStat('Received · month', fmt(rMon[cur] || 0)) + _otStat('Completed · month', fmt(dMon[cur] || 0)) + _otStat('Received · next', fmt(rNext)) + _otStat('Completed · next', fmt(dNext));
+      chartEl.innerHTML = legend + _otBarChart(slots, { colors: [RECV, DONE], labels: true });
     }
   }
 
