@@ -5724,7 +5724,10 @@
       const first = new Date(allDays[0] + 'T00:00:00'), end = new Date(allDays[allDays.length - 1] + 'T00:00:00');
       const dayList = []; for (let d = new Date(first); d <= end && dayList.length < 120; d.setDate(d.getDate() + 1)) dayList.push(localDateStr(new Date(d)));
       const recvS = dayList.map(k => ({ day: k, v: recvByDay[k] || 0 })), doneS = dayList.map(k => ({ day: k, v: doneByDay[k] || 0 }));
-      const recvFc = _otFcDaily(recvS), doneFc = _otFcDaily(doneS);
+      // Forecast off each series' own active range — trim leading empty days so a
+      // young series (e.g. B2C received) isn't diluted to ~0 by months of zeros.
+      const trimLead = arr => { let i = 0; while (i < arr.length && arr[i].v === 0) i++; return arr.slice(i); };
+      const recvFc = _otFcDaily(trimLead(recvS)), doneFc = _otFcDaily(trimLead(doneS));
       const show = dayList.slice(-45);
       const slots = show.map(k => ({ label: k, short: k.slice(5), forecast: false, bars: [{ value: recvByDay[k] || 0, color: RECV, name: 'Received' }, { value: doneByDay[k] || 0, color: DONE, name: 'Completed' }] }));
       for (let i = 0; i < 7; i++) slots.push({ label: recvFc[i].day, short: recvFc[i].day.slice(5), forecast: true, bars: [{ value: recvFc[i].v, color: RECV, hatch: true, name: 'Received' }, { value: doneFc[i].v, color: DONE, hatch: true, name: 'Completed' }] });
@@ -5738,7 +5741,10 @@
       Object.keys(doneByDay).forEach(k => { const m = k.slice(0, 7); dMon[m] = (dMon[m] || 0) + doneByDay[k]; });
       const months = [...new Set([...Object.keys(rMon), ...Object.keys(dMon)])].sort();
       const cur = localDateStr().slice(0, 7);
-      const fcOf = mon => { const comp = months.filter(m => m < cur && mon[m] != null), l3 = comp.slice(-3); return l3.length ? Math.round(l3.reduce((a, m) => a + mon[m], 0) / l3.length) : 0; };
+      // Forecast next month = mean of last 3 complete months; if none complete yet
+      // (young series), fall back to the current month projected to a full month.
+      const projCur = mon => { const dd = Number(localDateStr().slice(8, 10)), dim = new Date(Number(cur.slice(0, 4)), Number(cur.slice(5, 7)), 0).getDate(); return dd > 0 ? Math.round((mon[cur] || 0) / dd * dim) : (mon[cur] || 0); };
+      const fcOf = mon => { const comp = months.filter(m => m < cur && mon[m] != null), l3 = comp.slice(-3); return l3.length ? Math.round(l3.reduce((a, m) => a + mon[m], 0) / l3.length) : projCur(mon); };
       const rNext = fcOf(rMon), dNext = fcOf(dMon);
       const nd = new Date(Number(cur.slice(0, 4)), Number(cur.slice(5, 7)), 1), nextM = localDateStr(nd).slice(0, 7);
       const slots = months.slice(-12).map(m => ({ label: m, short: _otMonLbl(m), forecast: false, bars: [{ value: rMon[m] || 0, color: RECV, name: 'Received' }, { value: dMon[m] || 0, color: DONE, name: 'Completed' }] }));
