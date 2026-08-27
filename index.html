@@ -5643,10 +5643,29 @@
 
   // ── Completed-orders trend + forecast (from warehouse_order_daily) ─────────
   function setOrderTrendMode(m) { localStorage.setItem('orderTrendMode', m); renderOrderTrend(); }
-  function _otStat(label, val, delta) {
-    let d = '';
-    if (typeof delta === 'number' && delta !== 0) { const up = delta > 0; d = ` <span style="font-size:.7rem;color:${up ? '#4ade80' : '#f87171'}">${up ? '▲' : '▼'}${Math.abs(delta)}%</span>`; }
-    return `<div><div style="font-size:.64rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">${label}</div><div style="font-size:1.3rem;font-weight:700;color:var(--text)">${val}${d}</div></div>`;
+  function _otStat(label, val, opts) {
+    opts = opts || {};
+    const c = opts.color || 'var(--text)';
+    const tag = opts.forecast ? ' <span style="font-size:.56rem;font-weight:700;color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:0 3px;vertical-align:middle">FORECAST</span>' : '';
+    return `<div><div style="font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:2px">${label}${tag}</div><div style="font-size:1.65rem;font-weight:800;color:${c};line-height:1.02">${val}</div></div>`;
+  }
+  // Hover tooltip for the trend chart. Wired once per card; reads each bar's data-t.
+  function _otWireTip(card, chartEl) {
+    if (!card || !chartEl || card._otWired) return;
+    card._otWired = true; card.style.position = 'relative';
+    const tip = document.createElement('div');
+    tip.style.cssText = 'position:absolute;pointer-events:none;display:none;z-index:6;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:6px 10px;font-size:.82rem;font-weight:600;color:var(--text);box-shadow:0 6px 18px rgba(0,0,0,.4);white-space:nowrap';
+    card.appendChild(tip);
+    chartEl.addEventListener('mousemove', e => {
+      const t = e.target && e.target.getAttribute && e.target.getAttribute('data-t');
+      if (!t) { tip.style.display = 'none'; return; }
+      tip.innerHTML = t; tip.style.display = 'block';
+      const cr = card.getBoundingClientRect();
+      let x = e.clientX - cr.left + 14, y = e.clientY - cr.top - 10;
+      if (x + tip.offsetWidth > cr.width - 6) x = cr.width - tip.offsetWidth - 6;
+      tip.style.left = Math.max(6, x) + 'px'; tip.style.top = Math.max(6, y) + 'px';
+    });
+    chartEl.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
   }
   function _otMonLbl(m) { return MONTHS_ABBR[Number(m.slice(5, 7)) - 1] + ' ' + m.slice(2, 4); }
   // Forecast next 7 days for a contiguous [{day,v}] series: weekday-seasonal avg of
@@ -5679,19 +5698,27 @@
       const x0 = 30 + i * (slotW + gap);
       s.bars.forEach((b, j) => {
         const h = Math.round((b.value / max) * plot), x = x0 + j * (sbw + innerGap), y = top + (plot - h);
-        bars += `<rect x="${x}" y="${y}" width="${sbw}" height="${Math.max(h, b.value > 0 ? 1 : 0)}" rx="1.5" fill="${b.hatch ? 'url(#otHatch' + j + ')' : b.color}"><title>${b.name ? b.name + ' — ' : ''}${s.label}: ${fmt(b.value)}${s.forecast ? ' (forecast)' : ''}</title></rect>`;
-        if (showLabel && b.value > 0) {
-          const cx = x + sbw / 2, ly = y - 4, vColor = s.forecast ? 'var(--muted)' : 'var(--text)';
+        const tipTxt = `<b style='color:${b.color}'>${b.name || ''}</b> · ${s.label}: ${fmt(b.value)}${s.forecast ? " <span style='color:var(--muted)'>(forecast)</span>" : ''}`;
+        const stroke = s.forecast ? ` stroke="${b.color}" stroke-width="0.8" stroke-opacity="0.7"` : '';
+        bars += `<rect x="${x}" y="${y}" width="${sbw}" height="${Math.max(h, b.value > 0 ? 1 : 0)}" rx="1.5" fill="${b.hatch ? 'url(#otHatch' + j + ')' : b.color}"${stroke} data-t="${tipTxt}"></rect>`;
+        // Per-bar labels only where bars are wide enough (monthly); daily stays clean
+        // and reads its forecast via the divider, hover, and the summary numbers.
+        if ((showLabel || s.forecast) && b.value > 0 && wide) {
+          const cx = x + sbw / 2, ly = y - 4, vColor = s.forecast ? b.color : 'var(--text)';
           vals += wide
-            ? `<text x="${cx}" y="${ly}" font-size="12" font-weight="600" style="fill:${vColor}" text-anchor="middle">${cfmt(b.value)}</text>`
-            : `<text x="${cx}" y="${ly}" font-size="10" font-weight="600" style="fill:${vColor}" text-anchor="start" transform="rotate(-90 ${cx} ${ly})">${cfmt(b.value)}</text>`;
+            ? `<text x="${cx}" y="${ly}" font-size="14" font-weight="700" style="fill:${vColor}" text-anchor="middle">${cfmt(b.value)}</text>`
+            : `<text x="${cx}" y="${ly}" font-size="11" font-weight="700" style="fill:${vColor}" text-anchor="start" transform="rotate(-90 ${cx} ${ly})">${cfmt(b.value)}</text>`;
         }
       });
       if (n <= 14 || i % every === 0 || i === n - 1) { const cx = x0 + slotW / 2; labels += `<text x="${cx}" y="${ch - 8}" font-size="9" style="fill:var(--muted)" text-anchor="middle">${s.short || s.label}</text>`; }
     });
+    // Delimit + label the forecast region so it reads clearly.
+    const firstFc = slots.findIndex(s => s.forecast);
+    let sep = '';
+    if (firstFc > 0) { const xs = 30 + firstFc * (slotW + gap) - gap / 2; sep = `<line x1="${xs}" y1="${top - 12}" x2="${xs}" y2="${top + plot}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3" opacity="0.5"/><text x="${xs + 4}" y="${top - 3}" font-size="10" font-weight="600" style="fill:var(--muted)" text-anchor="start">forecast →</text>`; }
     const colors = opts.colors || ['#5eead4'];
-    const defs = colors.map((c, idx) => `<pattern id="otHatch${idx}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="${c}" opacity="0.16"/><line x1="0" y1="0" x2="0" y2="5" stroke="${c}" stroke-width="2.4" opacity="0.85"/></pattern>`).join('');
-    return `<svg viewBox="0 0 ${cw} ${ch}" width="100%" style="max-width:${cw}px;min-width:${Math.min(cw, 340)}px"><defs>${defs}</defs>${bars}${vals}${labels}</svg>`;
+    const defs = colors.map((c, idx) => `<pattern id="otHatch${idx}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="${c}" opacity="0.18"/><line x1="0" y1="0" x2="0" y2="5" stroke="${c}" stroke-width="2.6" opacity="0.9"/></pattern>`).join('');
+    return `<svg viewBox="0 0 ${cw} ${ch}" width="100%" style="max-width:${cw}px;min-width:${Math.min(cw, 340)}px"><defs>${defs}</defs>${sep}${bars}${vals}${labels}</svg>`;
   }
   // Load the durable order ledgers (received + completed) for the trend card on
   // the B2C tab. Cheap (daily-grain), so refetched with each B2C data load.
@@ -5712,6 +5739,7 @@
     const card = document.getElementById('orderTrendCard'); if (!card) return;
     const sumEl = document.getElementById('orderTrendSummary'), chartEl = document.getElementById('orderTrendChart');
     if (!sumEl || !chartEl) return;
+    _otWireTip(card, chartEl);
     const fmt = n => Number(n || 0).toLocaleString();
     const RECV = '#86efac', DONE = '#5eead4';
     const legend = `<div style="display:flex;gap:16px;font-size:.72rem;color:var(--muted);margin:0 0 8px 2px">
@@ -5740,7 +5768,7 @@
       for (let i = 0; i < 7; i++) slots.push({ label: recvFc[i].day, short: recvFc[i].day.slice(5), forecast: true, bars: [{ value: recvFc[i].v, color: RECV, hatch: true, name: 'Received' }, { value: doneFc[i].v, color: DONE, hatch: true, name: 'Completed' }] });
       const rL7 = recvS.slice(-7).reduce((a, s) => a + s.v, 0), dL7 = doneS.slice(-7).reduce((a, s) => a + s.v, 0);
       const rN7 = recvFc.reduce((a, s) => a + s.v, 0), dN7 = doneFc.reduce((a, s) => a + s.v, 0);
-      sumEl.innerHTML = _otStat('Received · 7d', fmt(rL7)) + _otStat('Completed · 7d', fmt(dL7)) + _otStat('Received · next 7', fmt(rN7)) + _otStat('Completed · next 7', fmt(dN7));
+      sumEl.innerHTML = _otStat('Received · 7d', fmt(rL7), { color: RECV }) + _otStat('Completed · 7d', fmt(dL7), { color: DONE }) + _otStat('Received · next 7', fmt(rN7), { color: RECV, forecast: true }) + _otStat('Completed · next 7', fmt(dN7), { color: DONE, forecast: true });
       chartEl.innerHTML = legend + _otBarChart(slots, { colors: [RECV, DONE], labels: false });
     } else {
       const rMon = {}, dMon = {};
@@ -5756,7 +5784,7 @@
       const nd = new Date(Number(cur.slice(0, 4)), Number(cur.slice(5, 7)), 1), nextM = localDateStr(nd).slice(0, 7);
       const slots = months.slice(-12).map(m => ({ label: m, short: _otMonLbl(m), forecast: false, bars: [{ value: rMon[m] || 0, color: RECV, name: 'Received' }, { value: dMon[m] || 0, color: DONE, name: 'Completed' }] }));
       slots.push({ label: nextM, short: _otMonLbl(nextM), forecast: true, bars: [{ value: rNext, color: RECV, hatch: true, name: 'Received' }, { value: dNext, color: DONE, hatch: true, name: 'Completed' }] });
-      sumEl.innerHTML = _otStat('Received · month', fmt(rMon[cur] || 0)) + _otStat('Completed · month', fmt(dMon[cur] || 0)) + _otStat('Received · next', fmt(rNext)) + _otStat('Completed · next', fmt(dNext));
+      sumEl.innerHTML = _otStat('Received · month', fmt(rMon[cur] || 0), { color: RECV }) + _otStat('Completed · month', fmt(dMon[cur] || 0), { color: DONE }) + _otStat('Received · next', fmt(rNext), { color: RECV, forecast: true }) + _otStat('Completed · next', fmt(dNext), { color: DONE, forecast: true });
       chartEl.innerHTML = legend + _otBarChart(slots, { colors: [RECV, DONE], labels: true });
     }
   }
