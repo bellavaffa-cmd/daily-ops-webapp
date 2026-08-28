@@ -5701,6 +5701,26 @@
     if (!evaluated || tot <= 0) return null;
     return Math.max(0, Math.min(100, Math.round((1 - absErr / tot) * 100)));
   }
+  function _otWeekLbl(d) { const dt = new Date(d + 'T00:00:00'); return dt.getDate() + ' ' + MONTHS_ABBR[dt.getMonth()]; }
+  // Same backtest as _otAccuracy, bucketed by ISO week (Mon start) -> per-week accuracy.
+  function _otWeeklyAccuracy(series) {
+    if (!series || series.length < 8) return [];
+    const byWeek = {};
+    for (let i = 7; i < series.length; i++) {
+      const hist = series.slice(0, i);
+      const d = new Date(series[i].day + 'T00:00:00'), wd = d.getDay();
+      const same = hist.filter(s => new Date(s.day + 'T00:00:00').getDay() === wd).slice(-4);
+      const recentMean = hist.slice(-14).reduce((a, s) => a + s.v, 0) / Math.min(14, hist.length);
+      const pred = same.length ? same.reduce((a, s) => a + s.v, 0) / same.length : recentMean;
+      const monday = new Date(d); monday.setDate(monday.getDate() - ((wd + 6) % 7));
+      const key = localDateStr(monday);
+      const w = (byWeek[key] = byWeek[key] || { start: key, absErr: 0, tot: 0 });
+      w.absErr += Math.abs(series[i].v - pred); w.tot += series[i].v;
+    }
+    return Object.values(byWeek).filter(w => w.tot > 0)
+      .map(w => ({ start: w.start, acc: Math.max(0, Math.min(100, Math.round((1 - w.absErr / w.tot) * 100))) }))
+      .sort((a, b) => a.start < b.start ? -1 : 1);
+  }
   // Hover tooltip for the trend chart. Wired once per card; reads each bar's data-t.
   function _otWireTip(card, chartEl) {
     if (!card || !chartEl || card._otWired) return;
@@ -5826,6 +5846,13 @@
     const acc = _otAccuracy(trimLead(S));
     const accSub = acc != null ? acc + '% accurate' : 'accuracy: building…';
     const accTitle = 'Backtested: 100% − weighted error of this forecast method vs actuals over history';
+    // Per-week backtested accuracy strip (shown under the chart on every forecast card).
+    const weekly = _otWeeklyAccuracy(trimLead(S));
+    const accClr = a => a >= 80 ? '#4ade80' : a >= 60 ? '#fbbf24' : '#f87171';
+    const weekStrip = weekly.length ? `<div style="margin-top:9px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:.7rem">
+        <span style="color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-right:2px">Weekly accuracy</span>
+        ${weekly.slice(-8).map(w => `<span title="Week of ${w.start} (Mon)" style="border:1px solid var(--border);border-radius:5px;padding:2px 7px;color:var(--muted);white-space:nowrap">${_otWeekLbl(w.start)} <b style="color:${accClr(w.acc)}">${w.acc}%</b></span>`).join('')}
+      </div>` : '';
 
     if (mode === 'daily') {
       const fc = _otFcDaily(trimLead(S));
@@ -5834,7 +5861,7 @@
       const last7 = S.slice(-7).reduce((a, s) => a + s.v, 0), prev7 = S.slice(-14, -7).reduce((a, s) => a + s.v, 0), next7 = fc.reduce((a, s) => a + s.v, 0);
       const delta = prev7 ? Math.round((last7 - prev7) / prev7 * 100) : 0;
       sumEl.innerHTML = _otStat('Last 7 days', fmt(last7), { color }) + _otStat('Prev 7 days', fmt(prev7), { color, delta }) + _otStat('Next 7', fmt(next7), { color, forecast: true, sub: accSub, subTitle: accTitle });
-      chartEl.innerHTML = _otBarChart(slots, { colors: [color], labels: false });
+      chartEl.innerHTML = _otBarChart(slots, { colors: [color], labels: false }) + weekStrip;
     } else {
       const byMonth = {}; days.forEach(k => { const m = k.slice(0, 7); byMonth[m] = (byMonth[m] || 0) + byDay[k]; });
       const months = Object.keys(byMonth).sort();
@@ -5846,7 +5873,7 @@
       const slots = months.slice(-12).map(m => ({ label: m, short: _otMonLbl(m), forecast: false, bars: [{ value: byMonth[m], color, name }] }));
       slots.push({ label: nextM, short: _otMonLbl(nextM), forecast: true, bars: [{ value: next, color, hatch: true, name }] });
       sumEl.innerHTML = _otStat('This month', fmt(byMonth[cur] || 0), { color }) + _otStat('Proj. full month', fmt(projCur()), { color }) + _otStat('Next month', fmt(next), { color, forecast: true, sub: accSub, subTitle: accTitle });
-      chartEl.innerHTML = _otBarChart(slots, { colors: [color], labels: true });
+      chartEl.innerHTML = _otBarChart(slots, { colors: [color], labels: true }) + weekStrip;
     }
   }
 
