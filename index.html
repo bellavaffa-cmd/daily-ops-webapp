@@ -2359,7 +2359,7 @@
     <!-- Per-hour by warehouse (Logiwa-style user productivity matrix) -->
     <div class="card" style="padding:0;overflow:hidden;margin-top:16px">
       <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-        <div id="prodHourTableTitle" style="font-size:.85rem;font-weight:600;color:var(--text)">Packed Order Count — User Productivity Per Hour By Warehouse</div>
+        <div id="prodHourTableTitle" style="font-size:.85rem;font-weight:600;color:var(--text)">Packed order count per hour · by user</div>
         <label style="font-size:.75rem;color:var(--muted)">Date <input type="date" id="prodHourDate" onchange="onProdHourDateChange(this.value)" style="margin-left:4px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></label>
       </div>
       <div style="overflow-x:auto"><table id="prodHourTable" style="width:100%;border-collapse:collapse;font-size:.82rem"></table></div>
@@ -5866,7 +5866,7 @@
     const packed = localStorage.getItem('prodMode') === 'packed';
     const field = packed ? 'packed_orders' : 'picked_orders';
     const t = document.getElementById('prodHourTableTitle');
-    if (t) t.textContent = (packed ? 'Packed' : 'Picked') + ' Order Count — User Productivity Per Hour By Warehouse';
+    if (t) t.textContent = (packed ? 'Packed' : 'Picked') + ' order count per hour · by user';
     const dEl = document.getElementById('prodHourDate');
     const date = (dEl && dEl.value) || prodHourDate || localDateStr();
     if (dEl && !dEl.value) dEl.value = date;
@@ -5880,50 +5880,34 @@
     rows.forEach(r => { const h = Number(String(r.hour_local).slice(11, 13)); if (Number(r[field] || 0) > 0) { minH = Math.min(minH, h); maxH = Math.max(maxH, h); } });
     if (minH > maxH) { minH = 8; maxH = 17; }
     const hours = []; for (let h = minH; h <= maxH; h++) hours.push(h);
-    // Group wh -> person -> {hour:count}
     const byWh = {};
     rows.forEach(r => {
       const wh = r.warehouse_code, person = r.executed_by_name || ('#' + r.executed_by), h = Number(String(r.hour_local).slice(11, 13));
-      const w = (byWh[wh] = byWh[wh] || { country: (whCountryFromName(wh) || '—'), people: {} });
+      const w = (byWh[wh] = byWh[wh] || { people: {} });
       const p = (w.people[person] = w.people[person] || {});
       p[h] = (p[h] || 0) + Number(r[field] || 0);
     });
-    // Keep only people with activity in the current mode; drop empty warehouses.
     Object.keys(byWh).forEach(wh => { byWh[wh].peopleList = Object.keys(byWh[wh].people).filter(p => hours.some(h => (byWh[wh].people[p][h] || 0) > 0)).sort(); });
-    const byCountry = {};
-    Object.keys(byWh).sort().forEach(wh => { if (!byWh[wh].peopleList.length) return; const c = byWh[wh].country; (byCountry[c] = byCountry[c] || []).push(wh); });
-    if (!Object.keys(byCountry).length) { el.innerHTML = `<tbody><tr><td style="padding:16px 18px;color:var(--muted);font-size:.82rem">No ${packed ? 'packed' : 'picked'} activity for ${date}.</td></tr></tbody>`; return; }
-    const hd = 'text-align:right;padding:10px 12px;font-weight:600;color:var(--muted);font-size:.72rem;background:var(--surface2);white-space:nowrap';
-    const hl = 'text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;background:var(--surface2);white-space:nowrap';
-    const dateLbl = (function () { try { return new Date(date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); } catch (e) { return date; } })();
-    let html = `<thead>
-      <tr><th colspan="3" style="background:var(--surface2)"></th><th colspan="${hours.length}" style="text-align:center;padding:8px 12px;color:var(--text);font-weight:600;background:var(--surface2);border-left:1px solid var(--border)">${dateLbl}</th></tr>
-      <tr><th style="${hl}">Warehouse Country Name</th><th style="${hl}">Warehouse Name</th><th style="${hl}">Transaction User</th>${hours.map(h => `<th style="${hd}">${h}</th>`).join('')}</tr>
-    </thead><tbody>`;
-    const numCell = v => `<td style="padding:7px 12px;text-align:right;color:var(--text);white-space:nowrap">${v > 0 ? fmt(v) : ''}</td>`;
-    Object.keys(byCountry).sort().forEach(country => {
-      const whs = byCountry[country].sort();
-      const countryRows = whs.reduce((a, wh) => a + byWh[wh].peopleList.length + 1, 0);  // people + 1 totals per wh
-      let firstCountry = true;
-      whs.forEach(wh => {
-        const people = byWh[wh].peopleList;
-        let firstWh = true;
-        people.forEach(person => {
-          const pdata = byWh[wh].people[person];
-          html += `<tr style="border-top:1px solid var(--border)">`;
-          if (firstCountry) { html += `<td rowspan="${countryRows}" style="padding:8px 14px;color:var(--text);vertical-align:top;white-space:nowrap;border-right:1px solid var(--border)">${escHtml(country)}</td>`; firstCountry = false; }
-          if (firstWh) { html += `<td rowspan="${people.length}" style="padding:8px 14px;color:var(--text);vertical-align:top;white-space:nowrap;border-right:1px solid var(--border)">${escHtml(whShort(wh))}</td>`; firstWh = false; }
-          html += `<td style="padding:7px 14px;color:var(--text);white-space:nowrap">${escHtml(person)}</td>`;
-          html += hours.map(h => numCell(pdata[h] || 0)).join('');
-          html += `</tr>`;
-        });
-        // Totals row (spans Warehouse Name + Transaction User columns)
-        const tot = {}; hours.forEach(h => tot[h] = 0);
-        Object.values(byWh[wh].people).forEach(p => hours.forEach(h => tot[h] += (p[h] || 0)));
-        html += `<tr style="border-top:1px solid var(--border);background:var(--surface2);font-weight:600">
-          <td colspan="2" style="padding:8px 14px;color:var(--text);white-space:nowrap">Totals for ${escHtml(whShort(wh))}</td>
-          ${hours.map(h => `<td style="padding:8px 12px;text-align:right;color:var(--text)">${tot[h] > 0 ? fmt(tot[h]) : ''}</td>`).join('')}</tr>`;
+    const whs = Object.keys(byWh).filter(wh => byWh[wh].peopleList.length).sort();
+    if (!whs.length) { el.innerHTML = `<tbody><tr><td style="padding:16px 18px;color:var(--muted);font-size:.82rem">No ${packed ? 'packed' : 'picked'} activity for ${date}.</td></tr></tbody>`; return; }
+    // Standard app table styling (sticky uppercase muted headers).
+    const th = (label, right) => `<th style="text-align:${right ? 'right' : 'left'};padding:10px ${right ? 14 : 18}px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">${label}</th>`;
+    const hourLbl = h => (h % 12 || 12) + (h < 12 ? 'a' : 'p');
+    let html = `<thead><tr>${th('Warehouse')}${th('User')}${hours.map(h => th(hourLbl(h), true)).join('')}</tr></thead><tbody>`;
+    const numCell = v => `<td style="padding:7px 14px;text-align:right;color:var(--text);font-size:.82rem;white-space:nowrap">${v > 0 ? fmt(v) : ''}</td>`;
+    whs.forEach(wh => {
+      const people = byWh[wh].peopleList;
+      people.forEach((person, i) => {
+        const pdata = byWh[wh].people[person];
+        html += `<tr style="border-top:1px solid var(--border)">`;
+        if (i === 0) html += `<td rowspan="${people.length}" style="padding:7px 18px;color:var(--text);font-size:.82rem;white-space:nowrap;vertical-align:top">${escHtml(whShort(wh))}</td>`;
+        html += `<td style="padding:7px 18px;color:var(--text);font-size:.82rem;white-space:nowrap">${escHtml(person)}</td>`;
+        html += hours.map(h => numCell(pdata[h] || 0)).join('');
+        html += `</tr>`;
       });
+      const tot = {}; hours.forEach(h => tot[h] = 0);
+      people.forEach(person => hours.forEach(h => tot[h] += (byWh[wh].people[person][h] || 0)));
+      html += `<tr style="border-top:1px solid var(--border);background:var(--surface2);font-weight:600"><td colspan="2" style="padding:8px 18px;color:var(--text);font-size:.82rem;white-space:nowrap">Total</td>${hours.map(h => `<td style="padding:8px 14px;text-align:right;color:var(--text);font-size:.82rem">${tot[h] > 0 ? fmt(tot[h]) : ''}</td>`).join('')}</tr>`;
     });
     html += `</tbody>`;
     el.innerHTML = html;
