@@ -113,8 +113,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   // Run the WMS → dashboard role sync (triggered by content.js on WMS login).
   if (msg.action === 'syncRoles') { syncRolesFromLogiwa().catch(() => {}); sendResponse({ ok: true }); return false; }
-  // Manual attendance sync (LOCAD Ops → Supabase). Needs an open LOCAD Ops tab.
+  // Manual attendance sync (LOCAD Ops → Supabase).
   if (msg.action === 'syncAttendance') { syncAttendance().then(() => sendResponse({ ok: true })).catch(e => sendResponse({ ok: false, error: e && e.message })); return true; }
+  // companion.js pushes the LOCAD Ops access token on load so we can sync tab-free.
+  if (msg.action === 'storeCompanionToken' && msg.token) { try { chrome.storage.local.set({ companionToken: msg.token, companionTokenExp: msg.exp || _jwtExp(msg.token) }); } catch (e) {} sendResponse({ ok: true }); return false; }
 });
 
 // ── WMS session token + stored identity ─────────────────────────────────────
@@ -138,13 +140,21 @@ async function getWmsToken() {
 // Reads the Cognito access token from an open LOCAD Ops tab (via companion.js),
 // lists the warehouses the user can access, pulls attendance history for each
 // over a rolling window, and upserts to the Supabase `attendance` table.
+function _jwtExp(t) { try { return JSON.parse(atob(String(t).split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).exp || 0; } catch (e) { return 0; } }
+// Prefer a live open LOCAD Ops tab; else the stored access token (valid ~24h)
+// captured at the last visit — so attendance syncs with no tab open, like WMS.
 async function getCompanionToken() {
   try {
     const tabs = await chrome.tabs.query({ url: 'https://wms.companion.golocad.com/*' });
     if (tabs && tabs.length) {
       const r = await new Promise((res) => { chrome.tabs.sendMessage(tabs[0].id, { action: 'getCompanionToken' }, (x) => { void chrome.runtime.lastError; res(x); }); });
-      if (r && r.token) return r.token;
+      if (r && r.token) { try { chrome.storage.local.set({ companionToken: r.token, companionTokenExp: _jwtExp(r.token) }); } catch (e) {} return r.token; }
     }
+  } catch (e) {}
+  try {
+    const s = await chrome.storage.local.get(['companionToken', 'companionTokenExp']);
+    // keep a 2-min margin so we don't sync with an about-to-expire token
+    if (s && s.companionToken && (!s.companionTokenExp || Number(s.companionTokenExp) * 1000 > Date.now() + 120000)) return s.companionToken;
   } catch (e) {}
   return null;
 }
@@ -165,7 +175,7 @@ async function syncAttendance() {
   const SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
   const SBH = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' };
   const token = await getCompanionToken();
-  if (!token) { await reportSyncStatus(false, 'No LOCAD Ops tab open, or not logged in. Open wms.companion.golocad.com and sign in.', null); return; }
+  if (!token) { await reportSyncStatus(false, 'No LOCAD Ops session — open wms.companion.golocad.com and sign in (then it keeps syncing ~24h without a tab open).', null); return; }
   const AH = { Authorization: 'Bearer ' + token };
   let whs = null;
   try {
