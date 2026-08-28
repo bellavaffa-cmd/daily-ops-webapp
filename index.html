@@ -2090,6 +2090,7 @@
       <div id="b2cTrendSummary" style="display:flex;gap:22px;flex-wrap:wrap;margin-bottom:10px"></div>
       <div id="b2cTrendChart" style="overflow-x:auto"></div>
       <div id="b2cTrendNowcast" style="margin-top:10px"></div>
+      <div id="b2cAiForecast" style="margin-top:12px"></div>
     </div>
 
     <!-- B2C insights: cut-off countdown, bottleneck, brands, aging, mix, trend, staffing -->
@@ -2321,6 +2322,7 @@
       </div>
       <div id="prodTrendSummary" style="display:flex;gap:22px;flex-wrap:wrap;margin-bottom:10px"></div>
       <div id="prodTrendChart" style="overflow-x:auto"></div>
+      <div id="prodAiForecast" style="margin-top:12px"></div>
     </div>
 
     <!-- Hourly depletion rate -->
@@ -2824,6 +2826,11 @@
   const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co/rest/v1';
   const SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
   const SB_HDR = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' };
+  // Claude-generated forecasts (cached daily in ai_forecast by the ai-forecast edge function).
+  const AI_FN_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co/functions/v1/ai-forecast';
+  let aiForecast = {};        // "metric|wh" -> { horizon:[{day,value}], reasoning, confidence, model, run_date }
+  let aiForecastRun = null;   // newest run_date present in the cache
+  let aiRefreshTried = false; // trigger a daily refresh at most once per session
 
   // ── Config ────────────────────────────────────────────────────────────
   let SCRIPT_URL     = localStorage.getItem('packingErrorScriptUrl') || ''; // kept for B2C data only
@@ -5909,6 +5916,76 @@
     try { renderB2CTrend(); } catch (e) { }
     try { renderProdTrend(); } catch (e) { }
   }
+  // ── Claude forecasts (cached daily in ai_forecast) ───────────────────────
+  // Read the cache; if it's missing or older than today, trigger the edge function
+  // once per session to (re)generate it, then re-read. The function is idempotent per
+  // day, so this costs one Anthropic call per day no matter how many clients trigger it.
+  async function fetchAiForecast(trigger) {
+    try {
+      const rows = await fetch(SB_URL + '/ai_forecast?select=metric,wh,run_date,horizon,next7_total,reasoning,confidence,model&order=run_date.desc', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      const map = {}; let latest = null;
+      rows.forEach(r => {
+        const k = r.metric + '|' + r.wh;
+        if (!map[k] || r.run_date > map[k].run_date) map[k] = r;
+        if (!latest || r.run_date > latest) latest = r.run_date;
+      });
+      aiForecast = map; aiForecastRun = latest;
+    } catch (e) { }
+    const today = localDateStr();
+    if (trigger && !aiRefreshTried && (!aiForecastRun || aiForecastRun < today)) {
+      aiRefreshTried = true;
+      try {
+        const res = await fetch(AI_FN_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: SB_KEY } }).then(r => r.json()).catch(() => null);
+        if (res && res.ok && res.generated > 0) return fetchAiForecast(false);
+      } catch (e) { }
+    }
+    try { renderB2CAi(); } catch (e) { }
+    try { renderProdAi(); } catch (e) { }
+  }
+  function renderB2CAi() {
+    const el = document.getElementById('b2cAiForecast'); if (!el) return;
+    renderAiPanel(el, 'b2c_received', wh => inWhFilter(wh), '#86efac');
+  }
+  function renderProdAi() {
+    const el = document.getElementById('prodAiForecast'); if (!el) return;
+    const packed = localStorage.getItem('prodMode') === 'packed';
+    const selWh = localStorage.getItem('prodWarehouseFilter') || '';
+    renderAiPanel(el, packed ? 'prod_packed' : 'prod_picked', wh => (selWh ? wh === selWh : whAllowed(wh)), packed ? '#5eead4' : '#86efac');
+  }
+  // Sum Claude's per-warehouse forecasts across the current selection into one panel.
+  function renderAiPanel(el, metric, whMatch, color) {
+    const fmt = n => Number(n || 0).toLocaleString();
+    const muted = t => `<div style="font-size:.72rem;color:var(--muted)">${t}</div>`;
+    const rows = Object.values(aiForecast).filter(r => r.metric === metric && whMatch(r.wh));
+    if (!rows.length) {
+      el.innerHTML = muted(aiForecastRun
+        ? '✨ <b style="color:var(--text)">Claude forecast</b> — none for this selection yet.'
+        : '✨ <b style="color:var(--text)">Claude forecast</b> — not generated yet. Builds automatically once a day (needs the ANTHROPIC_API_KEY set on the edge function).');
+      return;
+    }
+    const byDay = {};
+    rows.forEach(r => (r.horizon || []).forEach(p => { byDay[p.day] = (byDay[p.day] || 0) + Number(p.value || 0); }));
+    const days = Object.keys(byDay).sort();
+    const total = days.reduce((a, d) => a + byDay[d], 0);
+    const rank = { low: 0, medium: 1, high: 2 };
+    const conf = rows.map(r => r.confidence).filter(Boolean).sort((a, b) => rank[a] - rank[b])[0] || null;  // weakest link
+    const confClr = conf === 'high' ? '#4ade80' : conf === 'medium' ? '#fbbf24' : '#f87171';
+    const model = rows[0].model || 'Claude';
+    const chips = days.map(d => `<span title="${d}" style="border:1px solid var(--border);border-radius:5px;padding:2px 7px;color:var(--muted);white-space:nowrap;font-size:.7rem">${d.slice(5)} <b style="color:${color}">${fmt(byDay[d])}</b></span>`).join('');
+    const notes = rows.filter(r => r.reasoning).sort((a, b) => a.wh < b.wh ? -1 : 1)
+      .map(r => `<div style="margin-top:4px"><b style="color:var(--text)">${escHtml(r.wh)}</b> — ${escHtml(r.reasoning)}${r.confidence ? ` <span style="color:var(--muted)">(${r.confidence})</span>` : ''}</div>`).join('');
+    el.innerHTML = `
+      <div style="border:1px solid var(--border);border-left:3px solid ${color};border-radius:9px;padding:11px 13px;background:var(--surface2)">
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+          <span style="font-size:.8rem;font-weight:700;color:var(--text)">✨ Claude forecast · Next 7</span>
+          <span style="font-size:1.15rem;font-weight:800;color:${color};line-height:1">${fmt(total)}</span>
+          ${conf ? `<span style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${confClr};border:1px solid ${confClr};border-radius:5px;padding:1px 6px">${conf} confidence</span>` : ''}
+          <span style="margin-left:auto;font-size:.66rem;color:var(--muted)">${escHtml(model)}${aiForecastRun ? ' · as of ' + aiForecastRun : ''}${rows.length > 1 ? ' · ' + rows.length + ' warehouses' : ''}</span>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${chips}</div>
+        ${notes ? `<details style="margin-top:8px"><summary style="font-size:.7rem;color:var(--muted);cursor:pointer">Why?</summary><div style="font-size:.72rem;color:var(--muted);margin-top:4px">${notes}</div></details>` : ''}
+      </div>`;
+  }
   // B2C tab: received (demand) — follows the B2C multi-select.
   function renderB2CTrend() {
     const byDay = {};
@@ -5921,6 +5998,7 @@
       projectToday: true, today: nc ? nc.today : undefined, todayNowcast: (nc && nc.ready && nc.proj > 0) ? nc.proj : undefined,
     });
     try { renderB2CReceivedNowcast(nc); } catch (e) { }
+    try { renderB2CAi(); } catch (e) { }
   }
   // Intraday nowcast: learn the typical cumulative-by-hour arrival curve from complete
   // days, then project today's full-day received from what's arrived so far. Shared by
@@ -5966,6 +6044,7 @@
     const byDay = {};
     (orderDaily || []).forEach(r => { if (selWh ? r.warehouse_code === selWh : whAllowed(r.warehouse_code)) byDay[r.day] = (byDay[r.day] || 0) + Number(r[field] || 0); });
     renderTrend({ card: 'prodTrendCard', sum: 'prodTrendSummary', chart: 'prodTrendChart', dailyBtn: 'prodTrendDaily', monthlyBtn: 'prodTrendMonthly', modeKey: 'prodTrendMode', name, color, byDay });
+    try { renderProdAi(); } catch (e) { }
   }
   // Generic single-series trend + forecast + backtested accuracy.
   function renderTrend(o) {
@@ -7841,6 +7920,7 @@
     const fab = document.getElementById('fabReport');
     if (fab) fab.classList.toggle('visible', v === 'b2c');
     if (v === 'cs') { try { fetchCustomerSuccess(); } catch(e){} }
+    if (v === 'b2c') { try { fetchAiForecast(true); } catch(e){} }
     if (v === 'attendance') { try { fetchAttendance(); } catch(e){} }
     if (v === 'labels') {
       // Load the label printer once per session with a cache-buster. The side
@@ -7859,6 +7939,7 @@
       // fetch them now — each re-renders on arrival.
       if (!(typeof orderDaily !== 'undefined' && orderDaily && orderDaily.length)) { try { fetchOrderLedgers(); } catch (e) {} }
       if (!(typeof prodHourlyRows !== 'undefined' && prodHourlyRows && prodHourlyRows.length)) { try { fetchProdHourly(); } catch (e) {} }
+      try { fetchAiForecast(true); } catch (e) {}
     }
     if (v === 'dash') { try { renderStats(); } catch(e){} try { initWarehouseFilter(); renderTable(); } catch(e){} }
     if (v === 'jobs') {
