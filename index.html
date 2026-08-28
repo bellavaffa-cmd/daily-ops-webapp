@@ -1372,6 +1372,10 @@
         <svg class="snav-chevron" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
       <div class="snav-group-body">
+        <button class="snav-btn snav-sub" id="snav-btn-briefing" onclick="showView('briefing')">
+          <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3l1.9 4.3 4.6.4-3.5 3 1.1 4.6L12 13l-4.1 2.3 1.1-4.6-3.5-3 4.6-.4z"/></svg>
+          Daily Briefing
+        </button>
         <button class="snav-btn snav-sub" id="snav-btn-attendance" onclick="showView('attendance')">
           <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 7v5l3 2"/></svg>
           Attendance
@@ -2451,6 +2455,19 @@
 
   </div>
 
+  <!-- ── DAILY BRIEFING VIEW (AI) ── -->
+  <div class="view" id="view-briefing">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+      <div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Briefing <span style="font-size:.7rem;font-weight:600;color:var(--muted)">✨ AI</span></div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Morning ops summary &amp; staffing recommendation per warehouse · generated once a day by Claude from your rollups &amp; forecast · <span id="briefingStamp"></span></div>
+      </div>
+      <button type="button" onclick="fetchBriefing(true, true)" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">⟳ Refresh</button>
+    </div>
+    <div id="briefingHeadline" style="margin-bottom:16px"></div>
+    <div id="briefingCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px"></div>
+  </div>
+
   <!-- ── ATTENDANCE VIEW ── -->
   <div class="view" id="view-attendance">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px">
@@ -2828,9 +2845,14 @@
   const SB_HDR = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' };
   // Claude-generated forecasts (cached daily in ai_forecast by the ai-forecast edge function).
   const AI_FN_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co/functions/v1/ai-forecast';
+  const BRIEFING_FN_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co/functions/v1/ops-briefing';
   let aiForecast = {};        // "metric|wh" -> { horizon:[{day,value}], reasoning, confidence, model, run_date }
   let aiForecastRun = null;   // newest run_date present in the cache
   let aiRefreshTried = false; // trigger a daily refresh at most once per session
+  let aiAccuracy = {};        // "metric|wh" -> { abs_err, tot, n } realized 1-day-ahead (WAPE parts)
+  let aiBriefing = {};        // scope ('ALL' or wh name) -> { headline, briefing, staffing, model }
+  let aiBriefingRun = null;
+  let aiBriefingTried = false;
 
   // ── Config ────────────────────────────────────────────────────────────
   let SCRIPT_URL     = localStorage.getItem('packingErrorScriptUrl') || ''; // kept for B2C data only
@@ -5922,7 +5944,7 @@
   // day, so this costs one Anthropic call per day no matter how many clients trigger it.
   async function fetchAiForecast(trigger) {
     try {
-      const rows = await fetch(SB_URL + '/ai_forecast?select=metric,wh,run_date,horizon,next7_total,reasoning,confidence,model&order=run_date.desc', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      const rows = await fetch(SB_URL + '/ai_forecast?select=metric,wh,run_date,horizon,next7_total,reasoning,confidence,model&run_date=gte.' + localDateStr(new Date(Date.now() - 3 * 864e5)) + '&order=run_date.desc', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
       const map = {}; let latest = null;
       rows.forEach(r => {
         const k = r.metric + '|' + r.wh;
@@ -5930,6 +5952,12 @@
         if (!latest || r.run_date > latest) latest = r.run_date;
       });
       aiForecast = map; aiForecastRun = latest;
+    } catch (e) { }
+    // #8: realized 1-day-ahead accuracy (WAPE parts per metric|wh) for the blend note.
+    try {
+      const acc = await fetch(SB_URL + '/rpc/ai_forecast_accuracy', { method: 'POST', headers: SB_HDR, body: '{}' }).then(r => r.ok ? r.json() : []);
+      const am = {}; (acc || []).forEach(r => { am[r.metric + '|' + r.wh] = { abs_err: Number(r.abs_err) || 0, tot: Number(r.tot) || 0, n: Number(r.n) || 0 }; });
+      aiAccuracy = am;
     } catch (e) { }
     const today = localDateStr();
     if (trigger && !aiRefreshTried && (!aiForecastRun || aiForecastRun < today)) {
@@ -5951,7 +5979,11 @@
     rows.forEach(r => (r.horizon || []).forEach(p => { byDay[p.day] = (byDay[p.day] || 0) + Number(p.value || 0); }));
     const rank = { low: 0, medium: 1, high: 2 };
     const conf = rows.map(r => r.confidence).filter(Boolean).sort((a, b) => rank[a] - rank[b])[0] || null;
-    return { byDay, conf, rows, run: aiForecastRun, model: rows[0].model || 'Claude' };
+    // Realized 1-day-ahead accuracy across the selection (sum WAPE parts, then score).
+    let absErr = 0, tot = 0, n = 0;
+    rows.forEach(r => { const a = aiAccuracy[metric + '|' + r.wh]; if (a) { absErr += a.abs_err; tot += a.tot; n += a.n; } });
+    const realizedAcc = (tot > 0 && n >= 5) ? Math.max(0, Math.min(100, Math.round((1 - absErr / tot) * 100))) : null;
+    return { byDay, conf, rows, run: aiForecastRun, model: rows[0].model || 'Claude', realizedAcc, realizedN: n };
   }
   // Claude's share of the blend, nudged by how confident Claude is on this selection.
   function aiBlendWeight(conf) { return conf === 'high' ? 0.6 : conf === 'low' ? 0.35 : 0.5; }
@@ -5977,8 +6009,65 @@
     }
     const notes = ai.rows.filter(r => r.reasoning).sort((a, b) => a.wh < b.wh ? -1 : 1)
       .map(r => `<div style="margin-top:4px"><b style="color:var(--text)">${escHtml(r.wh)}</b> — ${escHtml(r.reasoning)}${r.confidence ? ` <span style="color:var(--muted)">(${r.confidence})</span>` : ''}</div>`).join('');
-    el.innerHTML = `<div style="font-size:.7rem;color:var(--muted)">✨ Forecast blends <b style="color:${color}">Claude</b> (${ai.conf || '—'} confidence${ai.model ? ' · ' + escHtml(ai.model) : ''}) with the statistical model${ai.run ? ' · as of ' + ai.run : ''}.</div>
+    const realized = ai.realizedAcc != null
+      ? ` · <span title="Claude's stored forecast vs what actually happened, next-day, over ${ai.realizedN} days">realized <b style="color:${ai.realizedAcc >= 80 ? '#4ade80' : ai.realizedAcc >= 60 ? '#fbbf24' : '#f87171'}">${ai.realizedAcc}%</b> (${ai.realizedN}d)</span>`
+      : (ai.realizedN ? ` · <span style="color:var(--muted)" title="Realized accuracy needs ~5 completed forecast days">realized acc building (${ai.realizedN}d)</span>` : '');
+    el.innerHTML = `<div style="font-size:.7rem;color:var(--muted)">✨ Forecast blends <b style="color:${color}">Claude</b> (${ai.conf || '—'} confidence${ai.model ? ' · ' + escHtml(ai.model) : ''}) with the statistical model${ai.run ? ' · as of ' + ai.run : ''}${realized}.</div>
       ${notes ? `<details style="margin-top:5px"><summary style="font-size:.7rem;color:var(--muted);cursor:pointer">Claude's reasoning</summary><div style="font-size:.72rem;color:var(--muted);margin-top:4px">${notes}</div></details>` : ''}`;
+  }
+  // ── Daily ops briefing + staffing (AI, cached daily in ai_briefing) ───────
+  async function fetchBriefing(trigger, force) {
+    try {
+      const rows = await fetch(SB_URL + '/ai_briefing?select=run_date,scope,headline,briefing,staffing,model&order=run_date.desc', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      const map = {}; let latest = null;
+      rows.forEach(r => { if (!map[r.scope] || r.run_date > map[r.scope].run_date) map[r.scope] = r; if (!latest || r.run_date > latest) latest = r.run_date; });
+      aiBriefing = map; aiBriefingRun = latest;
+    } catch (e) { }
+    const today = localDateStr();
+    if (trigger && (force || (!aiBriefingTried && (!aiBriefingRun || aiBriefingRun < today)))) {
+      aiBriefingTried = true;
+      const btn = document.querySelector('#view-briefing button'); if (btn && force) btn.textContent = '⏳ Generating…';
+      try {
+        const res = await fetch(BRIEFING_FN_URL + (force ? '?force=1' : ''), { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: SB_KEY } }).then(r => r.json()).catch(() => null);
+        if (res && res.ok && (res.generated > 0 || force)) { if (btn) btn.textContent = '⟳ Refresh'; return fetchBriefing(false, false); }
+      } catch (e) { }
+      if (btn) btn.textContent = '⟳ Refresh';
+    }
+    try { renderBriefing(); } catch (e) { }
+  }
+  function renderBriefing() {
+    const stamp = document.getElementById('briefingStamp');
+    const head = document.getElementById('briefingHeadline');
+    const cards = document.getElementById('briefingCards');
+    if (!cards) return;
+    if (stamp) stamp.textContent = aiBriefingRun ? 'as of ' + aiBriefingRun : '';
+    if (!aiBriefingRun) {
+      if (head) head.innerHTML = '';
+      cards.innerHTML = `<div style="color:var(--muted);font-size:.85rem;padding:10px 2px">✨ No briefing generated yet. It builds automatically once a day from your rollups + forecast (needs the ANTHROPIC_API_KEY set on the edge function). Tap Refresh to generate now.</div>`;
+      return;
+    }
+    const all = aiBriefing['ALL'];
+    if (head) head.innerHTML = (all && all.headline)
+      ? `<div style="border:1px solid var(--border);border-left:3px solid var(--primary,#4ade80);border-radius:10px;padding:13px 16px;background:var(--surface2);font-size:.9rem;color:var(--text);line-height:1.5">${escHtml(all.headline)}</div>`
+      : '';
+    const whRows = Object.values(aiBriefing).filter(r => r.scope !== 'ALL' && whAllowed(r.scope)).sort((a, b) => a.scope < b.scope ? -1 : 1);
+    if (!whRows.length) { cards.innerHTML = `<div style="color:var(--muted);font-size:.85rem;padding:10px 2px">No briefing for your warehouses yet.</div>`; return; }
+    const num = n => (n == null ? '—' : Number(n).toLocaleString());
+    cards.innerHTML = whRows.map(r => {
+      const s = r.staffing || {};
+      const staff = (s.pickers_needed != null || s.packers_needed != null) ? `
+        <div style="display:flex;gap:18px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <div><div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Pickers</div><div style="font-size:1.35rem;font-weight:800;color:var(--text);line-height:1.1">${num(s.pickers_needed)}</div></div>
+          <div><div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Packers</div><div style="font-size:1.35rem;font-weight:800;color:var(--text);line-height:1.1">${num(s.packers_needed)}</div></div>
+          ${s.note ? `<div style="flex:1;font-size:.72rem;color:var(--muted);align-self:center">${escHtml(s.note)}</div>` : ''}
+        </div>` : '';
+      return `<div class="card" style="padding:14px 16px">
+        <div style="font-size:.82rem;font-weight:700;color:var(--text);margin-bottom:7px">${escHtml(r.scope)}</div>
+        <div style="font-size:.8rem;color:var(--text);line-height:1.55">${escHtml(r.briefing || '')}</div>
+        ${staff}
+        <div style="font-size:.6rem;color:var(--muted);margin-top:9px">✨ ${escHtml(r.model || 'Claude')} · staffing = recommendation for the upcoming operating day</div>
+      </div>`;
+    }).join('');
   }
   // B2C tab: received (demand) — follows the B2C multi-select.
   function renderB2CTrend() {
@@ -7929,6 +8018,7 @@
     if (fab) fab.classList.toggle('visible', v === 'b2c');
     if (v === 'cs') { try { fetchCustomerSuccess(); } catch(e){} }
     if (v === 'b2c') { try { fetchAiForecast(true); } catch(e){} }
+    if (v === 'briefing') { try { renderBriefing(); fetchBriefing(true, false); } catch(e){} }
     if (v === 'attendance') { try { fetchAttendance(); } catch(e){} }
     if (v === 'labels') {
       // Load the label printer once per session with a cache-buster. The side
