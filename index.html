@@ -2462,7 +2462,10 @@
         <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Briefing <span style="font-size:.7rem;font-weight:600;color:var(--muted)">✨ AI</span></div>
         <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Morning ops summary &amp; staffing recommendation per warehouse · generated once a day by Claude from your rollups &amp; forecast · <span id="briefingStamp"></span></div>
       </div>
-      <button type="button" onclick="fetchBriefing(true, true)" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">⟳ Refresh</button>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="briefingWarehouse" onchange="onBriefingWhChange(this.value)" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer"></select>
+        <button type="button" onclick="fetchBriefing(true, true)" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">⟳ Refresh</button>
+      </div>
     </div>
     <div id="briefingHeadline" style="margin-bottom:16px"></div>
     <div id="briefingCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px"></div>
@@ -6035,6 +6038,7 @@
     }
     try { renderBriefing(); } catch (e) { }
   }
+  function onBriefingWhChange(v) { localStorage.setItem('briefingWarehouse', v || ''); renderBriefing(); }
   function renderBriefing() {
     const stamp = document.getElementById('briefingStamp');
     const head = document.getElementById('briefingHeadline');
@@ -6047,10 +6051,20 @@
       return;
     }
     const all = aiBriefing['ALL'];
-    if (head) head.innerHTML = (all && all.headline)
+    let whRows = Object.values(aiBriefing).filter(r => r.scope !== 'ALL' && whAllowed(r.scope)).sort((a, b) => a.scope < b.scope ? -1 : 1);
+    // Warehouse filter dropdown (populate from available briefings; persist choice).
+    const sel = document.getElementById('briefingWarehouse');
+    let pick = localStorage.getItem('briefingWarehouse') || '';
+    if (sel) {
+      const opts = whRows.map(r => r.scope);
+      if (pick && !opts.includes(pick)) pick = '';
+      sel.innerHTML = '<option value="">All warehouses</option>' + opts.map(w => `<option value="${escHtml(w)}"${w === pick ? ' selected' : ''}>${escHtml(w)}</option>`).join('');
+    }
+    // Show the network headline only in the "all" view.
+    if (head) head.innerHTML = (!pick && all && all.headline)
       ? `<div style="border:1px solid var(--border);border-left:3px solid var(--primary,#4ade80);border-radius:10px;padding:13px 16px;background:var(--surface2);font-size:.9rem;color:var(--text);line-height:1.5">${escHtml(all.headline)}</div>`
       : '';
-    const whRows = Object.values(aiBriefing).filter(r => r.scope !== 'ALL' && whAllowed(r.scope)).sort((a, b) => a.scope < b.scope ? -1 : 1);
+    if (pick) whRows = whRows.filter(r => r.scope === pick);
     if (!whRows.length) { cards.innerHTML = `<div style="color:var(--muted);font-size:.85rem;padding:10px 2px">No briefing for your warehouses yet.</div>`; return; }
     const num = n => (n == null ? '—' : Number(n).toLocaleString());
     cards.innerHTML = whRows.map(r => {
