@@ -5942,49 +5942,43 @@
     try { renderB2CAi(); } catch (e) { }
     try { renderProdAi(); } catch (e) { }
   }
-  function renderB2CAi() {
-    const el = document.getElementById('b2cAiForecast'); if (!el) return;
-    renderAiPanel(el, 'b2c_received', wh => inWhFilter(wh), '#86efac');
+  // Collect Claude's forecast for a (metric, selection): sum per-day across warehouses,
+  // aggregate confidence (weakest link), keep per-wh reasoning. Returns null if none.
+  function aiForecastFor(metric, whMatch) {
+    const rows = Object.values(aiForecast).filter(r => r.metric === metric && whMatch(r.wh));
+    if (!rows.length) return null;
+    const byDay = {};
+    rows.forEach(r => (r.horizon || []).forEach(p => { byDay[p.day] = (byDay[p.day] || 0) + Number(p.value || 0); }));
+    const rank = { low: 0, medium: 1, high: 2 };
+    const conf = rows.map(r => r.confidence).filter(Boolean).sort((a, b) => rank[a] - rank[b])[0] || null;
+    return { byDay, conf, rows, run: aiForecastRun, model: rows[0].model || 'Claude' };
   }
-  function renderProdAi() {
+  // Claude's share of the blend, nudged by how confident Claude is on this selection.
+  function aiBlendWeight(conf) { return conf === 'high' ? 0.6 : conf === 'low' ? 0.35 : 0.5; }
+  function renderB2CAi(ai) {
+    const el = document.getElementById('b2cAiForecast'); if (!el) return;
+    renderAiNote(el, ai === undefined ? aiForecastFor('b2c_received', wh => inWhFilter(wh)) : ai, '#86efac');
+  }
+  function renderProdAi(ai) {
     const el = document.getElementById('prodAiForecast'); if (!el) return;
     const packed = localStorage.getItem('prodMode') === 'packed';
     const selWh = localStorage.getItem('prodWarehouseFilter') || '';
-    renderAiPanel(el, packed ? 'prod_packed' : 'prod_picked', wh => (selWh ? wh === selWh : whAllowed(wh)), packed ? '#5eead4' : '#86efac');
+    const got = ai === undefined ? aiForecastFor(packed ? 'prod_packed' : 'prod_picked', wh => (selWh ? wh === selWh : whAllowed(wh))) : ai;
+    renderAiNote(el, got, packed ? '#5eead4' : '#86efac');
   }
-  // Sum Claude's per-warehouse forecasts across the current selection into one panel.
-  function renderAiPanel(el, metric, whMatch, color) {
-    const fmt = n => Number(n || 0).toLocaleString();
-    const muted = t => `<div style="font-size:.72rem;color:var(--muted)">${t}</div>`;
-    const rows = Object.values(aiForecast).filter(r => r.metric === metric && whMatch(r.wh));
-    if (!rows.length) {
-      el.innerHTML = muted(aiForecastRun
-        ? '✨ <b style="color:var(--text)">Claude forecast</b> — none for this selection yet.'
-        : '✨ <b style="color:var(--text)">Claude forecast</b> — not generated yet. Builds automatically once a day (needs the ANTHROPIC_API_KEY set on the edge function).');
+  // Compact one-liner under the chart: the forecast bars are now a Claude+model blend,
+  // so this just credits Claude (confidence, model, as-of) and exposes its reasoning.
+  function renderAiNote(el, ai, color) {
+    if (!ai) {
+      el.innerHTML = aiForecastRun
+        ? ''
+        : `<div style="font-size:.7rem;color:var(--muted)">✨ Claude blend inactive — daily forecast not generated yet (needs the ANTHROPIC_API_KEY set on the edge function).</div>`;
       return;
     }
-    const byDay = {};
-    rows.forEach(r => (r.horizon || []).forEach(p => { byDay[p.day] = (byDay[p.day] || 0) + Number(p.value || 0); }));
-    const days = Object.keys(byDay).sort();
-    const total = days.reduce((a, d) => a + byDay[d], 0);
-    const rank = { low: 0, medium: 1, high: 2 };
-    const conf = rows.map(r => r.confidence).filter(Boolean).sort((a, b) => rank[a] - rank[b])[0] || null;  // weakest link
-    const confClr = conf === 'high' ? '#4ade80' : conf === 'medium' ? '#fbbf24' : '#f87171';
-    const model = rows[0].model || 'Claude';
-    const chips = days.map(d => `<span title="${d}" style="border:1px solid var(--border);border-radius:5px;padding:2px 7px;color:var(--muted);white-space:nowrap;font-size:.7rem">${d.slice(5)} <b style="color:${color}">${fmt(byDay[d])}</b></span>`).join('');
-    const notes = rows.filter(r => r.reasoning).sort((a, b) => a.wh < b.wh ? -1 : 1)
+    const notes = ai.rows.filter(r => r.reasoning).sort((a, b) => a.wh < b.wh ? -1 : 1)
       .map(r => `<div style="margin-top:4px"><b style="color:var(--text)">${escHtml(r.wh)}</b> — ${escHtml(r.reasoning)}${r.confidence ? ` <span style="color:var(--muted)">(${r.confidence})</span>` : ''}</div>`).join('');
-    el.innerHTML = `
-      <div style="border:1px solid var(--border);border-left:3px solid ${color};border-radius:9px;padding:11px 13px;background:var(--surface2)">
-        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px">
-          <span style="font-size:.8rem;font-weight:700;color:var(--text)">✨ Claude forecast · Next 7</span>
-          <span style="font-size:1.15rem;font-weight:800;color:${color};line-height:1">${fmt(total)}</span>
-          ${conf ? `<span style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${confClr};border:1px solid ${confClr};border-radius:5px;padding:1px 6px">${conf} confidence</span>` : ''}
-          <span style="margin-left:auto;font-size:.66rem;color:var(--muted)">${escHtml(model)}${aiForecastRun ? ' · as of ' + aiForecastRun : ''}${rows.length > 1 ? ' · ' + rows.length + ' warehouses' : ''}</span>
-        </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">${chips}</div>
-        ${notes ? `<details style="margin-top:8px"><summary style="font-size:.7rem;color:var(--muted);cursor:pointer">Why?</summary><div style="font-size:.72rem;color:var(--muted);margin-top:4px">${notes}</div></details>` : ''}
-      </div>`;
+    el.innerHTML = `<div style="font-size:.7rem;color:var(--muted)">✨ Forecast blends <b style="color:${color}">Claude</b> (${ai.conf || '—'} confidence${ai.model ? ' · ' + escHtml(ai.model) : ''}) with the statistical model${ai.run ? ' · as of ' + ai.run : ''}.</div>
+      ${notes ? `<details style="margin-top:5px"><summary style="font-size:.7rem;color:var(--muted);cursor:pointer">Claude's reasoning</summary><div style="font-size:.72rem;color:var(--muted);margin-top:4px">${notes}</div></details>` : ''}`;
   }
   // B2C tab: received (demand) — follows the B2C multi-select.
   function renderB2CTrend() {
@@ -5993,12 +5987,14 @@
     const nc = b2cReceivedNowcastCalc();
     // projectToday caps today's in-progress bar with its projected full-day total, so a
     // forecast shows even once orders have started arriving. Prefer the intraday nowcast.
+    const ai = aiForecastFor('b2c_received', wh => inWhFilter(wh));
     renderTrend({
       card: 'b2cTrendCard', sum: 'b2cTrendSummary', chart: 'b2cTrendChart', dailyBtn: 'b2cTrendDaily', monthlyBtn: 'b2cTrendMonthly', modeKey: 'b2cTrendMode', name: 'Received', color: '#86efac', byDay,
       projectToday: true, today: nc ? nc.today : undefined, todayNowcast: (nc && nc.ready && nc.proj > 0) ? nc.proj : undefined,
+      aiByDay: ai ? ai.byDay : null, aiConf: ai ? ai.conf : null,
     });
     try { renderB2CReceivedNowcast(nc); } catch (e) { }
-    try { renderB2CAi(); } catch (e) { }
+    try { renderB2CAi(ai); } catch (e) { }
   }
   // Intraday nowcast: learn the typical cumulative-by-hour arrival curve from complete
   // days, then project today's full-day received from what's arrived so far. Shared by
@@ -6043,8 +6039,9 @@
     const selWh = localStorage.getItem('prodWarehouseFilter') || '';
     const byDay = {};
     (orderDaily || []).forEach(r => { if (selWh ? r.warehouse_code === selWh : whAllowed(r.warehouse_code)) byDay[r.day] = (byDay[r.day] || 0) + Number(r[field] || 0); });
-    renderTrend({ card: 'prodTrendCard', sum: 'prodTrendSummary', chart: 'prodTrendChart', dailyBtn: 'prodTrendDaily', monthlyBtn: 'prodTrendMonthly', modeKey: 'prodTrendMode', name, color, byDay });
-    try { renderProdAi(); } catch (e) { }
+    const ai = aiForecastFor(packed ? 'prod_packed' : 'prod_picked', wh => (selWh ? wh === selWh : whAllowed(wh)));
+    renderTrend({ card: 'prodTrendCard', sum: 'prodTrendSummary', chart: 'prodTrendChart', dailyBtn: 'prodTrendDaily', monthlyBtn: 'prodTrendMonthly', modeKey: 'prodTrendMode', name, color, byDay, aiByDay: ai ? ai.byDay : null, aiConf: ai ? ai.conf : null });
+    try { renderProdAi(ai); } catch (e) { }
   }
   // Generic single-series trend + forecast + backtested accuracy.
   function renderTrend(o) {
@@ -6080,7 +6077,16 @@
       </div>` : '';
 
     if (mode === 'daily') {
-      const fc = model.fc;
+      // Blend Claude's forecast (o.aiByDay, summed for this selection) with the statistical
+      // model per day — Claude's share rises with its confidence. Days Claude didn't cover
+      // fall back to the model alone; with no Claude data at all, this is the model as before.
+      const wAI = (o.aiByDay && Object.keys(o.aiByDay).length) ? aiBlendWeight(o.aiConf) : 0;
+      const fc = model.fc.map(f => {
+        const a = wAI > 0 ? o.aiByDay[f.day] : undefined;
+        if (a == null) return { day: f.day, v: f.v, blended: false };
+        return { day: f.day, v: Math.round(wAI * a + (1 - wAI) * f.v), blended: true, ai: Math.round(a), stat: f.v };
+      });
+      const blending = fc.some(f => f.blended);
       const slots = dayList.slice(-45).map(k => ({ label: k, short: k.slice(5), forecast: false, bars: [{ value: byDay[k] || 0, color, name }] }));
       // In-progress day: cap today's (partial) bar with the projected full-day total, so a
       // forecast still shows once orders have started arriving. Stacked: solid = arrived so
@@ -6101,10 +6107,12 @@
           }
         }
       }
-      fc.forEach(f => slots.push({ label: f.day, short: f.day.slice(5), forecast: true, bars: [{ value: f.v, color, hatch: true, name }] }));
+      fc.forEach(f => slots.push({ label: f.day, short: f.day.slice(5), forecast: true, bars: [{ value: f.v, color, hatch: true, name, tip: f.blended ? `<b style='color:${color}'>${name} forecast</b> · ${f.day}: ${fmt(f.v)} <span style='color:var(--muted)'>(✨Claude ${fmt(f.ai)} + model ${fmt(f.stat)})</span>` : undefined }] }));
       const last7 = S.slice(-7).reduce((a, s) => a + s.v, 0), prev7 = S.slice(-14, -7).reduce((a, s) => a + s.v, 0), next7 = fc.reduce((a, s) => a + s.v, 0);
       const delta = prev7 ? Math.round((last7 - prev7) / prev7 * 100) : 0;
-      sumEl.innerHTML = _otStat('Last 7 days', fmt(last7), { color }) + _otStat('Prev 7 days', fmt(prev7), { color, delta }) + _otStat('Next 7', fmt(next7), { color, forecast: true, sub: accSub, subTitle: accTitle });
+      const nextSub = blending ? (acc != null ? acc + '% model acc · ✨ blend' : '✨ Claude blend · ' + accSub) : accSub;
+      const nextTitle = accTitle + (blending ? ` · Bars blend Claude (${Math.round(wAI * 100)}%) with the model.` : '');
+      sumEl.innerHTML = _otStat('Last 7 days', fmt(last7), { color }) + _otStat('Prev 7 days', fmt(prev7), { color, delta }) + _otStat('Next 7', fmt(next7), { color, forecast: true, sub: nextSub, subTitle: nextTitle });
       chartEl.innerHTML = _otBarChart(slots, { colors: [color], labels: false }) + weekStrip;
     } else {
       const byMonth = {}; days.forEach(k => { const m = k.slice(0, 7); byMonth[m] = (byMonth[m] || 0) + byDay[k]; });
