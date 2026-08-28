@@ -2076,6 +2076,7 @@
       </div>
       <div id="b2cTrendSummary" style="display:flex;gap:22px;flex-wrap:wrap;margin-bottom:10px"></div>
       <div id="b2cTrendChart" style="overflow-x:auto"></div>
+      <div id="b2cTrendNowcast" style="margin-top:10px"></div>
     </div>
 
     <!-- B2C insights: cut-off countdown, bottleneck, brands, aging, mix, trend, staffing -->
@@ -5447,6 +5448,7 @@
   let userSpeedAvg = {};    // person -> { pickPerHr, packPerHr } avg over last 30d (user_speed_avg RPC)
   let orderDaily = [];      // warehouse_order_daily rows — durable completed(packed)-orders ledger
   let b2cOrderDaily = [];   // b2c_order_daily rows — durable B2C received-orders ledger (trend + forecast)
+  let b2cHourly = [];        // b2c_order_hourly rows — hourly received (arrival hour) for the intraday nowcast
   let prodHourlyRows = [];  // user_perf_hourly rows for the selected date (per-hour-by-warehouse table)
   let prodHourDate = '';    // 'YYYY-MM-DD' selected for the per-hour table
   const MONTHS_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -5825,12 +5827,15 @@
   async function fetchOrderLedgers() {
     const cut = localDateStr(new Date(Date.now() - 400 * 24 * 60 * 60 * 1000));
     try {
-      const [odRes, bodRes] = await Promise.all([
+      const hCut = localDateStr(new Date(Date.now() - 45 * 24 * 60 * 60 * 1000));
+      const [odRes, bodRes, bohRes] = await Promise.all([
         fetch(SB_URL + '/warehouse_order_daily?select=warehouse_code,day,completed_orders,completed_items,picked_orders,picked_items&day=gte.' + cut + '&order=day.asc', { headers: SB_HDR }),
         fetch(SB_URL + '/b2c_order_daily?select=wh,day,received_orders,received_items&day=gte.' + cut + '&order=day.asc', { headers: SB_HDR }),
+        fetch(SB_URL + '/b2c_order_hourly?select=wh,day,hour,received_orders&day=gte.' + hCut + '&order=day.asc,hour.asc', { headers: SB_HDR }),
       ]);
       orderDaily = (odRes.ok ? await odRes.json() : []).filter(r => whAllowed(r.warehouse_code));
       b2cOrderDaily = (bodRes.ok ? await bodRes.json() : []).filter(r => whAllowed(r.wh));
+      b2cHourly = (bohRes.ok ? await bohRes.json() : []).filter(r => whAllowed(r.wh));
     } catch (e) { }
     try { renderB2CTrend(); } catch (e) { }
     try { renderProdTrend(); } catch (e) { }
@@ -5840,6 +5845,35 @@
     const byDay = {};
     (b2cOrderDaily || []).forEach(r => { if (inWhFilter(r.wh)) byDay[r.day] = (byDay[r.day] || 0) + Number(r.received_orders || 0); });
     renderTrend({ card: 'b2cTrendCard', sum: 'b2cTrendSummary', chart: 'b2cTrendChart', dailyBtn: 'b2cTrendDaily', monthlyBtn: 'b2cTrendMonthly', modeKey: 'b2cTrendMode', name: 'Received', color: '#86efac', byDay });
+    try { renderB2CReceivedNowcast(); } catch (e) { }
+  }
+  // Intraday nowcast: learn the typical cumulative-by-hour arrival curve, then project
+  // today's full-day received from what's arrived so far. Uses hourly received data to
+  // sharpen the near-term forecast; self-activates once ~7 complete days exist.
+  function renderB2CReceivedNowcast() {
+    const el = document.getElementById('b2cTrendNowcast'); if (!el) return;
+    const fmt = n => Number(n || 0).toLocaleString();
+    const rows = (b2cHourly || []).filter(r => inWhFilter(r.wh));
+    // per-day hour totals
+    const byDay = {};
+    rows.forEach(r => { const d = (byDay[r.day] = byDay[r.day] || {}); d[r.hour] = (d[r.hour] || 0) + Number(r.received_orders || 0); });
+    // current local hour + date in the selected warehouse's tz (single wh) else viewer's
+    const sel = (typeof getSelectedWhs === 'function' ? getSelectedWhs() : []);
+    let tz; if (sel.length === 1 && typeof opsFor === 'function') { try { tz = opsFor(sel[0]).tz; } catch (e) { } }
+    const curHour = (function () { try { return Number(new Intl.DateTimeFormat('en-GB', { timeZone: tz || undefined, hour: '2-digit', hour12: false }).format(new Date())); } catch (e) { return new Date().getHours(); } })();
+    const today = (function () { try { return new Intl.DateTimeFormat('en-CA', { timeZone: tz || undefined, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); } catch (e) { return localDateStr(); } })();
+    const NEED = 7;
+    const hist = Object.keys(byDay).filter(d => d < today && Object.keys(byDay[d]).length);
+    if (hist.length < NEED) { el.innerHTML = `<span style="color:var(--muted);font-size:.72rem">⏳ Intraday nowcast — learning the arrival curve (${hist.length}/${NEED} days of hourly data)</span>`; return; }
+    // cumulative fraction by hour = avg over history of (cum by h) / (day total)
+    const fs = {}, fn = {};
+    hist.forEach(d => { const hh = byDay[d]; let tot = 0; for (let h = 0; h < 24; h++) tot += hh[h] || 0; if (tot <= 0) return; let cum = 0; for (let h = 0; h < 24; h++) { cum += hh[h] || 0; fs[h] = (fs[h] || 0) + cum / tot; fn[h] = (fn[h] || 0) + 1; } });
+    const curve = {}; for (let h = 0; h < 24; h++) curve[h] = fn[h] ? fs[h] / fn[h] : (h > 0 ? curve[h - 1] : 0);
+    const tHH = byDay[today] || {}; let soFar = 0; for (let h = 0; h <= curHour; h++) soFar += tHH[h] || 0;
+    const frac = curve[curHour] || 0;
+    if (frac <= 0 || soFar <= 0) { el.innerHTML = `<span style="color:var(--muted);font-size:.72rem">Intraday nowcast · no arrivals yet today</span>`; return; }
+    const proj = Math.round(soFar / frac);
+    el.innerHTML = `<span style="font-size:.72rem;color:var(--muted)">Intraday nowcast · <b style="color:var(--text)">${fmt(soFar)}</b> received by ${String(curHour).padStart(2, '0')}:00 (${Math.round(frac * 100)}% of a typical day) → on pace for <b style="color:#86efac">~${fmt(proj)}</b> today</span>`;
   }
   // Productivity tab: follows the Picked/Packed toggle — picked or packed orders
   // per day, filtered by the productivity warehouse.
