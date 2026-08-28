@@ -2356,6 +2356,15 @@
       </div>
     </div>
 
+    <!-- Per-hour by warehouse (Logiwa-style user productivity matrix) -->
+    <div class="card" style="padding:0;overflow:hidden;margin-top:16px">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <div id="prodHourTableTitle" style="font-size:.85rem;font-weight:600;color:var(--text)">Packed Order Count — User Productivity Per Hour By Warehouse</div>
+        <label style="font-size:.75rem;color:var(--muted)">Date <input type="date" id="prodHourDate" onchange="onProdHourDateChange(this.value)" style="margin-left:4px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></label>
+      </div>
+      <div style="overflow-x:auto"><table id="prodHourTable" style="width:100%;border-collapse:collapse;font-size:.82rem"></table></div>
+    </div>
+
     <!-- 90-day daily × hourly heatmap -->
     <div class="card" style="padding:0;overflow:hidden;margin-top:16px">
       <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Hourly by day — last 90 days</div>
@@ -5438,6 +5447,8 @@
   let userSpeedAvg = {};    // person -> { pickPerHr, packPerHr } avg over last 30d (user_speed_avg RPC)
   let orderDaily = [];      // warehouse_order_daily rows — durable completed(packed)-orders ledger
   let b2cOrderDaily = [];   // b2c_order_daily rows — durable B2C received-orders ledger (trend + forecast)
+  let prodHourlyRows = [];  // user_perf_hourly rows for the selected date (per-hour-by-warehouse table)
+  let prodHourDate = '';    // 'YYYY-MM-DD' selected for the per-hour table
   const MONTHS_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const dayLabel = ds => { const p = String(ds).split('-'); return p[2] ? `${p[2]} ${MONTHS_ABBR[+p[1]-1]}` : ds; };
@@ -5539,6 +5550,7 @@
       populateProdPersonSelect();
       renderProductivity();
       fetchOrderLedgers();  // completed-orders ledger → Productivity trend & forecast card
+      fetchProdHourly();    // per-hour-by-warehouse user productivity matrix (selected date)
       fetchHourlyDaily();   // 30-day daily×hourly heatmap (independent RPC)
       if (modeEl) { modeEl.textContent = 'Supabase ●'; modeEl.style.color = 'var(--success)'; }
     } catch (err) {
@@ -5642,6 +5654,7 @@
 
     renderHourlyRate(selWh);
     renderProdTrend();
+    renderProdHourlyTable();
 
     // Daily totals for the selected mode.
     const byDay = {};
@@ -5835,6 +5848,85 @@
       sumEl.innerHTML = _otStat('This month', fmt(byMonth[cur] || 0), { color }) + _otStat('Proj. full month', fmt(projCur()), { color }) + _otStat('Next month', fmt(next), { color, forecast: true, sub: accSub, subTitle: accTitle });
       chartEl.innerHTML = _otBarChart(slots, { colors: [color], labels: true });
     }
+  }
+
+  // ── Per-hour-by-warehouse user productivity matrix (Logiwa-style) ─────────
+  function onProdHourDateChange(v) { prodHourDate = v; fetchProdHourly(); }
+  async function fetchProdHourly() {
+    const date = prodHourDate || localDateStr();
+    prodHourDate = date;
+    try {
+      const rows = await fetch(SB_URL + '/user_perf_hourly?select=executed_by_name,executed_by,warehouse_code,hour_local,picked_orders,packed_orders&activity_date=eq.' + date + '&order=warehouse_code.asc,executed_by_name.asc,hour_local.asc', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      prodHourlyRows = rows.filter(r => whAllowed(r.warehouse_code));
+    } catch (e) { prodHourlyRows = []; }
+    renderProdHourlyTable();
+  }
+  function renderProdHourlyTable() {
+    const el = document.getElementById('prodHourTable'); if (!el) return;
+    const packed = localStorage.getItem('prodMode') === 'packed';
+    const field = packed ? 'packed_orders' : 'picked_orders';
+    const t = document.getElementById('prodHourTableTitle');
+    if (t) t.textContent = (packed ? 'Packed' : 'Picked') + ' Order Count — User Productivity Per Hour By Warehouse';
+    const dEl = document.getElementById('prodHourDate');
+    const date = (dEl && dEl.value) || prodHourDate || localDateStr();
+    if (dEl && !dEl.value) dEl.value = date;
+    const fmt = n => Number(n || 0).toLocaleString();
+    const whShort = w => String(w || '').replace(/\s*\([^)]*\)\s*$/, '');
+    const selWh = localStorage.getItem('prodWarehouseFilter') || '';
+    const rows = (prodHourlyRows || []).filter(r => !selWh || r.warehouse_code === selWh);
+    if (!rows.length) { el.innerHTML = `<tbody><tr><td style="padding:16px 18px;color:var(--muted);font-size:.82rem">No hourly data for ${date}.</td></tr></tbody>`; return; }
+    // Hour columns = min..max clock-hour with activity (hour_local is warehouse-local).
+    let minH = 23, maxH = 0;
+    rows.forEach(r => { const h = Number(String(r.hour_local).slice(11, 13)); if (Number(r[field] || 0) > 0) { minH = Math.min(minH, h); maxH = Math.max(maxH, h); } });
+    if (minH > maxH) { minH = 8; maxH = 17; }
+    const hours = []; for (let h = minH; h <= maxH; h++) hours.push(h);
+    // Group wh -> person -> {hour:count}
+    const byWh = {};
+    rows.forEach(r => {
+      const wh = r.warehouse_code, person = r.executed_by_name || ('#' + r.executed_by), h = Number(String(r.hour_local).slice(11, 13));
+      const w = (byWh[wh] = byWh[wh] || { country: (whCountryFromName(wh) || '—'), people: {} });
+      const p = (w.people[person] = w.people[person] || {});
+      p[h] = (p[h] || 0) + Number(r[field] || 0);
+    });
+    // Keep only people with activity in the current mode; drop empty warehouses.
+    Object.keys(byWh).forEach(wh => { byWh[wh].peopleList = Object.keys(byWh[wh].people).filter(p => hours.some(h => (byWh[wh].people[p][h] || 0) > 0)).sort(); });
+    const byCountry = {};
+    Object.keys(byWh).sort().forEach(wh => { if (!byWh[wh].peopleList.length) return; const c = byWh[wh].country; (byCountry[c] = byCountry[c] || []).push(wh); });
+    if (!Object.keys(byCountry).length) { el.innerHTML = `<tbody><tr><td style="padding:16px 18px;color:var(--muted);font-size:.82rem">No ${packed ? 'packed' : 'picked'} activity for ${date}.</td></tr></tbody>`; return; }
+    const hd = 'text-align:right;padding:10px 12px;font-weight:600;color:var(--muted);font-size:.72rem;background:var(--surface2);white-space:nowrap';
+    const hl = 'text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;background:var(--surface2);white-space:nowrap';
+    const dateLbl = (function () { try { return new Date(date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); } catch (e) { return date; } })();
+    let html = `<thead>
+      <tr><th colspan="3" style="background:var(--surface2)"></th><th colspan="${hours.length}" style="text-align:center;padding:8px 12px;color:var(--text);font-weight:600;background:var(--surface2);border-left:1px solid var(--border)">${dateLbl}</th></tr>
+      <tr><th style="${hl}">Warehouse Country Name</th><th style="${hl}">Warehouse Name</th><th style="${hl}">Transaction User</th>${hours.map(h => `<th style="${hd}">${h}</th>`).join('')}</tr>
+    </thead><tbody>`;
+    const numCell = v => `<td style="padding:7px 12px;text-align:right;color:var(--text);white-space:nowrap">${v > 0 ? fmt(v) : ''}</td>`;
+    Object.keys(byCountry).sort().forEach(country => {
+      const whs = byCountry[country].sort();
+      const countryRows = whs.reduce((a, wh) => a + byWh[wh].peopleList.length + 1, 0);  // people + 1 totals per wh
+      let firstCountry = true;
+      whs.forEach(wh => {
+        const people = byWh[wh].peopleList;
+        let firstWh = true;
+        people.forEach(person => {
+          const pdata = byWh[wh].people[person];
+          html += `<tr style="border-top:1px solid var(--border)">`;
+          if (firstCountry) { html += `<td rowspan="${countryRows}" style="padding:8px 14px;color:var(--text);vertical-align:top;white-space:nowrap;border-right:1px solid var(--border)">${escHtml(country)}</td>`; firstCountry = false; }
+          if (firstWh) { html += `<td rowspan="${people.length}" style="padding:8px 14px;color:var(--text);vertical-align:top;white-space:nowrap;border-right:1px solid var(--border)">${escHtml(whShort(wh))}</td>`; firstWh = false; }
+          html += `<td style="padding:7px 14px;color:var(--text);white-space:nowrap">${escHtml(person)}</td>`;
+          html += hours.map(h => numCell(pdata[h] || 0)).join('');
+          html += `</tr>`;
+        });
+        // Totals row (spans Warehouse Name + Transaction User columns)
+        const tot = {}; hours.forEach(h => tot[h] = 0);
+        Object.values(byWh[wh].people).forEach(p => hours.forEach(h => tot[h] += (p[h] || 0)));
+        html += `<tr style="border-top:1px solid var(--border);background:var(--surface2);font-weight:600">
+          <td colspan="2" style="padding:8px 14px;color:var(--text);white-space:nowrap">Totals for ${escHtml(whShort(wh))}</td>
+          ${hours.map(h => `<td style="padding:8px 12px;text-align:right;color:var(--text)">${tot[h] > 0 ? fmt(tot[h]) : ''}</td>`).join('')}</tr>`;
+      });
+    });
+    html += `</tbody>`;
+    el.innerHTML = html;
   }
 
   // 30-day daily × hourly heatmaps (Picked + Packed): rows = days (newest first), cols = hours,
@@ -7518,10 +7610,11 @@
       }
     }
     if (v === 'productivity') {
-      try { renderProdTrend(); } catch (e) {}   // paint immediately from cache
-      // If the completed-orders ledger hasn't loaded yet (opened before init/sync
-      // finished), fetch it now — it re-renders the card on arrival.
+      try { renderProdTrend(); renderProdHourlyTable(); } catch (e) {}   // paint immediately from cache
+      // If the ledgers/hourly haven't loaded yet (opened before init/sync finished),
+      // fetch them now — each re-renders on arrival.
       if (!(typeof orderDaily !== 'undefined' && orderDaily && orderDaily.length)) { try { fetchOrderLedgers(); } catch (e) {} }
+      if (!(typeof prodHourlyRows !== 'undefined' && prodHourlyRows && prodHourlyRows.length)) { try { fetchProdHourly(); } catch (e) {} }
     }
     if (v === 'dash') { try { renderStats(); } catch(e){} try { initWarehouseFilter(); renderTable(); } catch(e){} }
     if (v === 'jobs') {
