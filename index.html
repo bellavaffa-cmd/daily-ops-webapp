@@ -1384,6 +1384,10 @@
           <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-6M12 17v-4M15 17v-8"/><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
           Weekly Report
         </button>
+        <button class="snav-btn snav-sub" id="snav-btn-temp" onclick="showView('temp')">
+          <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="7" height="7" rx="1"/><path stroke-linecap="round" stroke-linejoin="round" d="M14 4h3v3M20 7V4M14 20h3v-3M4 14v3h3M17 14v6M20 14v3h-3"/></svg>
+          Temp Accounts
+        </button>
       </div>
     </div>
     <button class="snav-btn" id="snav-btn-cs" onclick="showView('cs')">
@@ -2494,6 +2498,28 @@
     </div>
     <div id="weeklyExec" style="margin-bottom:16px"></div>
     <div id="weeklyCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px"></div>
+  </div>
+
+  <!-- ── TEMP ACCOUNTS VIEW ── -->
+  <div class="view" id="view-temp">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+      <div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Temp Accounts <span id="tempLockBadge" style="font-size:.7rem;font-weight:600;color:var(--muted)"></span></div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Assign temp staff to a Logiwa login and show a QR of the credentials · passwords are encrypted in your browser (never stored readable)</div>
+      </div>
+      <div id="tempHeaderBtns" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"></div>
+    </div>
+    <div id="tempBody"></div>
+  </div>
+  <!-- QR modal -->
+  <div id="tempQrModal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.6);align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)closeTempQr()">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px;max-width:340px;width:100%;text-align:center">
+      <div id="tempQrLabel" style="font-size:.9rem;font-weight:700;color:var(--text);margin-bottom:14px"></div>
+      <div id="tempQrCode" style="display:inline-block;background:#fff;padding:12px;border-radius:10px"></div>
+      <div id="tempQrCreds" style="margin-top:14px;font-size:.8rem;color:var(--text);text-align:left;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;word-break:break-all"></div>
+      <div style="font-size:.66rem;color:var(--muted);margin-top:8px">Scan with a phone camera to read the username &amp; password.</div>
+      <button type="button" onclick="closeTempQr()" style="margin-top:14px;font-size:.8rem;padding:7px 16px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">Close</button>
+    </div>
   </div>
 
   <!-- ── ATTENDANCE VIEW ── -->
@@ -6189,6 +6215,142 @@
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done).catch(() => { window.prompt('Copy the report:', txt); });
     else window.prompt('Copy the report:', txt);
   }
+  // ── Temp Logiwa accounts — client-side encrypted vault ───────────────────
+  // Passwords are AES-GCM encrypted in the browser (key = PBKDF2 of a manager
+  // passphrase) BEFORE they touch Supabase, so the public anon key only ever sees
+  // ciphertext. The derived key lives in memory for the session only.
+  let tempKey = null;         // CryptoKey (non-extractable), session-memory only
+  let tempVaultMeta = null;   // { salt, iv, verifier } or null
+  let tempAccounts = [];
+  const TEMP_TOKEN = 'daily-ops-temp-vault-v1';
+  function _b64e(buf){ let s=''; const a=new Uint8Array(buf); for(let i=0;i<a.length;i++) s+=String.fromCharCode(a[i]); return btoa(s); }
+  function _b64d(s){ const b=atob(s), a=new Uint8Array(b.length); for(let i=0;i<b.length;i++) a[i]=b.charCodeAt(i); return a; }
+  async function _deriveKey(pass, saltBytes){
+    const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({ name:'PBKDF2', salt:saltBytes, iterations:150000, hash:'SHA-256' }, base, { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']);
+  }
+  async function _enc(key, obj){
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(obj)));
+    return { iv:_b64e(iv), enc:_b64e(ct) };
+  }
+  async function _dec(key, ivB64, encB64){
+    const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv:_b64d(ivB64) }, key, _b64d(encB64));
+    return JSON.parse(new TextDecoder().decode(pt));
+  }
+  async function fetchTempVault(){ try { const r = await fetch(SB_URL+'/temp_vault_meta?id=eq.1&select=salt,iv,verifier', { headers:SB_HDR }).then(r=>r.ok?r.json():[]); tempVaultMeta=(r&&r[0])||null; } catch(e){ tempVaultMeta=null; } }
+  async function fetchTempAccounts(){ try { tempAccounts = await fetch(SB_URL+'/temp_accounts?select=id,label,assigned_to,iv,enc&order=label.asc', { headers:SB_HDR }).then(r=>r.ok?r.json():[]); } catch(e){ tempAccounts=[]; } }
+  async function openTempView(){ await fetchTempVault(); if(tempKey) await fetchTempAccounts(); renderTemp(); }
+  function renderTemp(){
+    const badge=document.getElementById('tempLockBadge'), btns=document.getElementById('tempHeaderBtns'), body=document.getElementById('tempBody');
+    if(!body) return;
+    const inC='font-size:.82rem;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text)';
+    const bC='font-size:.8rem;padding:7px 12px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer';
+    const pC='font-size:.8rem;padding:7px 14px;border-radius:7px;border:1px solid var(--primary,#4ade80);background:var(--primary,#4ade80);color:var(--on-primary,#0b1f12);font-weight:600;cursor:pointer';
+    if(badge) badge.textContent = tempKey ? '· unlocked' : (tempVaultMeta ? '· locked' : '· not set up');
+    if(btns) btns.innerHTML = tempKey ? `<button type="button" style="${bC}" onclick="lockTempVault()">🔒 Lock</button>` : '';
+    if(!tempVaultMeta){
+      body.innerHTML = `<div class="card" style="padding:18px;max-width:460px">
+        <div style="font-size:.9rem;font-weight:700;color:var(--text);margin-bottom:6px">Set a vault passphrase</div>
+        <div style="font-size:.76rem;color:var(--muted);margin-bottom:12px">This passphrase encrypts every Logiwa password before it's saved. It is never stored or sent — <b>if you lose it, accounts must be re-entered</b>. Use a strong one.</div>
+        <input id="tempPass1" type="password" placeholder="New passphrase" style="${inC};width:100%;margin-bottom:8px" autocomplete="new-password">
+        <input id="tempPass2" type="password" placeholder="Confirm passphrase" style="${inC};width:100%;margin-bottom:12px" autocomplete="new-password">
+        <button type="button" style="${pC}" onclick="setupTempVault()">Create vault</button>
+      </div>`;
+      return;
+    }
+    if(!tempKey){
+      body.innerHTML = `<div class="card" style="padding:18px;max-width:460px">
+        <div style="font-size:.9rem;font-weight:700;color:var(--text);margin-bottom:6px">Unlock</div>
+        <div style="font-size:.76rem;color:var(--muted);margin-bottom:12px">Enter the vault passphrase to view accounts and generate QR codes.</div>
+        <input id="tempPass1" type="password" placeholder="Passphrase" style="${inC};width:100%;margin-bottom:12px" autocomplete="current-password" onkeydown="if(event.key==='Enter')unlockTempVault()">
+        <button type="button" style="${pC}" onclick="unlockTempVault()">Unlock</button>
+        <div style="margin-top:12px;font-size:.68rem;color:var(--muted)">Forgot it? <a href="#" onclick="resetTempVault();return false" style="color:#f87171">Reset the vault</a> (deletes all stored accounts).</div>
+      </div>`;
+      return;
+    }
+    const list = (tempAccounts||[]).map(a=>`
+      <div class="card" style="padding:12px 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <div style="flex:1;min-width:120px">
+          <div style="font-size:.84rem;font-weight:700;color:var(--text)">${escHtml(a.label)}</div>
+          <div style="font-size:.68rem;color:var(--muted);margin-top:3px">Assigned to</div>
+          <input value="${escHtml(a.assigned_to||'')}" placeholder="temp staff name" style="${inC};font-size:.78rem;padding:4px 8px;margin-top:2px;width:180px" onchange="assignTempAccount(${a.id}, this.value)">
+        </div>
+        <button type="button" style="${pC}" onclick="showTempQr(${a.id})">Show QR</button>
+        <button type="button" style="${bC}" onclick="deleteTempAccount(${a.id})">Delete</button>
+      </div>`).join('');
+    body.innerHTML = `
+      <div class="card" style="padding:14px 16px;margin-bottom:16px">
+        <div style="font-size:.82rem;font-weight:700;color:var(--text);margin-bottom:10px">Add a Logiwa account</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input id="tempNewLabel" placeholder="Label (e.g. Temp 01)" style="${inC};width:150px">
+          <input id="tempNewUser" placeholder="Logiwa username" style="${inC};width:190px" autocomplete="off">
+          <input id="tempNewPass" placeholder="Logiwa password" style="${inC};width:190px" autocomplete="off">
+          <button type="button" style="${pC}" onclick="addTempAccount()">Add</button>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">${list || '<div style="color:var(--muted);font-size:.85rem;padding:6px 2px">No accounts yet — add one above.</div>'}</div>`;
+  }
+  async function setupTempVault(){
+    const p1=document.getElementById('tempPass1').value, p2=document.getElementById('tempPass2').value;
+    if(!p1 || p1.length<6){ alert('Use a passphrase of at least 6 characters.'); return; }
+    if(p1!==p2){ alert('Passphrases do not match.'); return; }
+    const salt=crypto.getRandomValues(new Uint8Array(16));
+    const key=await _deriveKey(p1, salt);
+    const v=await _enc(key, TEMP_TOKEN);
+    const row={ id:1, salt:_b64e(salt), iv:v.iv, verifier:v.enc };
+    const r=await fetch(SB_URL+'/temp_vault_meta', { method:'POST', headers:{ ...SB_HDR, Prefer:'resolution=merge-duplicates,return=minimal' }, body:JSON.stringify(row) });
+    if(!r.ok){ alert('Could not create the vault.'); return; }
+    tempKey=key; tempVaultMeta={ salt:row.salt, iv:v.iv, verifier:v.enc }; await fetchTempAccounts(); renderTemp();
+  }
+  async function unlockTempVault(){
+    const p=(document.getElementById('tempPass1')||{}).value; if(!p) return;
+    try {
+      const key=await _deriveKey(p, _b64d(tempVaultMeta.salt));
+      const tok=await _dec(key, tempVaultMeta.iv, tempVaultMeta.verifier);
+      if(tok!==TEMP_TOKEN) throw new Error('bad');
+      tempKey=key; await fetchTempAccounts(); renderTemp();
+    } catch(e){ alert('Wrong passphrase.'); }
+  }
+  function lockTempVault(){ tempKey=null; renderTemp(); }
+  async function resetTempVault(){
+    if(!confirm('Reset the vault? This permanently deletes ALL stored temp accounts and the passphrase.')) return;
+    await fetch(SB_URL+'/temp_accounts?id=gt.0', { method:'DELETE', headers:SB_HDR }).catch(()=>{});
+    await fetch(SB_URL+'/temp_vault_meta?id=eq.1', { method:'DELETE', headers:SB_HDR }).catch(()=>{});
+    tempKey=null; tempVaultMeta=null; tempAccounts=[]; renderTemp();
+  }
+  async function addTempAccount(){
+    if(!tempKey) return;
+    const label=(document.getElementById('tempNewLabel').value||'').trim(), user=document.getElementById('tempNewUser').value, pass=document.getElementById('tempNewPass').value;
+    if(!label || !user || !pass){ alert('Label, username and password are all required.'); return; }
+    const v=await _enc(tempKey, { username:user, password:pass });
+    const r=await fetch(SB_URL+'/temp_accounts', { method:'POST', headers:{ ...SB_HDR, Prefer:'return=minimal' }, body:JSON.stringify({ label, iv:v.iv, enc:v.enc }) });
+    if(!r.ok){ alert('Could not save the account.'); return; }
+    await fetchTempAccounts(); renderTemp();
+  }
+  async function assignTempAccount(id, name){
+    const nm=(name||'').trim();
+    await fetch(SB_URL+'/temp_accounts?id=eq.'+id, { method:'PATCH', headers:{ ...SB_HDR, Prefer:'return=minimal' }, body:JSON.stringify({ assigned_to:nm||null, assigned_at:nm?new Date().toISOString():null, updated_at:new Date().toISOString() }) }).catch(()=>{});
+    const a=tempAccounts.find(x=>x.id===id); if(a) a.assigned_to=nm;
+  }
+  async function deleteTempAccount(id){
+    const a=tempAccounts.find(x=>x.id===id); if(!a) return;
+    if(!confirm('Delete account "'+a.label+'"?')) return;
+    await fetch(SB_URL+'/temp_accounts?id=eq.'+id, { method:'DELETE', headers:SB_HDR }).catch(()=>{});
+    await fetchTempAccounts(); renderTemp();
+  }
+  async function showTempQr(id){
+    if(!tempKey) return;
+    const a=tempAccounts.find(x=>x.id===id); if(!a) return;
+    let creds; try { creds=await _dec(tempKey, a.iv, a.enc); } catch(e){ alert('Could not decrypt this account.'); return; }
+    if(typeof QRCode==='undefined'){ alert('QR library not loaded — check your connection and retry.'); return; }
+    const holder=document.getElementById('tempQrCode'); holder.innerHTML='';
+    new QRCode(holder, { text:'Username: '+creds.username+'\nPassword: '+creds.password, width:220, height:220, colorDark:'#000000', colorLight:'#ffffff', correctLevel:QRCode.CorrectLevel.M });
+    document.getElementById('tempQrLabel').textContent = a.label + (a.assigned_to ? ' · ' + a.assigned_to : '');
+    document.getElementById('tempQrCreds').innerHTML = `<div><b>Username:</b> ${escHtml(creds.username)}</div><div style="margin-top:3px"><b>Password:</b> ${escHtml(creds.password)}</div>`;
+    document.getElementById('tempQrModal').style.display='flex';
+  }
+  function closeTempQr(){ const m=document.getElementById('tempQrModal'); if(m){ m.style.display='none'; const h=document.getElementById('tempQrCode'); if(h) h.innerHTML=''; const c=document.getElementById('tempQrCreds'); if(c) c.innerHTML=''; } }
   // ── AI shortage prioritization (cached daily in ai_shortage) ─────────────
   async function fetchShortageAi(trigger, force) {
     try {
@@ -8190,6 +8352,7 @@
     if (v === 'shortage') { try { fetchShortageAi(true, false); } catch(e){} }
     if (v === 'briefing') { try { renderBriefing(); fetchBriefing(true, false); } catch(e){} }
     if (v === 'weekly') { try { renderWeekly(); fetchWeekly(true, false); } catch(e){} }
+    if (v === 'temp') { try { openTempView(); } catch(e){} }
     if (v === 'attendance') { try { fetchAttendance(); } catch(e){} }
     if (v === 'labels') {
       // Load the label printer once per session with a cache-buster. The side
