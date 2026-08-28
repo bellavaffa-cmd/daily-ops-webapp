@@ -5702,16 +5702,15 @@
     return Math.max(0, Math.min(100, Math.round((1 - absErr / tot) * 100)));
   }
   function _otWeekLbl(d) { const dt = new Date(d + 'T00:00:00'); return dt.getDate() + ' ' + MONTHS_ABBR[dt.getMonth()]; }
-  // Same backtest as _otAccuracy, bucketed by ISO week (Mon start) -> per-week accuracy.
-  function _otWeeklyAccuracy(series) {
+  // Backtest a given method fn, bucketed by ISO week (Mon start) -> per-week accuracy.
+  function _otWeeklyAccuracy(series, fn) {
     if (!series || series.length < 8) return [];
+    fn = fn || OT_METHODS['weekday-seasonal'];
     const byWeek = {};
     for (let i = 7; i < series.length; i++) {
       const hist = series.slice(0, i);
       const d = new Date(series[i].day + 'T00:00:00'), wd = d.getDay();
-      const same = hist.filter(s => new Date(s.day + 'T00:00:00').getDay() === wd).slice(-4);
-      const recentMean = hist.slice(-14).reduce((a, s) => a + s.v, 0) / Math.min(14, hist.length);
-      const pred = same.length ? same.reduce((a, s) => a + s.v, 0) / same.length : recentMean;
+      const pred = fn(hist, series[i].day) || 0;
       const monday = new Date(d); monday.setDate(monday.getDate() - ((wd + 6) % 7));
       const key = localDateStr(monday);
       const w = (byWeek[key] = byWeek[key] || { start: key, absErr: 0, tot: 0 });
@@ -5749,6 +5748,35 @@
     const out = []; const fd = new Date(series[series.length - 1].day + 'T00:00:00');
     for (let i = 0; i < 7; i++) { fd.setDate(fd.getDate() + 1); const arr = (byWd[fd.getDay()] || []).slice(-4); out.push({ day: localDateStr(new Date(fd)), v: arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : Math.round(recentMean) }); }
     return out;
+  }
+  // ── Self-tuning forecast: several methods; auto-pick the best per series by backtest ──
+  // Each method: (hist [{day,v}], targetDay 'YYYY-MM-DD') -> predicted number.
+  const OT_METHODS = {
+    'weekday-seasonal': (h, day) => { const wd = new Date(day + 'T00:00:00').getDay(); const same = h.filter(s => new Date(s.day + 'T00:00:00').getDay() === wd).slice(-4); const rm = h.slice(-14).reduce((a, s) => a + s.v, 0) / Math.min(14, h.length || 1); return same.length ? same.reduce((a, s) => a + s.v, 0) / same.length : rm; },
+    'weekday×trend': (h, day) => { if (!h.length) return 0; const wd = new Date(day + 'T00:00:00').getDay(); const overall = h.reduce((a, s) => a + s.v, 0) / h.length; const same = h.filter(s => new Date(s.day + 'T00:00:00').getDay() === wd); const wdm = same.length ? same.reduce((a, s) => a + s.v, 0) / same.length : overall; const factor = overall > 0 ? wdm / overall : 1; const recent = h.slice(-14).reduce((a, s) => a + s.v, 0) / Math.min(14, h.length); return recent * factor; },
+    'weighted-recent': (h) => { const w = h.slice(-14); if (!w.length) return 0; let n = 0, d = 0; w.forEach((s, i) => { const wt = i + 1; n += s.v * wt; d += wt; }); return n / d; },
+    'moving-avg-7': (h) => { const w = h.slice(-7); return w.length ? w.reduce((a, s) => a + s.v, 0) / w.length : 0; },
+    'seasonal-naive-7': (h, day) => { const t = new Date(day + 'T00:00:00'); t.setDate(t.getDate() - 7); const k = localDateStr(t); const f = h.find(s => s.day === k); return f ? f.v : (h.length ? h[h.length - 1].v : 0); },
+  };
+  // Walk each method forward over history; return the best key + per-method accuracy.
+  function _otBacktestMethods(series) {
+    if (!series || series.length < 10) return null;
+    const errs = {};
+    for (let i = 7; i < series.length; i++) {
+      const hist = series.slice(0, i), day = series[i].day, actual = series[i].v;
+      for (const key in OT_METHODS) { const p = OT_METHODS[key](hist, day) || 0; const e = (errs[key] = errs[key] || { a: 0, t: 0 }); e.a += Math.abs(actual - p); e.t += actual; }
+    }
+    const per = {}; let best = null, bestAcc = -1;
+    for (const key in errs) { const e = errs[key]; if (e.t <= 0) continue; const acc = Math.max(0, Math.min(100, Math.round((1 - e.a / e.t) * 100))); per[key] = acc; if (acc > bestAcc) { bestAcc = acc; best = key; } }
+    return best ? { best, acc: bestAcc, per } : null;
+  }
+  // Forecast n days using the best backtested method (chained — predictions feed later steps).
+  function _otForecastN(series, n) {
+    const bt = _otBacktestMethods(series);
+    const key = bt ? bt.best : 'weekday-seasonal', fn = OT_METHODS[key];
+    let hist = series.slice(); const out = []; const fd = new Date(series[series.length - 1].day + 'T00:00:00');
+    for (let i = 0; i < n; i++) { fd.setDate(fd.getDate() + 1); const day = localDateStr(new Date(fd)); const v = Math.max(0, Math.round(fn(hist, day) || 0)); out.push({ day, v }); hist = hist.concat([{ day, v }]); }
+    return { fc: out, method: key, acc: bt ? bt.acc : null, per: bt ? bt.per : {}, fn };
   }
   // Grouped SVG bar chart. slots: [{label, short, forecast, bars:[{value,color,hatch,name}]}].
   // opts.colors = series colours (for hatch defs); opts.labels = draw per-bar value labels.
@@ -5843,19 +5871,24 @@
     const dayList = []; for (let d = new Date(first); d <= end && dayList.length < 400; d.setDate(d.getDate() + 1)) dayList.push(localDateStr(new Date(d)));
     const S = dayList.map(k => ({ day: k, v: byDay[k] || 0 }));
     const trimLead = arr => { let i = 0; while (i < arr.length && arr[i].v === 0) i++; return arr.slice(i); };
-    const acc = _otAccuracy(trimLead(S));
+    const trimmed = trimLead(S);
+    // Self-tuning: backtest several methods, use the best for the forecast + accuracy.
+    const model = _otForecastN(trimmed, 7);
+    const acc = model.acc;
     const accSub = acc != null ? acc + '% accurate' : 'accuracy: building…';
-    const accTitle = 'Backtested: 100% − weighted error of this forecast method vs actuals over history';
-    // Per-week backtested accuracy strip (shown under the chart on every forecast card).
-    const weekly = _otWeeklyAccuracy(trimLead(S));
+    const accTitle = acc != null
+      ? `Best of ${Object.keys(model.per).length} methods → ${model.method}. Backtested 100% − weighted error. Tried: ${Object.entries(model.per).map(([k, v]) => k + ' ' + v + '%').join(', ')}`
+      : 'Backtested accuracy — needs ~10 days of history';
+    // Per-week accuracy strip (of the chosen method), shown under the chart on every card.
+    const weekly = _otWeeklyAccuracy(trimmed, model.fn);
     const accClr = a => a >= 80 ? '#4ade80' : a >= 60 ? '#fbbf24' : '#f87171';
     const weekStrip = weekly.length ? `<div style="margin-top:9px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:.7rem">
-        <span style="color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-right:2px">Weekly accuracy</span>
+        <span style="color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-right:2px" title="Auto-selected as the most accurate method for this series">Weekly accuracy · <b style="color:var(--text);text-transform:none;letter-spacing:0">${model.method}</b></span>
         ${weekly.slice(-8).map(w => `<span title="Week of ${w.start} (Mon)" style="border:1px solid var(--border);border-radius:5px;padding:2px 7px;color:var(--muted);white-space:nowrap">${_otWeekLbl(w.start)} <b style="color:${accClr(w.acc)}">${w.acc}%</b></span>`).join('')}
       </div>` : '';
 
     if (mode === 'daily') {
-      const fc = _otFcDaily(trimLead(S));
+      const fc = model.fc;
       const slots = dayList.slice(-45).map(k => ({ label: k, short: k.slice(5), forecast: false, bars: [{ value: byDay[k] || 0, color, name }] }));
       fc.forEach(f => slots.push({ label: f.day, short: f.day.slice(5), forecast: true, bars: [{ value: f.v, color, hatch: true, name }] }));
       const last7 = S.slice(-7).reduce((a, s) => a + s.v, 0), prev7 = S.slice(-14, -7).reduce((a, s) => a + s.v, 0), next7 = fc.reduce((a, s) => a + s.v, 0);
