@@ -5843,8 +5843,8 @@
     if (!slots.length) return '<div style="color:var(--muted);font-size:.8rem;padding:10px 2px">No data yet.</div>';
     const fmt = v => Number(v || 0).toLocaleString();
     const cfmt = v => { v = Number(v || 0); if (v >= 1e6) return (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M'; if (v >= 1e4) return Math.round(v / 1e3) + 'k'; if (v >= 1e3) return (v / 1e3).toFixed(1).replace(/\.0$/, '') + 'k'; return String(Math.round(v)); };
-    const seriesN = Math.max(1, ...slots.map(s => s.bars.length));
-    const max = Math.max(1, ...slots.flatMap(s => s.bars.map(b => b.value)));
+    const seriesN = Math.max(1, ...slots.map(s => s.stack ? 1 : s.bars.length));
+    const max = Math.max(1, ...slots.flatMap(s => s.stack ? [s.bars.reduce((a, b) => a + b.value, 0)] : s.bars.map(b => b.value)));
     const n = slots.length;
     const slotW = Math.max(seriesN * 3, Math.min(70, Math.floor(680 / n))), gap = Math.max(3, Math.round(slotW * 0.3));
     const innerGap = seriesN > 1 ? 2 : 0, sbw = Math.max(3, (slotW - innerGap * (seriesN - 1)) / seriesN);
@@ -5854,20 +5854,33 @@
     const every = Math.max(1, Math.ceil(n / 12));
     slots.forEach((s, i) => {
       const x0 = 30 + i * (slotW + gap);
-      s.bars.forEach((b, j) => {
-        const h = Math.round((b.value / max) * plot), x = x0 + j * (sbw + innerGap), y = top + (plot - h);
-        const tipTxt = `<b style='color:${b.color}'>${b.name || ''}</b> · ${s.label}: ${fmt(b.value)}${s.forecast ? " <span style='color:var(--muted)'>(forecast)</span>" : ''}`;
-        const stroke = s.forecast ? ` stroke="${b.color}" stroke-width="0.8" stroke-opacity="0.7"` : '';
-        bars += `<rect x="${x}" y="${y}" width="${sbw}" height="${Math.max(h, b.value > 0 ? 1 : 0)}" rx="1.5" fill="${b.hatch ? 'url(#otHatch' + j + ')' : b.color}"${stroke} data-t="${tipTxt}"></rect>`;
-        // Per-bar labels only where bars are wide enough (monthly); daily stays clean
-        // and reads its forecast via the divider, hover, and the summary numbers.
-        if ((showLabel || s.forecast) && b.value > 0 && wide) {
-          const cx = x + sbw / 2, ly = y - 4, vColor = s.forecast ? b.color : 'var(--text)';
-          vals += wide
-            ? `<text x="${cx}" y="${ly}" font-size="14" font-weight="700" style="fill:${vColor}" text-anchor="middle">${cfmt(b.value)}</text>`
-            : `<text x="${cx}" y="${ly}" font-size="11" font-weight="700" style="fill:${vColor}" text-anchor="start" transform="rotate(-90 ${cx} ${ly})">${cfmt(b.value)}</text>`;
-        }
-      });
+      if (s.stack) {
+        // In-progress day: bars stacked full-width (solid actual base + hatched projection).
+        let cum = 0;
+        s.bars.forEach(b => {
+          if (b.value <= 0) return;
+          const h = Math.max(1, Math.round((b.value / max) * plot)), y = top + (plot - h - cum);
+          const tipTxt = b.tip || `<b style='color:${b.color}'>${b.name || ''}</b> · ${s.label}: ${fmt(b.value)}`;
+          const stroke = b.hatch ? ` stroke="${b.color}" stroke-width="0.8" stroke-opacity="0.7"` : '';
+          bars += `<rect x="${x0}" y="${y}" width="${slotW}" height="${h}" rx="1.5" fill="${b.hatch ? 'url(#otHatch0)' : b.color}"${stroke} data-t="${tipTxt}"></rect>`;
+          cum += h;
+        });
+      } else {
+        s.bars.forEach((b, j) => {
+          const h = Math.round((b.value / max) * plot), x = x0 + j * (sbw + innerGap), y = top + (plot - h);
+          const tipTxt = b.tip || `<b style='color:${b.color}'>${b.name || ''}</b> · ${s.label}: ${fmt(b.value)}${s.forecast ? " <span style='color:var(--muted)'>(forecast)</span>" : ''}`;
+          const stroke = s.forecast ? ` stroke="${b.color}" stroke-width="0.8" stroke-opacity="0.7"` : '';
+          bars += `<rect x="${x}" y="${y}" width="${sbw}" height="${Math.max(h, b.value > 0 ? 1 : 0)}" rx="1.5" fill="${b.hatch ? 'url(#otHatch' + j + ')' : b.color}"${stroke} data-t="${tipTxt}"></rect>`;
+          // Per-bar labels only where bars are wide enough (monthly); daily stays clean
+          // and reads its forecast via the divider, hover, and the summary numbers.
+          if ((showLabel || s.forecast) && b.value > 0 && wide) {
+            const cx = x + sbw / 2, ly = y - 4, vColor = s.forecast ? b.color : 'var(--text)';
+            vals += wide
+              ? `<text x="${cx}" y="${ly}" font-size="14" font-weight="700" style="fill:${vColor}" text-anchor="middle">${cfmt(b.value)}</text>`
+              : `<text x="${cx}" y="${ly}" font-size="11" font-weight="700" style="fill:${vColor}" text-anchor="start" transform="rotate(-90 ${cx} ${ly})">${cfmt(b.value)}</text>`;
+          }
+        });
+      }
       if (n <= 14 || i % every === 0 || i === n - 1) { const cx = x0 + slotW / 2; labels += `<text x="${cx}" y="${ch - 8}" font-size="9" style="fill:var(--muted)" text-anchor="middle">${s.short || s.label}</text>`; }
     });
     // Delimit + label the forecast region so it reads clearly.
@@ -5900,17 +5913,20 @@
   function renderB2CTrend() {
     const byDay = {};
     (b2cOrderDaily || []).forEach(r => { if (inWhFilter(r.wh)) byDay[r.day] = (byDay[r.day] || 0) + Number(r.received_orders || 0); });
-    renderTrend({ card: 'b2cTrendCard', sum: 'b2cTrendSummary', chart: 'b2cTrendChart', dailyBtn: 'b2cTrendDaily', monthlyBtn: 'b2cTrendMonthly', modeKey: 'b2cTrendMode', name: 'Received', color: '#86efac', byDay });
-    try { renderB2CReceivedNowcast(); } catch (e) { }
+    const nc = b2cReceivedNowcastCalc();
+    // projectToday caps today's in-progress bar with its projected full-day total, so a
+    // forecast shows even once orders have started arriving. Prefer the intraday nowcast.
+    renderTrend({
+      card: 'b2cTrendCard', sum: 'b2cTrendSummary', chart: 'b2cTrendChart', dailyBtn: 'b2cTrendDaily', monthlyBtn: 'b2cTrendMonthly', modeKey: 'b2cTrendMode', name: 'Received', color: '#86efac', byDay,
+      projectToday: true, today: nc ? nc.today : undefined, todayNowcast: (nc && nc.ready && nc.proj > 0) ? nc.proj : undefined,
+    });
+    try { renderB2CReceivedNowcast(nc); } catch (e) { }
   }
-  // Intraday nowcast: learn the typical cumulative-by-hour arrival curve, then project
-  // today's full-day received from what's arrived so far. Uses hourly received data to
-  // sharpen the near-term forecast; self-activates once ~7 complete days exist.
-  function renderB2CReceivedNowcast() {
-    const el = document.getElementById('b2cTrendNowcast'); if (!el) return;
-    const fmt = n => Number(n || 0).toLocaleString();
+  // Intraday nowcast: learn the typical cumulative-by-hour arrival curve from complete
+  // days, then project today's full-day received from what's arrived so far. Shared by
+  // the trend chart's today-cap and the status line; needs ~7 complete days of hourly.
+  function b2cReceivedNowcastCalc() {
     const rows = (b2cHourly || []).filter(r => inWhFilter(r.wh));
-    // per-day hour totals
     const byDay = {};
     rows.forEach(r => { const d = (byDay[r.day] = byDay[r.day] || {}); d[r.hour] = (d[r.hour] || 0) + Number(r.received_orders || 0); });
     // current local hour + date in the selected warehouse's tz (single wh) else viewer's
@@ -5920,16 +5936,23 @@
     const today = (function () { try { return new Intl.DateTimeFormat('en-CA', { timeZone: tz || undefined, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); } catch (e) { return localDateStr(); } })();
     const NEED = 7;
     const hist = Object.keys(byDay).filter(d => d < today && Object.keys(byDay[d]).length);
-    if (hist.length < NEED) { el.innerHTML = `<span style="color:var(--muted);font-size:.72rem">⏳ Intraday nowcast — learning the arrival curve (${hist.length}/${NEED} days of hourly data)</span>`; return; }
+    const tHH = byDay[today] || {}; let soFar = 0; for (let h = 0; h <= curHour; h++) soFar += tHH[h] || 0;
+    if (hist.length < NEED) return { ready: false, learning: hist.length, need: NEED, today, curHour, soFar, frac: 0, proj: null };
     // cumulative fraction by hour = avg over history of (cum by h) / (day total)
     const fs = {}, fn = {};
     hist.forEach(d => { const hh = byDay[d]; let tot = 0; for (let h = 0; h < 24; h++) tot += hh[h] || 0; if (tot <= 0) return; let cum = 0; for (let h = 0; h < 24; h++) { cum += hh[h] || 0; fs[h] = (fs[h] || 0) + cum / tot; fn[h] = (fn[h] || 0) + 1; } });
     const curve = {}; for (let h = 0; h < 24; h++) curve[h] = fn[h] ? fs[h] / fn[h] : (h > 0 ? curve[h - 1] : 0);
-    const tHH = byDay[today] || {}; let soFar = 0; for (let h = 0; h <= curHour; h++) soFar += tHH[h] || 0;
     const frac = curve[curHour] || 0;
-    if (frac <= 0 || soFar <= 0) { el.innerHTML = `<span style="color:var(--muted);font-size:.72rem">Intraday nowcast · no arrivals yet today</span>`; return; }
-    const proj = Math.round(soFar / frac);
-    el.innerHTML = `<span style="font-size:.72rem;color:var(--muted)">Intraday nowcast · <b style="color:var(--text)">${fmt(soFar)}</b> received by ${String(curHour).padStart(2, '0')}:00 (${Math.round(frac * 100)}% of a typical day) → on pace for <b style="color:#86efac">~${fmt(proj)}</b> today</span>`;
+    const proj = (frac > 0 && soFar > 0) ? Math.round(soFar / frac) : null;
+    return { ready: true, today, curHour, soFar, frac, proj };
+  }
+  function renderB2CReceivedNowcast(nc) {
+    const el = document.getElementById('b2cTrendNowcast'); if (!el) return;
+    const fmt = n => Number(n || 0).toLocaleString();
+    nc = nc || b2cReceivedNowcastCalc();
+    if (!nc.ready) { el.innerHTML = `<span style="color:var(--muted);font-size:.72rem">⏳ Intraday nowcast — learning the arrival curve (${nc.learning}/${nc.need} days of hourly data)</span>`; return; }
+    if (!nc.proj || nc.soFar <= 0) { el.innerHTML = `<span style="color:var(--muted);font-size:.72rem">Intraday nowcast · no arrivals yet today</span>`; return; }
+    el.innerHTML = `<span style="font-size:.72rem;color:var(--muted)">Intraday nowcast · <b style="color:var(--text)">${fmt(nc.soFar)}</b> received by ${String(nc.curHour).padStart(2, '0')}:00 (${Math.round(nc.frac * 100)}% of a typical day) → on pace for <b style="color:#86efac">~${fmt(nc.proj)}</b> today</span>`;
   }
   // Productivity tab: follows the Picked/Packed toggle — picked or packed orders
   // per day, filtered by the productivity warehouse.
@@ -5980,6 +6003,25 @@
     if (mode === 'daily') {
       const fc = model.fc;
       const slots = dayList.slice(-45).map(k => ({ label: k, short: k.slice(5), forecast: false, bars: [{ value: byDay[k] || 0, color, name }] }));
+      // In-progress day: cap today's (partial) bar with the projected full-day total, so a
+      // forecast still shows once orders have started arriving. Stacked: solid = arrived so
+      // far, hatched = projected remainder. Prefer the intraday nowcast, else the model.
+      if (o.projectToday) {
+        const today = o.today || localDateStr();
+        if (slots.length && dayList[dayList.length - 1] === today && byDay[today] != null) {
+          const soFar = byDay[today] || 0;
+          let proj = (o.todayNowcast != null && o.todayNowcast > 0) ? o.todayNowcast : null;
+          if (proj == null) { const he = trimmed.filter(s => s.day < today); if (he.length >= 7) proj = Math.max(0, Math.round(model.fn(he, today) || 0)); }
+          if (proj != null && proj > 0) {
+            const slot = slots[slots.length - 1];
+            slot.stack = true; slot.projTotal = proj;
+            slot.bars = [
+              { value: soFar, color, name, tip: `<b style='color:${color}'>${name} so far</b> · ${today}: ${fmt(soFar)}` },
+              { value: Math.max(0, proj - soFar), color, hatch: true, name, tip: `<b style='color:${color}'>${name} — projected today</b> · ${today}: ${fmt(proj)}` },
+            ];
+          }
+        }
+      }
       fc.forEach(f => slots.push({ label: f.day, short: f.day.slice(5), forecast: true, bars: [{ value: f.v, color, hatch: true, name }] }));
       const last7 = S.slice(-7).reduce((a, s) => a + s.v, 0), prev7 = S.slice(-14, -7).reduce((a, s) => a + s.v, 0), next7 = fc.reduce((a, s) => a + s.v, 0);
       const delta = prev7 ? Math.round((last7 - prev7) / prev7 * 100) : 0;
