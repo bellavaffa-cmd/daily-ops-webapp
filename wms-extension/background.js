@@ -23,6 +23,7 @@ chrome.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === 'hourlySync') {
     performSync(false).catch(e => console.error('[WMS bg] hourly sync:', e.message));
     syncRolesFromLogiwa().catch(() => {});   // WMS → dashboard role sync (throttled, no tab needed)
+    syncAttendance().catch(e => console.error('[WMS bg] attendance sync:', e && e.message));   // LOCAD Ops → attendance table
   }
 });
 
@@ -112,6 +113,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   // Run the WMS → dashboard role sync (triggered by content.js on WMS login).
   if (msg.action === 'syncRoles') { syncRolesFromLogiwa().catch(() => {}); sendResponse({ ok: true }); return false; }
+  // Manual attendance sync (LOCAD Ops → Supabase). Needs an open LOCAD Ops tab.
+  if (msg.action === 'syncAttendance') { syncAttendance().then(() => sendResponse({ ok: true })).catch(e => sendResponse({ ok: false, error: e && e.message })); return true; }
 });
 
 // ── WMS session token + stored identity ─────────────────────────────────────
@@ -130,6 +133,71 @@ async function getWmsToken() {
     if (s && s.wmsToken && (!s.wmsTokenExp || Number(s.wmsTokenExp) * 1000 > Date.now())) return s.wmsToken;
   } catch (e) {}
   return null;
+}
+// ── Attendance sync (LOCAD Ops / wms.companion.golocad.com → Supabase) ───────
+// Reads the Cognito access token from an open LOCAD Ops tab (via companion.js),
+// lists the warehouses the user can access, pulls attendance history for each
+// over a rolling window, and upserts to the Supabase `attendance` table.
+async function getCompanionToken() {
+  try {
+    const tabs = await chrome.tabs.query({ url: 'https://wms.companion.golocad.com/*' });
+    if (tabs && tabs.length) {
+      const r = await new Promise((res) => { chrome.tabs.sendMessage(tabs[0].id, { action: 'getCompanionToken' }, (x) => { void chrome.runtime.lastError; res(x); }); });
+      if (r && r.token) return r.token;
+    }
+  } catch (e) {}
+  return null;
+}
+async function syncAttendance() {
+  const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co';
+  const SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
+  const SBH = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' };
+  const token = await getCompanionToken();
+  if (!token) return;   // no open LOCAD Ops tab / not logged in — skip quietly
+  const AH = { Authorization: 'Bearer ' + token };
+  let whs = [];
+  try { whs = await fetch('https://dashboard.golocad.com/api/mapp/access/warehouses/', { headers: AH }).then(r => r.ok ? r.json() : []); } catch (e) { return; }
+  if (!Array.isArray(whs) || !whs.length) return;
+  // Rolling window: last 14 days including today.
+  const dates = []; for (let i = 0; i < 14; i++) { const d = new Date(); d.setDate(d.getDate() - i); dates.push(d.toISOString().slice(0, 10)); }
+  const rows = [];
+  for (const w of whs) {
+    const whId = w.id; if (!whId) continue;
+    const whTz = w.timezone_name || null;
+    const H = Object.assign({}, AH, { 'X-WAREHOUSE-ID': String(whId) });
+    for (const date of dates) {
+      let offset = 0;
+      for (let page = 0; page < 30; page++) {
+        let j = null;
+        try { j = await fetch(`https://dashboard.golocad.com/api/mapp/attendance/attendance-history/list/?warehouse_id=${whId}&version=v2&limit=100&offset=${offset}&date=${date}`, { headers: H }).then(r => r.ok ? r.json() : null); } catch (e) { break; }
+        if (!j || !Array.isArray(j.results)) break;
+        for (const a of j.results) {
+          if (a.id == null) continue;
+          rows.push({
+            id: a.id, wh_id: a.wh_id, wh_name: a.wh_name, tz: whTz, emp_id: a.emp_id,
+            name: [a.fname, a.lname].filter(Boolean).join(' ').trim() || null,
+            employer: a.employer || null, emp_type: a.type || null, shift_name: a.shift_name || null,
+            work_date: date,
+            signin_at: a.signin_at || null, signout_at: a.signout_at || null,
+            shift_start_at: a.shift_start_at || null, shift_end_at: a.shift_end_at || null,
+            delay_mins: a.delay_mins == null ? null : a.delay_mins,
+            normal_hrs: a.normal_hrs == null ? null : a.normal_hrs,
+            overtime_hrs: a.overtime_hrs == null ? null : a.overtime_hrs,
+            updated_at: new Date().toISOString(),
+          });
+        }
+        if (!j.next) break;
+        offset += 100;
+      }
+    }
+  }
+  if (!rows.length) return;
+  // De-dupe by id (a record can match multiple query dates in edge cases), then upsert.
+  const byId = {}; rows.forEach(r => { byId[r.id] = r; });
+  const uniq = Object.values(byId);
+  for (let i = 0; i < uniq.length; i += 500) {
+    try { await fetch(`${SB_URL}/rest/v1/attendance?on_conflict=id`, { method: 'POST', headers: Object.assign({}, SBH, { Prefer: 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(uniq.slice(i, i + 500)) }); } catch (e) {}
+  }
 }
 async function storedWmsIdentity() {
   try {

@@ -1,12 +1,17 @@
 {
   "manifest_version": 3,
   "name": "WMS → Report Error",
-  "version": "3.22",
-  "description": "Auto-detects WMS packing orders and opens the Daily Ops report form. Auto-triggers when a carrier/AWB error appears.",
+  "version": "3.23",
+  "description": "Auto-detects WMS packing orders and opens the Daily Ops report form. Auto-triggers when a carrier/AWB error appears. Syncs attendance from LOCAD Ops.",
   "content_scripts": [
     {
       "matches": ["https://wms.golocad.com/*"],
       "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://wms.companion.golocad.com/*"],
+      "js": ["companion.js"],
       "run_at": "document_idle"
     },
     {
@@ -21,6 +26,8 @@
   },
   "host_permissions": [
     "https://wms.golocad.com/*",
+    "https://wms.companion.golocad.com/*",
+    "https://dashboard.golocad.com/*",
     "https://bellavaffa-cmd.github.io/*",
     "https://mywmsquery.logiwa.com/*",
     "https://hmpkjmnxoidesnnoecfm.supabase.co/*"
