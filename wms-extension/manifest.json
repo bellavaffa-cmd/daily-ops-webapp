@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "WMS → Report Error",
   "version": "3.24",
-  "description": "Auto-detects WMS packing orders and opens the Daily Ops report form. Auto-triggers when a carrier/AWB error appears. Syncs attendance from LOCAD Ops.",
+  "description": "Opens the Daily Ops report form for WMS packing orders, auto-triggers on carrier/AWB errors, and syncs LOCAD Ops attendance.",
   "content_scripts": [
     {
       "matches": ["https://wms.golocad.com/*"],
