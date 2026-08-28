@@ -148,19 +148,34 @@ async function getCompanionToken() {
   } catch (e) {}
   return null;
 }
+// Record the outcome of an attendance sync so the app can show sync health.
+async function reportSyncStatus(ok, message, records) {
+  const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co';
+  const SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
+  try {
+    await fetch(`${SB_URL}/rest/v1/sync_status?on_conflict=source`, {
+      method: 'POST',
+      headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify([{ source: 'attendance', ok: !!ok, message: message || null, records: records == null ? null : records, synced_at: new Date().toISOString() }]),
+    });
+  } catch (e) {}
+}
 async function syncAttendance() {
   const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co';
   const SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
   const SBH = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' };
   const token = await getCompanionToken();
-  if (!token) return;   // no open LOCAD Ops tab / not logged in — skip quietly
+  if (!token) { await reportSyncStatus(false, 'No LOCAD Ops tab open, or not logged in. Open wms.companion.golocad.com and sign in.', null); return; }
   const AH = { Authorization: 'Bearer ' + token };
-  let whs = [];
-  try { whs = await fetch('https://dashboard.golocad.com/api/mapp/access/warehouses/', { headers: AH }).then(r => r.ok ? r.json() : []); } catch (e) { return; }
-  if (!Array.isArray(whs) || !whs.length) return;
-  // Rolling window: last 14 days including today.
+  let whs = null;
+  try {
+    const wr = await fetch('https://dashboard.golocad.com/api/mapp/access/warehouses/', { headers: AH });
+    if (!wr.ok) { await reportSyncStatus(false, 'LOCAD Ops rejected the request (HTTP ' + wr.status + ') — session may have expired. Reload LOCAD Ops.', null); return; }
+    whs = await wr.json();
+  } catch (e) { await reportSyncStatus(false, 'Could not reach LOCAD Ops: ' + (e && e.message), null); return; }
+  if (!Array.isArray(whs) || !whs.length) { await reportSyncStatus(false, 'No warehouses returned from LOCAD Ops for this account.', null); return; }
   const dates = []; for (let i = 0; i < 14; i++) { const d = new Date(); d.setDate(d.getDate() - i); dates.push(d.toISOString().slice(0, 10)); }
-  const rows = [];
+  const rows = []; let apiErrors = 0;
   for (const w of whs) {
     const whId = w.id; if (!whId) continue;
     const whTz = w.timezone_name || null;
@@ -169,7 +184,7 @@ async function syncAttendance() {
       let offset = 0;
       for (let page = 0; page < 30; page++) {
         let j = null;
-        try { j = await fetch(`https://dashboard.golocad.com/api/mapp/attendance/attendance-history/list/?warehouse_id=${whId}&version=v2&limit=100&offset=${offset}&date=${date}`, { headers: H }).then(r => r.ok ? r.json() : null); } catch (e) { break; }
+        try { const rr = await fetch(`https://dashboard.golocad.com/api/mapp/attendance/attendance-history/list/?warehouse_id=${whId}&version=v2&limit=100&offset=${offset}&date=${date}`, { headers: H }); if (!rr.ok) { apiErrors++; break; } j = await rr.json(); } catch (e) { apiErrors++; break; }
         if (!j || !Array.isArray(j.results)) break;
         for (const a of j.results) {
           if (a.id == null) continue;
@@ -191,13 +206,17 @@ async function syncAttendance() {
       }
     }
   }
-  if (!rows.length) return;
-  // De-dupe by id (a record can match multiple query dates in edge cases), then upsert.
+  if (!rows.length) {
+    await reportSyncStatus(apiErrors === 0, apiErrors ? ('LOCAD Ops attendance API errored (' + apiErrors + ' requests failed).') : 'No attendance records in the last 14 days.', 0);
+    return;
+  }
   const byId = {}; rows.forEach(r => { byId[r.id] = r; });
   const uniq = Object.values(byId);
+  let saveErr = null;
   for (let i = 0; i < uniq.length; i += 500) {
-    try { await fetch(`${SB_URL}/rest/v1/attendance?on_conflict=id`, { method: 'POST', headers: Object.assign({}, SBH, { Prefer: 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(uniq.slice(i, i + 500)) }); } catch (e) {}
+    try { const sr = await fetch(`${SB_URL}/rest/v1/attendance?on_conflict=id`, { method: 'POST', headers: Object.assign({}, SBH, { Prefer: 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(uniq.slice(i, i + 500)) }); if (!sr.ok) saveErr = 'DB save failed (HTTP ' + sr.status + ')'; } catch (e) { saveErr = 'DB save failed: ' + (e && e.message); }
   }
+  await reportSyncStatus(!saveErr, saveErr, uniq.length);
 }
 async function storedWmsIdentity() {
   try {

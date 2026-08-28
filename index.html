@@ -2459,6 +2459,7 @@
         <button type="button" onclick="fetchAttendance()" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">⟳ Refresh</button>
       </div>
     </div>
+    <div id="attStatus" style="margin-bottom:14px"></div>
     <div id="attSummary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px"></div>
     <div class="card" style="padding:0;overflow:hidden">
       <div style="overflow-x:auto">
@@ -6479,16 +6480,35 @@
     } catch (e) { csMyBrands = null; }
   }
   // ── Attendance (LOCAD Ops → Supabase, synced by the extension) ────────────
-  let attData = [];
+  let attData = [], attSyncStatus = null;
   async function fetchAttendance() {
     const el = document.getElementById('attSync');
     try {
       const cut = localDateStr(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
-      attData = await fetch(SB_URL + '/attendance?select=*&work_date=gte.' + cut + '&order=work_date.desc,name.asc', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
-      if (el) el.textContent = attData.length ? (attData.length + ' records (30d)') : 'no data yet — sync from LOCAD Ops via the extension';
-    } catch (e) { attData = []; }
+      const [att, st] = await Promise.all([
+        fetch(SB_URL + '/attendance?select=*&work_date=gte.' + cut + '&order=work_date.desc,name.asc', { headers: SB_HDR }).then(r => r.ok ? r.json() : []),
+        fetch(SB_URL + '/sync_status?source=eq.attendance&select=*', { headers: SB_HDR }).then(r => r.ok ? r.json() : []),
+      ]);
+      attData = att || [];
+      attSyncStatus = (st && st[0]) || null;
+      if (el) el.textContent = attData.length ? (attData.length + ' records (30d)') : '';
+    } catch (e) { attData = []; attSyncStatus = null; }
     populateAttWarehouse();
+    renderAttStatus();
     renderAttendance();
+  }
+  function renderAttStatus() {
+    const el = document.getElementById('attStatus'); if (!el) return;
+    const s = attSyncStatus;
+    const box = (color, bg, icon, text) => `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;border:1px solid ${color};background:${bg};font-size:.82rem;color:var(--text)"><span style="font-size:1rem;line-height:1">${icon}</span><span>${text}</span></div>`;
+    if (!s) { el.innerHTML = box('var(--border)', 'var(--surface2)', 'ⓘ', 'No sync recorded yet. Install/update the <b>WMS extension (v3.23+)</b> and open <b>LOCAD Ops</b> logged in — it reports sync status here.'); return; }
+    const when = s.synced_at ? new Date(s.synced_at) : null;
+    const ageMin = when ? Math.round((Date.now() - when.getTime()) / 60000) : null;
+    const ago = ageMin == null ? '' : ageMin < 1 ? 'just now' : ageMin < 60 ? ageMin + ' min ago' : ageMin < 1440 ? Math.round(ageMin / 60) + ' h ago' : Math.round(ageMin / 1440) + ' d ago';
+    const whenStr = when ? when.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    if (!s.ok) { el.innerHTML = box('#f87171', 'rgba(248,113,113,.12)', '✕', `<b>Attendance sync failed</b> — ${escHtml(s.message || 'unknown error')} <span style="color:var(--muted)">(${ago}${whenStr ? ', ' + whenStr : ''})</span>`); return; }
+    if (ageMin != null && ageMin > 150) { el.innerHTML = box('#fbbf24', 'rgba(251,191,36,.12)', '⚠', `<b>Sync may have stopped</b> — last successful sync ${ago} (${whenStr}). Keep a <b>LOCAD Ops</b> tab open &amp; logged in in Chrome.`); return; }
+    el.innerHTML = box('#4ade80', 'rgba(74,222,128,.12)', '✓', `Synced ${ago}${s.records != null ? ' · ' + Number(s.records).toLocaleString() + ' records' : ''} <span style="color:var(--muted)">(${whenStr})</span>`);
   }
   function populateAttWarehouse() {
     const sel = document.getElementById('attWarehouse'); if (!sel) return;
