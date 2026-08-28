@@ -2218,6 +2218,9 @@
     <!-- KPI Cards -->
     <div id="shortageKpis" style="margin-bottom:20px"></div>
 
+    <!-- AI prioritized action plan -->
+    <div id="shortageAiPriorities" style="margin-bottom:20px"></div>
+
     <!-- Warehouse Breakdown -->
     <div class="card" style="padding:0;overflow:hidden">
       <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Warehouse Breakdown</div>
@@ -2856,6 +2859,10 @@
   let aiBriefing = {};        // scope ('ALL' or wh name) -> { headline, briefing, staffing, model }
   let aiBriefingRun = null;
   let aiBriefingTried = false;
+  const SHORTAGE_FN_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co/functions/v1/ai-shortage';
+  let aiShortage = {};        // wh -> { summary, priorities:[{title,count,urgency,action}], model }
+  let aiShortageRun = null;
+  let aiShortageTried = false;
 
   // ── Config ────────────────────────────────────────────────────────────
   let SCRIPT_URL     = localStorage.getItem('packingErrorScriptUrl') || ''; // kept for B2C data only
@@ -5204,6 +5211,7 @@
   function renderShortage() {
     const sel = getSelectedWhs();
     const filtered = shortageData.filter(r => inWhFilter(r.wh));
+    try { renderShortageAi(); } catch (e) { }
 
     const tot = filtered.reduce((a, r) => ({
       age_1_3:    a.age_1_3    + (r.age_1_3    || 0),
@@ -6082,6 +6090,55 @@
         <div style="font-size:.6rem;color:var(--muted);margin-top:9px">✨ ${escHtml(r.model || 'Claude')} · staffing = recommendation for the upcoming operating day</div>
       </div>`;
     }).join('');
+  }
+  // ── AI shortage prioritization (cached daily in ai_shortage) ─────────────
+  async function fetchShortageAi(trigger, force) {
+    try {
+      const rows = await fetch(SB_URL + '/ai_shortage?select=run_date,wh,summary,priorities,model&order=run_date.desc', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      const map = {}; let latest = null;
+      rows.forEach(r => { if (!map[r.wh] || r.run_date > map[r.wh].run_date) map[r.wh] = r; if (!latest || r.run_date > latest) latest = r.run_date; });
+      aiShortage = map; aiShortageRun = latest;
+    } catch (e) { }
+    const today = localDateStr();
+    if (trigger && (force || (!aiShortageTried && (!aiShortageRun || aiShortageRun < today)))) {
+      aiShortageTried = true;
+      try {
+        const res = await fetch(SHORTAGE_FN_URL + (force ? '?force=1' : ''), { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: SB_KEY } }).then(r => r.json()).catch(() => null);
+        if (res && res.ok && (res.generated > 0 || force)) return fetchShortageAi(false, false);
+      } catch (e) { }
+    }
+    try { renderShortageAi(); } catch (e) { }
+  }
+  function renderShortageAi() {
+    const el = document.getElementById('shortageAiPriorities'); if (!el) return;
+    const rows = Object.values(aiShortage).filter(r => inWhFilter(r.wh)).sort((a, b) => a.wh < b.wh ? -1 : 1);
+    if (!rows.length) {
+      el.innerHTML = aiShortageRun ? '' : `<div style="font-size:.72rem;color:var(--muted)">✨ Shortage priorities — not generated yet (builds once a day; needs the ANTHROPIC_API_KEY set on the edge function).</div>`;
+      return;
+    }
+    const uClr = u => u === 'high' ? '#f87171' : u === 'medium' ? '#fbbf24' : '#4ade80';
+    const single = rows.length === 1;
+    el.innerHTML = `<div class="card" style="padding:14px 16px">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:4px">
+        <span style="font-size:.85rem;font-weight:700;color:var(--text)">✨ Shortage priorities</span>
+        <span style="font-size:.62rem;color:var(--muted)">Claude-ranked by age &amp; concentration${aiShortageRun ? ' · as of ' + aiShortageRun : ''}</span>
+      </div>
+      ${rows.map(r => `
+        <div style="margin-top:12px">
+          ${single ? '' : `<div style="font-size:.78rem;font-weight:700;color:var(--text);margin-bottom:2px">${escHtml(r.wh)}</div>`}
+          ${r.summary ? `<div style="font-size:.75rem;color:var(--muted);margin-bottom:8px">${escHtml(r.summary)}</div>` : ''}
+          <div style="display:flex;flex-direction:column;gap:7px">
+            ${(r.priorities || []).map((p, i) => `
+              <div style="display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border:1px solid var(--border);border-left:3px solid ${uClr(p.urgency)};border-radius:8px;background:var(--surface2)">
+                <span style="font-size:.8rem;font-weight:800;color:var(--muted);min-width:16px">${i + 1}</span>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:.79rem;color:var(--text);font-weight:600">${escHtml(p.title || '')}${p.count != null ? ` <span style="color:var(--muted);font-weight:400">· ${Number(p.count).toLocaleString()} orders</span>` : ''}${p.urgency ? ` <span style="font-size:.6rem;font-weight:700;text-transform:uppercase;color:${uClr(p.urgency)};border:1px solid ${uClr(p.urgency)};border-radius:4px;padding:0 5px;margin-left:2px">${p.urgency}</span>` : ''}</div>
+                  ${p.action ? `<div style="font-size:.73rem;color:var(--muted);margin-top:2px">${escHtml(p.action)}</div>` : ''}
+                </div>
+              </div>`).join('')}
+          </div>
+        </div>`).join('')}
+    </div>`;
   }
   // B2C tab: received (demand) — follows the B2C multi-select.
   function renderB2CTrend() {
@@ -8032,6 +8089,7 @@
     if (fab) fab.classList.toggle('visible', v === 'b2c');
     if (v === 'cs') { try { fetchCustomerSuccess(); } catch(e){} }
     if (v === 'b2c') { try { fetchAiForecast(true); } catch(e){} }
+    if (v === 'shortage') { try { fetchShortageAi(true, false); } catch(e){} }
     if (v === 'briefing') { try { renderBriefing(); fetchBriefing(true, false); } catch(e){} }
     if (v === 'attendance') { try { fetchAttendance(); } catch(e){} }
     if (v === 'labels') {
