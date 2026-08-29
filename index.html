@@ -6296,9 +6296,7 @@
         <div style="flex:1;min-width:120px">
           <div style="font-size:.84rem;font-weight:700;color:var(--text)">${escHtml(a.label)}</div>
           <div style="font-size:.68rem;color:var(--muted);margin-top:3px">Assigned to</div>
-          ${editing
-            ? `<input value="${escHtml(a.assigned_to||'')}" placeholder="temp staff name" style="${inC};font-size:.78rem;padding:4px 8px;margin-top:2px;width:180px" onchange="assignTempAccount(${a.id}, this.value)">`
-            : `<div style="font-size:.82rem;color:var(--text);margin-top:2px">${a.assigned_to ? escHtml(a.assigned_to) : '<span style="color:var(--muted)">—</span>'}</div>`}
+          <input value="${escHtml(a.assigned_to||'')}" placeholder="temp staff name" style="${inC};font-size:.78rem;padding:4px 8px;margin-top:2px;width:180px" onchange="assignTempAccount(${a.id}, this.value)">
         </div>
         <button type="button" style="${pC}" onclick="showTempQr(${a.id})">Show QR</button>
         ${editing ? `<button type="button" style="${bC}" onclick="deleteTempAccount(${a.id})">Delete</button>` : ''}
@@ -6373,7 +6371,7 @@
     await fetchTempAccounts(); renderTemp();
   }
   async function assignTempAccount(id, name){
-    if(!tempEditUnlocked) return;
+    // Assigning temp staff is allowed without unlocking (only add/delete need the passphrase).
     const nm=(name||'').trim();
     await fetch(SB_URL+'/temp_accounts?id=eq.'+id, { method:'PATCH', headers:{ ...SB_HDR, Prefer:'return=minimal' }, body:JSON.stringify({ assigned_to:nm||null, assigned_at:nm?new Date().toISOString():null, updated_at:new Date().toISOString() }) }).catch(()=>{});
     const a=tempAccounts.find(x=>x.id===id); if(a) a.assigned_to=nm;
