@@ -2513,11 +2513,19 @@
   </div>
   <!-- QR modal -->
   <div id="tempQrModal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.6);align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)closeTempQr()">
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px;max-width:340px;width:100%;text-align:center">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px;max-width:480px;width:100%;text-align:center">
       <div id="tempQrLabel" style="font-size:.9rem;font-weight:700;color:var(--text);margin-bottom:14px"></div>
-      <div id="tempQrCode" style="display:inline-block;background:#fff;padding:12px;border-radius:10px"></div>
-      <div id="tempQrCreds" style="margin-top:14px;font-size:.8rem;color:var(--text);text-align:left;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;word-break:break-all"></div>
-      <div style="font-size:.66rem;color:var(--muted);margin-top:8px">Scan with a phone camera to read the username &amp; password.</div>
+      <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
+        <div>
+          <div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Username</div>
+          <div id="tempQrUser" style="display:inline-block;background:#fff;padding:10px;border-radius:10px"></div>
+        </div>
+        <div>
+          <div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Password</div>
+          <div id="tempQrPass" style="display:inline-block;background:#fff;padding:10px;border-radius:10px"></div>
+        </div>
+      </div>
+      <div style="font-size:.66rem;color:var(--muted);margin-top:10px">Scan each code separately — the values are never shown as text.</div>
       <button type="button" onclick="closeTempQr()" style="margin-top:14px;font-size:.8rem;padding:7px 16px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">Close</button>
     </div>
   </div>
@@ -6344,13 +6352,14 @@
     const a=tempAccounts.find(x=>x.id===id); if(!a) return;
     let creds; try { creds=await _dec(tempKey, a.iv, a.enc); } catch(e){ alert('Could not decrypt this account.'); return; }
     if(typeof QRCode==='undefined'){ alert('QR library not loaded — check your connection and retry.'); return; }
-    const holder=document.getElementById('tempQrCode'); holder.innerHTML='';
-    new QRCode(holder, { text:'Username: '+creds.username+'\nPassword: '+creds.password, width:220, height:220, colorDark:'#000000', colorLight:'#ffffff', correctLevel:QRCode.CorrectLevel.M });
+    const uh=document.getElementById('tempQrUser'), ph=document.getElementById('tempQrPass');
+    uh.innerHTML=''; ph.innerHTML='';
+    new QRCode(uh, { text:creds.username, width:180, height:180, colorDark:'#000000', colorLight:'#ffffff', correctLevel:QRCode.CorrectLevel.M });
+    new QRCode(ph, { text:creds.password, width:180, height:180, colorDark:'#000000', colorLight:'#ffffff', correctLevel:QRCode.CorrectLevel.M });
     document.getElementById('tempQrLabel').textContent = a.label + (a.assigned_to ? ' · ' + a.assigned_to : '');
-    document.getElementById('tempQrCreds').innerHTML = `<div><b>Username:</b> ${escHtml(creds.username)}</div><div style="margin-top:3px"><b>Password:</b> ${escHtml(creds.password)}</div>`;
     document.getElementById('tempQrModal').style.display='flex';
   }
-  function closeTempQr(){ const m=document.getElementById('tempQrModal'); if(m){ m.style.display='none'; const h=document.getElementById('tempQrCode'); if(h) h.innerHTML=''; const c=document.getElementById('tempQrCreds'); if(c) c.innerHTML=''; } }
+  function closeTempQr(){ const m=document.getElementById('tempQrModal'); if(m){ m.style.display='none'; const u=document.getElementById('tempQrUser'), p=document.getElementById('tempQrPass'); if(u) u.innerHTML=''; if(p) p.innerHTML=''; } }
   // ── AI shortage prioritization (cached daily in ai_shortage) ─────────────
   async function fetchShortageAi(trigger, force) {
     try {
