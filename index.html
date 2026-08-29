@@ -2975,6 +2975,7 @@
   // by refreshTabVisibility) never hits a temporal-dead-zone at load.
   let _profileTabs = null;           // Set<viewKey> from the instance profile, or null
   let _roleTabs = null;              // Set<viewKey> from the WMS role, or null
+  let _userRole = null;              // manager-assigned role name (shown in Settings)
   let _instanceProfile = undefined;  // cached instance_profiles row; null = none chosen
   // WMS session state. `loggedInWmsId` (localStorage) is the WMS identity this
   // instance is committed to. `_liveWmsId` is the identity of a currently-open,
@@ -4133,12 +4134,16 @@
       const id = overrideId || await dashGetDeviceId();
       if (!id || id.indexOf('wms:') !== 0) return;   // only WMS-identified users
       _managerWmsId = id;
+      _userRole = null;
       const uid = id.slice(4);
       const roles = await fetch(SB_URL + '/user_roles?user_id=eq.' + encodeURIComponent(uid) + '&select=role,wh', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
       if (!roles || !roles.length) return;           // no server role → keep the local self-select
       // The manager-assigned role is authoritative — show it read-only in Settings
       // and hide the per-device self-select so the two systems don't diverge.
       const primary = roles.find(x => x.role === 'Admin') || roles.find(x => x.role === 'Manager') || roles[0];
+      _userRole = primary.role;
+      const subBanner = document.getElementById('profileStatusSub');
+      if (subBanner && String(_managerWmsId || '').indexOf('wms:') === 0) subBanner.textContent = _userRole + ' · Signed in via WMS';
       const span = document.getElementById('profileRoleServer'), sel = document.getElementById('profileRole'), sub = document.getElementById('profileRoleSub');
       if (span) { span.textContent = primary.role; span.style.display = ''; }
       if (sel) sel.style.display = 'none';
@@ -4341,11 +4346,11 @@
     if (state.wms) {
       // Signed in via WMS → show the user's name (fall back to the ID if unknown).
       nameEl.textContent = state.label || state.id || 'WMS';
-      if (subEl) subEl.textContent = 'Signed in via WMS';
+      if (subEl) subEl.textContent = _userRole ? (_userRole + ' · Signed in via WMS') : 'Signed in via WMS';
       if (btn) btn.style.display = '';
     } else if (state.profile) {
       nameEl.textContent = state.profile.name || state.profile.username || state.profile.id;
-      if (subEl) subEl.textContent = 'Instance profile — log out to switch';
+      if (subEl) subEl.textContent = (state.profile.role ? state.profile.role + ' · ' : '') + 'Instance profile — log out to switch';
       if (btn) btn.style.display = '';
     } else {
       nameEl.textContent = 'Not signed in';
