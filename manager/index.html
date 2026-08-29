@@ -183,7 +183,7 @@
   <!-- Users in this warehouse (read-only roster) -->
   <div class="card">
     <h2>🧑‍🤝‍🧑 Users in this warehouse <span class="hint" id="whUserCount"></span></h2>
-    <p class="hint">Everyone whose WMS account can access the selected warehouse, with their assigned role. Read-only — assign roles in “User roles” above.</p>
+    <p class="hint">Everyone whose WMS account can access the selected warehouse. Change a role directly here. <span id="whUserMsg" class="msg"></span></p>
     <table><thead><tr><th>User</th><th>Email</th><th>Role</th></tr></thead><tbody id="whUserRows"></tbody></table>
   </div>
 
@@ -403,6 +403,7 @@
   // Fetches server-side (only this warehouse's users + their roles) so it isn't
   // capped by the 1000-row default the whole-table role/user loads hit.
   let _rosterToken = 0;
+  let _rosterRoles = {};   // user_id -> { wh, role } shown in the roster (for edits)
   async function loadWhUserRoster() {
     const el = $('whUserRows'), cnt = $('whUserCount'); if (!el) return;
     const wh = CURRENT_WH, token = ++_rosterToken;
@@ -424,12 +425,33 @@
       rr.filter(r => r.wh === wh || r.wh === '*').forEach(r => { const cur = roleByUser[r.user_id]; if (!cur || (cur.wh === '*' && r.wh !== '*')) roleByUser[r.user_id] = r; });
     }
     if (token !== _rosterToken) return;
+    _rosterRoles = roleByUser;
     if (cnt) cnt.textContent = users.length ? '(' + users.length + ')' : '';
     el.innerHTML = users.length ? users.map(u => {
       const rr = roleByUser[u.user_id];
-      const roleTxt = rr ? esc(rr.role) + (rr.wh === '*' ? ' <span class="hint">· all wh</span>' : '') : '<span class="hint">— no role</span>';
-      return `<tr><td title="${esc(u.user_id)}">${esc(u.name || u.email || u.user_id)}</td><td class="hint">${esc(u.email || '')}</td><td>${roleTxt}</td></tr>`;
+      const lock = rr && rr.role === 'Admin' && !canGrantAdmin();
+      const scope = rr && rr.wh !== '*' ? ' <span class="hint">· this wh</span>' : '';
+      const sel = `<select onchange="setRosterRole('${esc(u.user_id)}', this.value)" style="width:auto"${lock ? ' disabled title="Only an Admin can change this"' : ''}>
+        <option value=""${rr ? '' : ' selected'}>— no role —</option>${roleOptsHtml(rr ? rr.role : null)}</select>${scope}`;
+      return `<tr><td title="${esc(u.user_id)}">${esc(u.name || u.email || u.user_id)}</td><td class="hint">${esc(u.email || '')}</td><td>${sel}</td></tr>`;
     }).join('') : '<tr><td colspan="3" style="color:var(--muted)">No users with WMS access to this warehouse.</td></tr>';
+  }
+  async function setRosterRole(userId, role) {
+    const rr = _rosterRoles[userId];
+    if ((role === 'Admin' || (rr && rr.role === 'Admin')) && !canGrantAdmin()) { flash('whUserMsg', 'Only an Admin can change an Admin role.', false); loadWhUserRoster(); return; }
+    // Edit the scope the roster shows (usually the global *); a brand-new role is scoped to this warehouse.
+    const wh = rr ? rr.wh : CURRENT_WH;
+    try {
+      if (!role) {
+        if (rr) await sbSend('DELETE', '/user_roles?user_id=eq.' + encodeURIComponent(userId) + '&wh=eq.' + encodeURIComponent(wh));
+        delete _rosterRoles[userId];
+      } else {
+        await sbSend('POST', '/user_roles?on_conflict=user_id,wh', [{ user_id: userId, wh, role, updated_at: new Date().toISOString() }], 'resolution=merge-duplicates,return=minimal');
+        _rosterRoles[userId] = { wh, role };
+      }
+      flash('whUserMsg', 'Saved ✓', true);
+      loadRoles();   // keep the "User roles" table + roster in sync
+    } catch (e) { flash('whUserMsg', 'Save failed', false); loadWhUserRoster(); }
   }
   function onWhChange() {
     CURRENT_WH = $('whSelect').value;
