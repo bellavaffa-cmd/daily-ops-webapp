@@ -183,14 +183,14 @@
   <!-- Users in this warehouse (read-only roster) -->
   <div class="card">
     <h2>🧑‍🤝‍🧑 Users in this warehouse <span class="hint" id="whUserCount"></span></h2>
-    <p class="hint">Everyone whose WMS account can access the selected warehouse. Change a role directly here. <span id="whUserMsg" class="msg"></span></p>
-    <table><thead><tr><th>User</th><th>Email</th><th>Role</th></tr></thead><tbody id="whUserRows"></tbody></table>
+    <p class="hint">Everyone whose WMS account can access the selected warehouse. Change a role, or override which tabs a single user sees, directly here. <span id="whUserMsg" class="msg"></span></p>
+    <table><thead><tr><th>User</th><th>Email</th><th>Role</th><th>Tabs</th></tr></thead><tbody id="whUserRows"></tbody></table>
   </div>
 
   <!-- 6: Tabs per role -->
   <div class="card">
     <h2>🗂️ Tabs each role can see</h2>
-    <p class="hint">For the selected warehouse and role, choose which tabs are visible. "All warehouses" applies as the default when a warehouse has no override.</p>
+    <p class="hint">For the selected scope and role, choose which tabs are visible. The <b>Default (all warehouses)</b> config applies everywhere unless a specific warehouse overrides it; a per-user override (in the roster above) beats both.</p>
     <div class="row" style="margin-bottom:12px"><div><label>Role</label><select id="tabRole" onchange="loadRoleTabs()"></select></div></div>
     <div class="tabchecks" id="tabChecks"></div>
     <div class="row" style="margin-top:12px"><button class="btn primary" onclick="saveRoleTabs()">Save</button><span class="msg" id="tabsMsg"></span></div>
@@ -221,6 +221,22 @@
         <div id="profWhChecks" class="row" style="flex-wrap:wrap;gap:8px 16px"></div>
         <p class="hint" style="margin-top:10px">Visible tabs are determined by the profile's <b>Role</b> (configured in “Tabs each role can see”). No role = all tabs.</p>
         <div class="row" style="margin-top:12px"><button class="btn primary" onclick="saveProfile()">Save profile</button><button class="btn" onclick="closeProfileModal()">Cancel</button><span class="msg" id="profMsg"></span></div>
+      </div>
+    </div>
+
+    <!-- Per-user tab override -->
+    <div class="modal" id="userTabsModal" onclick="if(event.target===this)closeModal('userTabsModal')">
+      <div class="modal-card">
+        <div class="modal-head"><h3>Tabs for <span id="utName"></span></h3><button class="btn icon" onclick="closeModal('userTabsModal')">✕</button></div>
+        <input type="hidden" id="utUserId">
+        <p class="hint">Tick the tabs this specific user can see. This overrides their role's tab access everywhere. Clear it to fall back to their role.</p>
+        <div class="tabchecks" id="utChecks"></div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn primary" onclick="saveUserTabs()">Save override</button>
+          <button class="btn" onclick="clearUserTabs()">Use role default</button>
+          <button class="btn" onclick="closeModal('userTabsModal')">Cancel</button>
+          <span class="msg" id="utMsg"></span>
+        </div>
       </div>
     </div>
   </div>
@@ -360,10 +376,11 @@
     const rows = await sbGet('/b2c_data?select=wh,type&order=wh.asc');
     _whList = [...new Set(rows.filter(r => (!r.type || r.type === 'warehouse') && r.wh).map(r => r.wh))];
     const myWh = new Set((ME.warehouses || []).map(x => typeof x === 'string' ? x : (x && x.code)).filter(Boolean));
-    const restrict = ME.role !== 'Admin' && myWh.size > 0;
-    const allowed = restrict ? _whList.filter(w => myWh.has(w)) : _whList;
-    const showStar = ME.role === 'Admin' || myWh.size === 0 || _whList.every(w => myWh.has(w));
-    $('whSelect').innerHTML = (showStar ? '<option value="*">★ All warehouses (default)</option>' : '')
+    // #6: non-Admin managers can only pick warehouses they have access to.
+    const allowed = ME.role === 'Admin' ? _whList : _whList.filter(w => myWh.has(w));
+    // #2/#3: the "Default (all warehouses)" scope is Admin-only (the base tab config per role).
+    const showStar = ME.role === 'Admin';
+    $('whSelect').innerHTML = (showStar ? '<option value="*">Default (all warehouses)</option>' : '')
       + allowed.map(w => `<option value="${esc(w)}">${esc(w)}</option>`).join('');
     onWhChange();
     loadProfiles();
@@ -403,38 +420,75 @@
   // Fetches server-side (only this warehouse's users + their roles) so it isn't
   // capped by the 1000-row default the whole-table role/user loads hit.
   let _rosterToken = 0;
-  let _rosterRoles = {};   // user_id -> { wh, role } shown in the roster (for edits)
+  let _rosterRoles = {};        // user_id -> { wh, role } shown in the roster (for edits)
+  let _rosterOverrides = {};    // user_id -> [tab keys] per-user tab override (#5)
+  let _rosterNames = {};        // user_id -> display name (for the tabs modal title)
   async function loadWhUserRoster() {
     const el = $('whUserRows'), cnt = $('whUserCount'); if (!el) return;
     const wh = CURRENT_WH, token = ++_rosterToken;
     if (cnt) cnt.textContent = '';
-    if (!wh || wh === '*') { el.innerHTML = '<tr><td colspan="3" style="color:var(--muted)">Select a specific warehouse to list its users.</td></tr>'; return; }
-    el.innerHTML = '<tr><td colspan="3" style="color:var(--muted)">Loading…</td></tr>';
+    if (!wh || wh === '*') { el.innerHTML = '<tr><td colspan="4" style="color:var(--muted)">Select a specific warehouse to list its users.</td></tr>'; return; }
+    el.innerHTML = '<tr><td colspan="4" style="color:var(--muted)">Loading…</td></tr>';
     let users = [];
     try { users = await sbGet('/wms_users?select=user_id,name,email&warehouses=cs.' + encodeURIComponent(JSON.stringify([{ code: wh }])) + '&order=name.asc'); } catch (e) { users = []; }
     if (token !== _rosterToken) return;   // warehouse changed mid-load
-    // Roles for exactly these users (warehouse-specific or global *), chunked to keep URLs sane.
-    const roleByUser = {};
+    // Roles + per-user tab overrides for exactly these users, chunked to keep URLs sane.
+    const roleByUser = {}, ovByUser = {};
     const ids = users.map(u => u.user_id);
     for (let i = 0; i < ids.length; i += 80) {
       const chunk = ids.slice(i, i + 80);
-      let rr = [];
+      let rr = [], ov = [];
       // No server-side wh filter: warehouse names contain "(...)" which breaks PostgREST's
       // or=() parser. Fetch each user's role rows and keep the wh-specific or global (*) one.
       try { rr = await sbGet('/user_roles?user_id=in.(' + chunk.join(',') + ')&select=user_id,wh,role'); } catch (e) {}
       rr.filter(r => r.wh === wh || r.wh === '*').forEach(r => { const cur = roleByUser[r.user_id]; if (!cur || (cur.wh === '*' && r.wh !== '*')) roleByUser[r.user_id] = r; });
+      try { ov = await sbGet('/user_tab_overrides?user_id=in.(' + chunk.join(',') + ')&select=user_id,tabs'); } catch (e) {}
+      ov.forEach(o => { if (Array.isArray(o.tabs)) ovByUser[o.user_id] = o.tabs; });
     }
     if (token !== _rosterToken) return;
-    _rosterRoles = roleByUser;
+    _rosterRoles = roleByUser; _rosterOverrides = ovByUser; _rosterNames = {};
     if (cnt) cnt.textContent = users.length ? '(' + users.length + ')' : '';
     el.innerHTML = users.length ? users.map(u => {
+      _rosterNames[u.user_id] = u.name || u.email || u.user_id;
       const rr = roleByUser[u.user_id];
       const lock = rr && rr.role === 'Admin' && !canGrantAdmin();
       const scope = rr && rr.wh !== '*' ? ' <span class="hint">· this wh</span>' : '';
       const sel = `<select onchange="setRosterRole('${esc(u.user_id)}', this.value)" style="width:auto"${lock ? ' disabled title="Only an Admin can change this"' : ''}>
         <option value=""${rr ? '' : ' selected'}>— no role —</option>${roleOptsHtml(rr ? rr.role : null)}</select>${scope}`;
-      return `<tr><td title="${esc(u.user_id)}">${esc(u.name || u.email || u.user_id)}</td><td class="hint">${esc(u.email || '')}</td><td>${sel}</td></tr>`;
-    }).join('') : '<tr><td colspan="3" style="color:var(--muted)">No users with WMS access to this warehouse.</td></tr>';
+      const hasOv = Array.isArray(ovByUser[u.user_id]);
+      const tabsBtn = `<button class="btn" onclick="openUserTabs('${esc(u.user_id)}')">${hasOv ? 'Custom (' + ovByUser[u.user_id].length + ')' : 'Role default'}</button>`;
+      return `<tr><td title="${esc(u.user_id)}">${esc(u.name || u.email || u.user_id)}</td><td class="hint">${esc(u.email || '')}</td><td>${sel}</td><td>${tabsBtn}</td></tr>`;
+    }).join('') : '<tr><td colspan="4" style="color:var(--muted)">No users with WMS access to this warehouse.</td></tr>';
+  }
+  // Per-user tab override editor (#5).
+  function openUserTabs(userId) {
+    $('utUserId').value = userId;
+    $('utName').textContent = _rosterNames[userId] || userId;
+    const cur = new Set(_rosterOverrides[userId] || []);
+    const hasOv = Array.isArray(_rosterOverrides[userId]);
+    // With no override yet, default the checkboxes to all-on (a starting point).
+    $('utChecks').innerHTML = APP_TABS.map(([k, n]) => `<label><input type="checkbox" value="${k}"${(hasOv ? cur.has(k) : true) ? ' checked' : ''}> ${n}</label>`).join('');
+    $('utMsg').textContent = '';
+    openModal('userTabsModal');
+  }
+  async function saveUserTabs() {
+    const userId = $('utUserId').value; if (!userId) return;
+    const tabs = [...$('utChecks').querySelectorAll('input:checked')].map(cb => cb.value);
+    try {
+      await sbSend('POST', '/user_tab_overrides?on_conflict=user_id', [{ user_id: userId, tabs, updated_at: new Date().toISOString() }], 'resolution=merge-duplicates,return=minimal');
+      _rosterOverrides[userId] = tabs;
+      flash('utMsg', 'Saved ✓', true);
+      closeModal('userTabsModal'); loadWhUserRoster();
+    } catch (e) { flash('utMsg', 'Save failed', false); }
+  }
+  async function clearUserTabs() {
+    const userId = $('utUserId').value; if (!userId) return;
+    try {
+      await sbSend('DELETE', '/user_tab_overrides?user_id=eq.' + encodeURIComponent(userId));
+      delete _rosterOverrides[userId];
+      flash('utMsg', 'Cleared ✓', true);
+      closeModal('userTabsModal'); loadWhUserRoster();
+    } catch (e) { flash('utMsg', 'Clear failed', false); }
   }
   async function setRosterRole(userId, role) {
     const rr = _rosterRoles[userId];

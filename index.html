@@ -4126,6 +4126,27 @@
     return { operating, todayWd, nowMin, cfg, opDays, wh, hasActivity };
   }
 
+  // Resolve the tab set a role can see, keyed by the user's ACTUAL warehouse(s).
+  // role_tabs is configured per (role, warehouse), but a user's role is usually
+  // assigned globally ('*'), so we must look at the user's warehouses to pick up
+  // per-warehouse restrictions. Across multiple warehouses we intersect (most
+  // restrictive wins). Returns a Set of allowed views, or null = no restriction.
+  async function resolveRoleTabs(role, whCodes) {
+    if (!role) return null;
+    let rt = [];
+    try { rt = await fetch(SB_URL + '/role_tabs?role=eq.' + encodeURIComponent(role) + '&select=wh,tabs', { headers: SB_HDR }).then(r => r.ok ? r.json() : []); } catch (e) { return null; }
+    const byWh = {}; rt.forEach(r => { if (Array.isArray(r.tabs)) byWh[r.wh] = r.tabs; });
+    const star = byWh['*'] ? new Set(byWh['*']) : null;
+    const codes = [...new Set((whCodes || []).filter(Boolean))];
+    if (!codes.length) return star;   // no warehouse info → fall back to the global config
+    let eff = null;
+    codes.forEach(code => {
+      const s = byWh[code] ? new Set(byWh[code]) : star;   // per-warehouse config, else global
+      if (!s) return;
+      eff = (eff === null) ? new Set(s) : new Set([...eff].filter(x => s.has(x)));   // intersection
+    });
+    return (eff !== null) ? eff : star;
+  }
   // Apply the Manager-Console role config: reveal the console link for
   // Admin/Manager, and for other roles hide any tabs role_tabs doesn't allow.
   let _managerWmsId = null;   // the WMS identity used for the console handoff
@@ -4148,17 +4169,27 @@
       if (span) { span.textContent = primary.role; span.style.display = ''; }
       if (sel) sel.style.display = 'none';
       if (sub) sub.textContent = 'Assigned by your manager (Manager Console)';
-      if (roles.some(x => x.role === 'Admin' || x.role === 'Manager')) {
-        const el = document.getElementById('snav-btn-manager'); if (el) el.style.display = '';
-        _roleTabs = null; refreshTabVisibility();     // managers see everything
-        return;
-      }
-      // Non-manager: restrict tabs to what their role can see (per warehouse, else the * default).
+      const isManager = roles.some(x => x.role === 'Admin' || x.role === 'Manager');
+      if (isManager) { const el = document.getElementById('snav-btn-manager'); if (el) el.style.display = ''; }
+      // Per-user override (#5) is the most specific — it wins over role/warehouse config.
+      let override = null;
+      try {
+        const ov = await fetch(SB_URL + '/user_tab_overrides?user_id=eq.' + encodeURIComponent(uid) + '&select=tabs', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+        if (ov[0] && Array.isArray(ov[0].tabs)) override = new Set(ov[0].tabs);
+      } catch (e) {}
+      if (override) { _roleTabs = override; refreshTabVisibility(); return; }
+      if (isManager) { _roleTabs = null; refreshTabVisibility(); return; }   // managers see everything
+      // Non-manager: restrict tabs to what their role can see. Resolve against the user's
+      // ACTUAL warehouse(s) so per-warehouse restrictions apply even when the role is
+      // assigned globally ('*').
       const roleRow = roles[0];
-      const rt = await fetch(SB_URL + '/role_tabs?role=eq.' + encodeURIComponent(roleRow.role) + '&or=(wh.eq.' + encodeURIComponent(roleRow.wh) + ',wh.eq.*)&select=wh,tabs', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
-      const cfg = rt.find(x => x.wh === roleRow.wh) || rt.find(x => x.wh === '*');
-      if (!cfg || !Array.isArray(cfg.tabs)) { _roleTabs = null; refreshTabVisibility(); return; }   // no tab config → no restriction
-      _roleTabs = new Set(cfg.tabs);
+      let whCodes = [];
+      try {
+        const wu = await fetch(SB_URL + '/wms_users?user_id=eq.' + encodeURIComponent(uid) + '&select=warehouses', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+        const arr = wu[0] && wu[0].warehouses;
+        whCodes = Array.isArray(arr) ? arr.map(x => x && x.code).filter(Boolean) : [];
+      } catch (e) {}
+      _roleTabs = await resolveRoleTabs(roleRow.role, whCodes);   // null → no restriction
       refreshTabVisibility();   // intersects with the instance profile's tab set
     } catch (e) { /* leave everything visible on error */ }
   }
@@ -4221,12 +4252,13 @@
       if (profile) {
         hideProfileLogin();
         _profileTabs = null;   // tabs are governed by the profile's role (role_tabs)
-        // Apply the profile role's tab access (role_tabs). No role → all tabs.
+        // Apply the profile role's tab access, resolved against the profile's warehouse(s)
+        // so per-warehouse restrictions apply. No role → all tabs.
         _roleTabs = null;
         if (profile.role) {
           try {
-            const rt = await fetch(SB_URL + '/role_tabs?role=eq.' + encodeURIComponent(profile.role) + '&wh=eq.' + encodeURIComponent('*') + '&select=tabs', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
-            if (rt[0] && Array.isArray(rt[0].tabs)) _roleTabs = new Set(rt[0].tabs);
+            const codes = Array.isArray(profile.warehouses) ? _whCodes(profile.warehouses) : [];
+            _roleTabs = await resolveRoleTabs(profile.role, codes);
           } catch (e) {}
         }
         refreshTabVisibility();
@@ -7434,7 +7466,9 @@
 
   // ── Warehouse Picker ──────────────────────────────────────────────────
   function showWarehousePicker() {
-    const whRows = b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh);
+    // Only offer warehouses the user can access — users without access yet get none
+    // (no warehouse is defaulted for them).
+    const whRows = b2cData.filter(r => (!r.type || r.type === 'warehouse') && r.wh && whAllowed(r.wh));
     const cRows  = b2cData.filter(r => r.type === 'country');
 
     // Use data-wh + this.dataset.wh to avoid HTML attribute quoting issues
@@ -7457,9 +7491,10 @@
     } else {
       // Flat list (initial data or no country grouping available)
       const warehouses = [...new Set(whRows.map(r => r.wh))];
+      const anyWh = b2cData.some(r => (!r.type || r.type === 'warehouse') && r.wh);
       list.innerHTML = warehouses.length
         ? `<div style="display:flex;flex-direction:column;gap:5px">${warehouses.map(btnHTML).join('')}</div>`
-        : `<div style="color:var(--muted);font-size:.85rem;padding:12px 0">Loading warehouse data…</div>`;
+        : `<div style="color:var(--muted);font-size:.85rem;padding:12px 0">${anyWh ? 'No warehouses are assigned to your account yet.' : 'Loading warehouse data…'}</div>`;
     }
     document.getElementById('warehousePickerModal').classList.add('open');
   }
