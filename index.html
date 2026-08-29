@@ -6238,6 +6238,7 @@
   let tempWantUnlock = false;   // showing the unlock/setup panel
   let tempVaultMeta = null;      // { salt, iv, verifier } or null
   let tempAccounts = [];
+  let tempStaffNames = [];       // distinct attendance names for the "assigned to" datalist
   const TEMP_TOKEN = 'daily-ops-temp-vault-v1';
   function _b64e(buf){ let s=''; const a=new Uint8Array(buf); for(let i=0;i<a.length;i++) s+=String.fromCharCode(a[i]); return btoa(s); }
   function _b64d(s){ const b=atob(s), a=new Uint8Array(b.length); for(let i=0;i<b.length;i++) a[i]=b.charCodeAt(i); return a; }
@@ -6256,7 +6257,8 @@
   }
   async function fetchTempVault(){ try { const r = await fetch(SB_URL+'/temp_vault_meta?id=eq.1&select=salt,iv,verifier', { headers:SB_HDR }).then(r=>r.ok?r.json():[]); tempVaultMeta=(r&&r[0])||null; } catch(e){ tempVaultMeta=null; } }
   async function fetchTempAccounts(){ try { tempAccounts = await fetch(SB_URL+'/temp_accounts?select=id,label,assigned_to,iv,enc&order=label.asc', { headers:SB_HDR }).then(r=>r.ok?r.json():[]); } catch(e){ tempAccounts=[]; } }
-  async function openTempView(){ await Promise.all([fetchTempVault(), fetchTempAccounts()]); renderTemp(); }
+  async function fetchTempStaffNames(){ try { const r = await fetch(SB_URL+'/rpc/attendance_staff_names', { method:'POST', headers:SB_HDR, body:'{}' }).then(x=>x.ok?x.json():[]); tempStaffNames = (r||[]).map(o=>o.name).filter(Boolean); } catch(e){ tempStaffNames=[]; } }
+  async function openTempView(){ await Promise.all([fetchTempVault(), fetchTempAccounts(), fetchTempStaffNames()]); renderTemp(); }
   function renderTemp(){
     const badge=document.getElementById('tempLockBadge'), btns=document.getElementById('tempHeaderBtns'), body=document.getElementById('tempBody');
     if(!body) return;
@@ -6296,7 +6298,7 @@
         <div style="flex:1;min-width:120px">
           <div style="font-size:.84rem;font-weight:700;color:var(--text)">${escHtml(a.label)}</div>
           <div style="font-size:.68rem;color:var(--muted);margin-top:3px">Assigned to</div>
-          <input value="${escHtml(a.assigned_to||'')}" placeholder="temp staff name" style="${inC};font-size:.78rem;padding:4px 8px;margin-top:2px;width:180px" onchange="assignTempAccount(${a.id}, this.value)">
+          <input value="${escHtml(a.assigned_to||'')}" placeholder="temp staff name" list="tempStaffList" style="${inC};font-size:.78rem;padding:4px 8px;margin-top:2px;width:200px" onchange="assignTempAccount(${a.id}, this.value)">
         </div>
         <button type="button" style="${pC}" onclick="showTempQr(${a.id})">Show QR</button>
         ${editing ? `<button type="button" style="${bC}" onclick="deleteTempAccount(${a.id})">Delete</button>` : ''}
@@ -6314,7 +6316,8 @@
       </div>` : '';
 
     const empty = editing ? 'No accounts yet — add one above.' : 'No accounts yet. Unlock editing to add one.';
-    body.innerHTML = panel + addForm + `<div style="display:flex;flex-direction:column;gap:10px">${list || `<div style="color:var(--muted);font-size:.85rem;padding:6px 2px">${empty}</div>`}</div>`;
+    const datalist = `<datalist id="tempStaffList">${(tempStaffNames||[]).map(n=>`<option value="${escHtml(n)}"></option>`).join('')}</datalist>`;
+    body.innerHTML = datalist + panel + addForm + `<div style="display:flex;flex-direction:column;gap:10px">${list || `<div style="color:var(--muted);font-size:.85rem;padding:6px 2px">${empty}</div>`}</div>`;
   }
   async function setupTempPassphrase(){
     const p1=document.getElementById('tempPass1').value, p2=document.getElementById('tempPass2').value;
