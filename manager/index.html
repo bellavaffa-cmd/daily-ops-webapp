@@ -180,6 +180,13 @@
     <span class="msg" id="roleMsg"></span>
   </div>
 
+  <!-- Users in this warehouse (read-only roster) -->
+  <div class="card">
+    <h2>🧑‍🤝‍🧑 Users in this warehouse <span class="hint" id="whUserCount"></span></h2>
+    <p class="hint">Everyone whose WMS account can access the selected warehouse, with their assigned role. Read-only — assign roles in “User roles” above.</p>
+    <table><thead><tr><th>User</th><th>Email</th><th>Role</th></tr></thead><tbody id="whUserRows"></tbody></table>
+  </div>
+
   <!-- 6: Tabs per role -->
   <div class="card">
     <h2>🗂️ Tabs each role can see</h2>
@@ -392,10 +399,28 @@
     $('userId').value = uid;
     $('userName').value = u ? (u.name || '') : '';
   }
-  function onWhChange() {
+  // Read-only roster: users who can access the selected warehouse + their role.
+  function renderWhUsers() {
+    const el = $('whUserRows'); if (!el) return;
+    const roleByUser = {};
+    (_roleRows || []).forEach(r => {
+      const cur = roleByUser[r.user_id];
+      if (!cur) roleByUser[r.user_id] = r;
+      else if (cur.wh === '*' && r.wh !== '*') roleByUser[r.user_id] = r;   // a warehouse-specific role wins over the global (*)
+    });
+    const list = (_users || []).slice().sort((a, b) => String(a.name || a.email || '').localeCompare(String(b.name || b.email || '')));
+    const cnt = $('whUserCount'); if (cnt) cnt.textContent = list.length ? '(' + list.length + ')' : '';
+    el.innerHTML = list.length ? list.map(u => {
+      const rr = roleByUser[u.user_id];
+      const roleTxt = rr ? esc(rr.role) + (rr.wh === '*' ? ' <span class="hint">· all wh</span>' : '') : '<span class="hint">— no role</span>';
+      return `<tr><td title="${esc(u.user_id)}">${esc(u.name || u.email || u.user_id)}</td><td class="hint">${esc(u.email || '')}</td><td>${roleTxt}</td></tr>`;
+    }).join('') : `<tr><td colspan="3" style="color:var(--muted)">${CURRENT_WH === '*' ? 'No registered users.' : 'No users with WMS access to this warehouse.'}</td></tr>`;
+  }
+  async function onWhChange() {
     CURRENT_WH = $('whSelect').value;
-    populateUserPicker();
-    loadTiming(); loadWebhooks(); loadRoles(); loadRoleTabs();
+    await populateUserPicker();
+    loadTiming(); loadWebhooks(); await loadRoles(); loadRoleTabs();
+    renderWhUsers();
   }
 
   // ── 1 + 3: Timing ──────────────────────────────────────────────────────────
@@ -617,6 +642,7 @@
         <td><select onchange="setRole(${r.id}, this.value)" style="width:auto"${locked ? ' disabled' : ''}>${roleOptsHtml(r.role)}</select></td>
         <td style="text-align:right"><button class="btn icon" title="${locked ? 'Only an Admin can change this' : 'Remove'}" onclick="delRole(${r.id})"${locked ? ' disabled' : ''}>✕</button></td></tr>`;
     }).join('') : '<tr><td colspan="4" style="color:var(--muted)">No users assigned for this scope.</td></tr>';
+    try { renderWhUsers(); } catch (e) {}
   }
   async function addUserRole() {
     const uid = $('userId').value.trim(), nm = $('userName').value.trim();
