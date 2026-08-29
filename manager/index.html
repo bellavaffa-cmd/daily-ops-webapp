@@ -400,27 +400,42 @@
     $('userName').value = u ? (u.name || '') : '';
   }
   // Read-only roster: users who can access the selected warehouse + their role.
-  function renderWhUsers() {
-    const el = $('whUserRows'); if (!el) return;
+  // Fetches server-side (only this warehouse's users + their roles) so it isn't
+  // capped by the 1000-row default the whole-table role/user loads hit.
+  let _rosterToken = 0;
+  async function loadWhUserRoster() {
+    const el = $('whUserRows'), cnt = $('whUserCount'); if (!el) return;
+    const wh = CURRENT_WH, token = ++_rosterToken;
+    if (cnt) cnt.textContent = '';
+    if (!wh || wh === '*') { el.innerHTML = '<tr><td colspan="3" style="color:var(--muted)">Select a specific warehouse to list its users.</td></tr>'; return; }
+    el.innerHTML = '<tr><td colspan="3" style="color:var(--muted)">Loading…</td></tr>';
+    let users = [];
+    try { users = await sbGet('/wms_users?select=user_id,name,email&warehouses=cs.' + encodeURIComponent(JSON.stringify([{ code: wh }])) + '&order=name.asc'); } catch (e) { users = []; }
+    if (token !== _rosterToken) return;   // warehouse changed mid-load
+    // Roles for exactly these users (warehouse-specific or global *), chunked to keep URLs sane.
     const roleByUser = {};
-    (_roleRows || []).forEach(r => {
-      const cur = roleByUser[r.user_id];
-      if (!cur) roleByUser[r.user_id] = r;
-      else if (cur.wh === '*' && r.wh !== '*') roleByUser[r.user_id] = r;   // a warehouse-specific role wins over the global (*)
-    });
-    const list = (_users || []).slice().sort((a, b) => String(a.name || a.email || '').localeCompare(String(b.name || b.email || '')));
-    const cnt = $('whUserCount'); if (cnt) cnt.textContent = list.length ? '(' + list.length + ')' : '';
-    el.innerHTML = list.length ? list.map(u => {
+    const ids = users.map(u => u.user_id);
+    for (let i = 0; i < ids.length; i += 80) {
+      const chunk = ids.slice(i, i + 80);
+      let rr = [];
+      // No server-side wh filter: warehouse names contain "(...)" which breaks PostgREST's
+      // or=() parser. Fetch each user's role rows and keep the wh-specific or global (*) one.
+      try { rr = await sbGet('/user_roles?user_id=in.(' + chunk.join(',') + ')&select=user_id,wh,role'); } catch (e) {}
+      rr.filter(r => r.wh === wh || r.wh === '*').forEach(r => { const cur = roleByUser[r.user_id]; if (!cur || (cur.wh === '*' && r.wh !== '*')) roleByUser[r.user_id] = r; });
+    }
+    if (token !== _rosterToken) return;
+    if (cnt) cnt.textContent = users.length ? '(' + users.length + ')' : '';
+    el.innerHTML = users.length ? users.map(u => {
       const rr = roleByUser[u.user_id];
       const roleTxt = rr ? esc(rr.role) + (rr.wh === '*' ? ' <span class="hint">· all wh</span>' : '') : '<span class="hint">— no role</span>';
       return `<tr><td title="${esc(u.user_id)}">${esc(u.name || u.email || u.user_id)}</td><td class="hint">${esc(u.email || '')}</td><td>${roleTxt}</td></tr>`;
-    }).join('') : `<tr><td colspan="3" style="color:var(--muted)">${CURRENT_WH === '*' ? 'No registered users.' : 'No users with WMS access to this warehouse.'}</td></tr>`;
+    }).join('') : '<tr><td colspan="3" style="color:var(--muted)">No users with WMS access to this warehouse.</td></tr>';
   }
-  async function onWhChange() {
+  function onWhChange() {
     CURRENT_WH = $('whSelect').value;
-    await populateUserPicker();
-    loadTiming(); loadWebhooks(); await loadRoles(); loadRoleTabs();
-    renderWhUsers();
+    populateUserPicker();
+    loadTiming(); loadWebhooks(); loadRoles(); loadRoleTabs();
+    loadWhUserRoster();
   }
 
   // ── 1 + 3: Timing ──────────────────────────────────────────────────────────
@@ -642,7 +657,7 @@
         <td><select onchange="setRole(${r.id}, this.value)" style="width:auto"${locked ? ' disabled' : ''}>${roleOptsHtml(r.role)}</select></td>
         <td style="text-align:right"><button class="btn icon" title="${locked ? 'Only an Admin can change this' : 'Remove'}" onclick="delRole(${r.id})"${locked ? ' disabled' : ''}>✕</button></td></tr>`;
     }).join('') : '<tr><td colspan="4" style="color:var(--muted)">No users assigned for this scope.</td></tr>';
-    try { renderWhUsers(); } catch (e) {}
+    try { loadWhUserRoster(); } catch (e) {}
   }
   async function addUserRole() {
     const uid = $('userId').value.trim(), nm = $('userName').value.trim();
