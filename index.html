@@ -5660,7 +5660,7 @@
     if (!el) return;
     const sel = localStorage.getItem('prodPersonFilter') || '';
     const names = [...new Set(userPerf.map(r => r.executed_by_name || ('#' + r.executed_by)).filter(Boolean))].sort();
-    el.innerHTML = `<option value="">All people</option>` + names.map(n => `<option value="${escHtml(n)}">${escHtml(n)}</option>`).join('');
+    el.innerHTML = `<option value="">All people</option>` + names.map(n => `<option value="${escHtml(n)}">${escHtml(tempDisplayName(n))}</option>`).join('');
     el.value = names.includes(sel) ? sel : '';
     if (el.value !== sel) localStorage.setItem('prodPersonFilter', el.value);
   }
@@ -5703,6 +5703,7 @@
           packPerHr: Number(r.pack_hours) > 0 ? Math.round(Number(r.packed_orders) / Number(r.pack_hours)) : 0,
         };
       }
+      await fetchTempOperatorMap();  // map shared temp Logiwa accounts → today's staff
       populateProdWarehouseSelect();
       populateProdPersonSelect();
       renderProductivity();
@@ -5798,8 +5799,9 @@
         const rph = rt ? (mode === 'packed' ? rt.packPerHr : rt.pickPerHr) : 0;
         const av = userSpeedAvg[u.name];
         const aph = av ? (mode === 'packed' ? av.packPerHr : av.pickPerHr) : 0;
-        return `<tr style="border-top:1px solid var(--border);cursor:pointer" onclick="openUserHourly(this.dataset.person)" data-person="${escHtml(u.name)}" title="Hourly breakdown for ${escHtml(u.name)}">
-          <td style="padding:7px 18px;color:var(--text);font-size:.82rem;white-space:nowrap">${escHtml(u.name)} <span style="color:var(--muted);font-size:.72rem">›</span></td>
+        const disp = tempDisplayName(u.name);
+        return `<tr style="border-top:1px solid var(--border);cursor:pointer" onclick="openUserHourly(this.dataset.person)" data-person="${escHtml(u.name)}" title="${disp !== u.name ? escHtml(u.name) + ' → ' : ''}Hourly breakdown for ${escHtml(disp)}">
+          <td style="padding:7px 18px;color:var(--text);font-size:.82rem;white-space:nowrap">${escHtml(disp)} <span style="color:var(--muted);font-size:.72rem">›</span></td>
           ${barCell(u.orders, maxO, modeColor)}
           ${barCell(u.items, maxI, '#94a3b8')}
           <td style="padding:7px 14px;text-align:right;font-size:.82rem;white-space:nowrap;color:${lhOrders ? modeColor : 'var(--muted)'}">${lhOrders != null ? fmt(lhOrders) : '—'}</td>
@@ -6240,6 +6242,7 @@
   let tempAccounts = [];
   let tempStaffNames = [];       // distinct attendance names for the "assigned to" datalist
   let tempAssignToday = {};      // account_id -> staff_name for TODAY (resets daily)
+  let tempOperatorMap = {};      // normalized WMS operator name -> today's assigned staff
   const TEMP_TOKEN = 'daily-ops-temp-vault-v1';
   function _b64e(buf){ let s=''; const a=new Uint8Array(buf); for(let i=0;i<a.length;i++) s+=String.fromCharCode(a[i]); return btoa(s); }
   function _b64d(s){ const b=atob(s), a=new Uint8Array(b.length); for(let i=0;i<b.length;i++) a[i]=b.charCodeAt(i); return a; }
@@ -6257,9 +6260,23 @@
     return JSON.parse(new TextDecoder().decode(pt));
   }
   async function fetchTempVault(){ try { const r = await fetch(SB_URL+'/temp_vault_meta?id=eq.1&select=salt,iv,verifier', { headers:SB_HDR }).then(r=>r.ok?r.json():[]); tempVaultMeta=(r&&r[0])||null; } catch(e){ tempVaultMeta=null; } }
-  async function fetchTempAccounts(){ try { tempAccounts = await fetch(SB_URL+'/temp_accounts?select=id,label,assigned_to,iv,enc&order=label.asc', { headers:SB_HDR }).then(r=>r.ok?r.json():[]); } catch(e){ tempAccounts=[]; } }
+  async function fetchTempAccounts(){ try { tempAccounts = await fetch(SB_URL+'/temp_accounts?select=id,label,wms_name,iv,enc&order=label.asc', { headers:SB_HDR }).then(r=>r.ok?r.json():[]); } catch(e){ tempAccounts=[]; } }
   async function fetchTempStaffNames(){ try { const r = await fetch(SB_URL+'/rpc/attendance_staff_names', { method:'POST', headers:SB_HDR, body:'{}' }).then(x=>x.ok?x.json():[]); tempStaffNames = (r||[]).map(o=>o.name).filter(Boolean); } catch(e){ tempStaffNames=[]; } }
   async function fetchTempAssignments(){ tempAssignToday={}; try { const rows = await fetch(SB_URL+'/temp_assignment?assign_date=eq.'+localDateStr()+'&select=account_id,staff_name', { headers:SB_HDR }).then(r=>r.ok?r.json():[]); (rows||[]).forEach(r=>{ if(r.staff_name) tempAssignToday[r.account_id]=r.staff_name; }); } catch(e){ tempAssignToday={}; } }
+  // Build "WMS operator name -> today's assigned staff" (plaintext only, no passphrase).
+  // Lets productivity views show the real person using a shared temp Logiwa account.
+  async function fetchTempOperatorMap(){
+    try {
+      const [accs, asg] = await Promise.all([
+        fetch(SB_URL+'/temp_accounts?select=id,wms_name', { headers:SB_HDR }).then(r=>r.ok?r.json():[]),
+        fetch(SB_URL+'/temp_assignment?assign_date=eq.'+localDateStr()+'&select=account_id,staff_name', { headers:SB_HDR }).then(r=>r.ok?r.json():[]),
+      ]);
+      const byId={}; (asg||[]).forEach(a=>{ if(a.staff_name) byId[a.account_id]=a.staff_name; });
+      const map={}; (accs||[]).forEach(a=>{ if(a.wms_name && byId[a.id]) map[String(a.wms_name).trim().toLowerCase()]=byId[a.id]; });
+      tempOperatorMap = map;
+    } catch(e){ tempOperatorMap={}; }
+  }
+  function tempDisplayName(name){ if(!name) return name; const m=tempOperatorMap[String(name).trim().toLowerCase()]; return m || name; }
   async function openTempView(){ await Promise.all([fetchTempVault(), fetchTempAccounts(), fetchTempStaffNames(), fetchTempAssignments()]); renderTemp(); }
   function renderTemp(){
     const badge=document.getElementById('tempLockBadge'), btns=document.getElementById('tempHeaderBtns'), body=document.getElementById('tempBody');
@@ -6299,8 +6316,12 @@
       <div class="card" style="padding:12px 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
         <div style="flex:1;min-width:120px">
           <div style="font-size:.84rem;font-weight:700;color:var(--text)">${escHtml(a.label)}</div>
-          <div style="font-size:.68rem;color:var(--muted);margin-top:3px">Assigned to</div>
+          <div style="font-size:.68rem;color:var(--muted);margin-top:3px">Assigned to (today)</div>
           <input value="${escHtml(tempAssignToday[a.id]||'')}" placeholder="temp staff name" list="tempStaffList" style="${inC};font-size:.78rem;padding:4px 8px;margin-top:2px;width:200px" onchange="assignTempAccount(${a.id}, this.value)">
+          ${editing
+            ? `<div style="font-size:.68rem;color:var(--muted);margin-top:6px">WMS operator name</div>
+               <input value="${escHtml(a.wms_name||'')}" placeholder="e.g. Temp 001 Joo Koon" style="${inC};font-size:.78rem;padding:4px 8px;margin-top:2px;width:220px" onchange="updateTempWms(${a.id}, this.value)">`
+            : (a.wms_name ? `<div style="font-size:.66rem;color:var(--muted);margin-top:4px">WMS: ${escHtml(a.wms_name)}</div>` : '')}
         </div>
         <button type="button" style="${pC}" onclick="showTempQr(${a.id})">Show QR</button>
         ${editing ? `<button type="button" style="${bC}" onclick="deleteTempAccount(${a.id})">Delete</button>` : ''}
@@ -6310,11 +6331,13 @@
       <div class="card" style="padding:14px 16px;margin-bottom:16px">
         <div style="font-size:.82rem;font-weight:700;color:var(--text);margin-bottom:10px">Add a Logiwa account</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <input id="tempNewLabel" placeholder="Label (e.g. Temp 01)" style="${inC};width:150px">
-          <input id="tempNewUser" placeholder="Logiwa username" style="${inC};width:190px" autocomplete="off">
-          <input id="tempNewPass" placeholder="Logiwa password" style="${inC};width:190px" autocomplete="off">
+          <input id="tempNewLabel" placeholder="Label (e.g. Temp 01)" style="${inC};width:140px">
+          <input id="tempNewWms" placeholder="WMS name (e.g. Temp 001 Joo Koon)" style="${inC};width:220px" autocomplete="off">
+          <input id="tempNewUser" placeholder="Logiwa username" style="${inC};width:170px" autocomplete="off">
+          <input id="tempNewPass" placeholder="Logiwa password" style="${inC};width:170px" autocomplete="off">
           <button type="button" style="${pC}" onclick="addTempAccount()">Add</button>
         </div>
+        <div style="font-size:.66rem;color:var(--muted);margin-top:7px">WMS name = how this shared login shows up as the operator in productivity data; the app then displays today's assigned staff instead.</div>
       </div>` : '';
 
     const empty = editing ? 'No accounts yet — add one above.' : 'No accounts yet. Unlock editing to add one.';
@@ -6369,12 +6392,18 @@
   }
   async function addTempAccount(){
     if(!tempEditUnlocked) return;
-    const label=(document.getElementById('tempNewLabel').value||'').trim(), user=document.getElementById('tempNewUser').value, pass=document.getElementById('tempNewPass').value;
+    const label=(document.getElementById('tempNewLabel').value||'').trim(), wms=(document.getElementById('tempNewWms').value||'').trim(), user=document.getElementById('tempNewUser').value, pass=document.getElementById('tempNewPass').value;
     if(!label || !user || !pass){ alert('Label, username and password are all required.'); return; }
     const v=await _enc(await getTempAppKey(), { username:user, password:pass });
-    const r=await fetch(SB_URL+'/temp_accounts', { method:'POST', headers:{ ...SB_HDR, Prefer:'return=minimal' }, body:JSON.stringify({ label, iv:v.iv, enc:v.enc }) });
+    const r=await fetch(SB_URL+'/temp_accounts', { method:'POST', headers:{ ...SB_HDR, Prefer:'return=minimal' }, body:JSON.stringify({ label, wms_name:wms||null, iv:v.iv, enc:v.enc }) });
     if(!r.ok){ alert('Could not save the account.'); return; }
     await fetchTempAccounts(); renderTemp();
+  }
+  async function updateTempWms(id, wms){
+    if(!tempEditUnlocked) return;
+    const w=(wms||'').trim();
+    await fetch(SB_URL+'/temp_accounts?id=eq.'+id, { method:'PATCH', headers:{ ...SB_HDR, Prefer:'return=minimal' }, body:JSON.stringify({ wms_name:w||null, updated_at:new Date().toISOString() }) }).catch(()=>{});
+    const a=tempAccounts.find(x=>x.id===id); if(a) a.wms_name=w;
   }
   async function assignTempAccount(id, name){
     // Per-day assignment (no passphrase needed). Upsert today's row; resets automatically
@@ -6653,7 +6682,7 @@
     }
     people.forEach(person => {
       const pdata = byPerson[person];
-      html += `<tr style="border-top:1px solid var(--border)"><td style="padding:7px 18px;color:var(--text);font-size:.82rem;white-space:nowrap">${escHtml(person)}</td>${hours.map(h => numCell(pdata[h] || 0)).join('')}</tr>`;
+      html += `<tr style="border-top:1px solid var(--border)"><td style="padding:7px 18px;color:var(--text);font-size:.82rem;white-space:nowrap" title="${tempDisplayName(person) !== person ? escHtml(person) : ''}">${escHtml(tempDisplayName(person))}</td>${hours.map(h => numCell(pdata[h] || 0)).join('')}</tr>`;
     });
     const tot = {}; hours.forEach(h => tot[h] = 0);
     people.forEach(person => hours.forEach(h => tot[h] += (byPerson[person][h] || 0)));
@@ -8424,6 +8453,8 @@
       if (!(typeof orderDaily !== 'undefined' && orderDaily && orderDaily.length)) { try { fetchOrderLedgers(); } catch (e) {} }
       if (!(typeof prodHourlyRows !== 'undefined' && prodHourlyRows && prodHourlyRows.length)) { try { fetchProdHourly(); } catch (e) {} }
       try { fetchAiForecast(true); } catch (e) {}
+      // Refresh the temp-account → today's-staff name map, then repaint the operator names.
+      try { fetchTempOperatorMap().then(() => { try { populateProdPersonSelect(); renderProductivity(); renderProdHourlyTable(); } catch (e) {} }); } catch (e) {}
     }
     if (v === 'dash') { try { renderStats(); } catch(e){} try { initWarehouseFilter(); renderTable(); } catch(e){} }
     if (v === 'jobs') {
