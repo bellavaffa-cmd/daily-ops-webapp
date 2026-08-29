@@ -4137,7 +4137,7 @@
       _userRole = null;
       const uid = id.slice(4);
       const roles = await fetch(SB_URL + '/user_roles?user_id=eq.' + encodeURIComponent(uid) + '&select=role,wh', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
-      if (!roles || !roles.length) return;           // no server role → keep the local self-select
+      if (!roles || !roles.length) { _roleTabs = null; refreshTabVisibility(); return; }   // no server role → no restriction
       // The manager-assigned role is authoritative — show it read-only in Settings
       // and hide the per-device self-select so the two systems don't diverge.
       const primary = roles.find(x => x.role === 'Admin') || roles.find(x => x.role === 'Manager') || roles[0];
@@ -4150,13 +4150,14 @@
       if (sub) sub.textContent = 'Assigned by your manager (Manager Console)';
       if (roles.some(x => x.role === 'Admin' || x.role === 'Manager')) {
         const el = document.getElementById('snav-btn-manager'); if (el) el.style.display = '';
-        return;                                       // managers see everything
+        _roleTabs = null; refreshTabVisibility();     // managers see everything
+        return;
       }
       // Non-manager: restrict tabs to what their role can see (per warehouse, else the * default).
       const roleRow = roles[0];
       const rt = await fetch(SB_URL + '/role_tabs?role=eq.' + encodeURIComponent(roleRow.role) + '&or=(wh.eq.' + encodeURIComponent(roleRow.wh) + ',wh.eq.*)&select=wh,tabs', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
       const cfg = rt.find(x => x.wh === roleRow.wh) || rt.find(x => x.wh === '*');
-      if (!cfg || !Array.isArray(cfg.tabs)) return;   // no tab config → no restriction
+      if (!cfg || !Array.isArray(cfg.tabs)) { _roleTabs = null; refreshTabVisibility(); return; }   // no tab config → no restriction
       _roleTabs = new Set(cfg.tabs);
       refreshTabVisibility();   // intersects with the instance profile's tab set
     } catch (e) { /* leave everything visible on error */ }
@@ -4199,7 +4200,11 @@
       // 1) Committed WMS identity → scope to that user's own warehouse access.
       if (loggedInWms && String(loggedInWms).indexOf('wms:') === 0) {
         hideProfileLogin();
-        _profileTabs = null; _roleTabs = null; refreshTabVisibility();   // WMS uses role tabs (checkManagerAccess sets them)
+        // Apply this WMS user's role_tabs from the COMMITTED identity — not only when the
+        // extension reports a live tab. Without this, instances with no live WMS tab keep
+        // _roleTabs=null and see every tab regardless of the Manager Console config.
+        _profileTabs = null;
+        try { await checkManagerAccess(loggedInWms); } catch (e) { _roleTabs = null; refreshTabVisibility(); }
         let userWhs = null;
         const uid = String(loggedInWms).slice(4);
         const rows = await fetch(SB_URL + '/wms_users?user_id=eq.' + encodeURIComponent(uid) + '&select=warehouses,name', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
