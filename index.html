@@ -2539,6 +2539,7 @@
         <input id="attSearch" oninput="renderAttendance()" placeholder="Name or employer" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);min-width:150px">
         <a href="https://wms.companion.golocad.com/attendance" target="_blank" rel="noopener" title="Open LOCAD Ops in a new tab — visit once a day to keep attendance syncing" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--accent,#4ade80);background:var(--surface2);color:var(--text);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:5px">↗ Open LOCAD Ops</a>
         <button type="button" onclick="fetchAttendance()" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">⟳ Refresh</button>
+        <button type="button" id="attSyncNowBtn" onclick="syncAttendanceNow(this)" title="Pull the latest from LOCAD Ops via the extension" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--primary,#4ade80);background:var(--surface2);color:var(--text);cursor:pointer">⭳ Sync now</button>
       </div>
     </div>
     <div id="attStatus" style="margin-bottom:14px"></div>
@@ -7173,6 +7174,28 @@
     populateAttWarehouse();
     renderAttStatus();
     renderAttendance();
+  }
+  // Trigger the extension to pull attendance from LOCAD Ops NOW (not just re-read the DB),
+  // then reload. Relayed to the background worker by closer.js; falls back gracefully if
+  // the extension isn't installed/updated (times out and just re-reads the DB).
+  function syncAttendanceNow(btn) {
+    const orig = btn ? btn.textContent : null;
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Syncing…'; }
+    let done = false;
+    const finish = (ok, err) => {
+      if (done) return; done = true;
+      window.removeEventListener('message', onMsg);
+      if (btn) { btn.disabled = false; btn.textContent = orig || '⭳ Sync now'; }
+      fetchAttendance();
+      if (err) { try { showToast('Attendance sync: ' + err, false); } catch (e) {} }
+    };
+    const onMsg = (e) => {
+      if (e.source !== window || !e.data || e.data.type !== 'wms-sync-attendance-result') return;
+      finish(e.data.ok, e.data.ok ? null : (e.data.error || 'no LOCAD Ops session'));
+    };
+    window.addEventListener('message', onMsg);
+    try { window.postMessage({ type: 'wms-sync-attendance' }, '*'); } catch (e) {}
+    setTimeout(() => finish(false, 'timed out — is the extension installed and updated? Reload this page after updating it.'), 30000);
   }
   function renderAttStatus() {
     const el = document.getElementById('attStatus'); if (!el) return;

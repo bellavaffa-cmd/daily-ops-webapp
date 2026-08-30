@@ -73,6 +73,18 @@ window.addEventListener('message', (e) => {
     return;
   }
 
+  // Dashboard asks to sync attendance now → relay to the background worker (which
+  // reads the LOCAD Ops token and pulls attendance), then hand the result back.
+  if (e.data.type === 'wms-sync-attendance') {
+    try {
+      chrome.runtime.sendMessage({ action: 'syncAttendance' }, (resp) => {
+        const ok = !chrome.runtime.lastError && resp && resp.ok;
+        window.postMessage({ type: 'wms-sync-attendance-result', ok: !!ok, error: (resp && resp.error) || (chrome.runtime.lastError && chrome.runtime.lastError.message) || null }, '*');
+      });
+    } catch (err) { window.postMessage({ type: 'wms-sync-attendance-result', ok: false, error: String(err) }, '*'); }
+    return;
+  }
+
   if (e.data.type !== 'wms-ext-close') return;
   if (window.parent !== window) {
     // We're inside an iframe — signal the WMS page to close the overlay
