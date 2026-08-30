@@ -158,6 +158,39 @@ async function getCompanionToken() {
   } catch (e) {}
   return null;
 }
+// Auto-refresh the LOCAD Ops token via Google SSO WITHOUT the user opening a tab:
+// when the stored token is stale (and no tab is open), open the site in a BACKGROUND
+// tab so the existing Google session can silently re-complete SSO; companion.js then
+// captures the fresh token and we close the tab. No clicks needed while the Google
+// session is alive. If SSO needs a real login the tab just stalls and we give up (a
+// 3-hour cooldown prevents opening a background tab every sync while it can't complete).
+let _companionRefreshing = false;
+async function refreshCompanionToken() {
+  if (_companionRefreshing) return;
+  try {
+    const s = await chrome.storage.local.get(['companionToken', 'companionTokenExp', 'companionRefreshAt']);
+    if (s.companionToken && s.companionTokenExp && Number(s.companionTokenExp) * 1000 > Date.now() + 2 * 60 * 60 * 1000) return;   // still fresh (>2h)
+    if (s.companionRefreshAt && Date.now() - Number(s.companionRefreshAt) < 3 * 60 * 60 * 1000) return;   // tried recently — don't churn
+  } catch (e) {}
+  try { const open = await chrome.tabs.query({ url: 'https://wms.companion.golocad.com/*' }); if (open && open.length) return; } catch (e) {}   // a live tab already keeps it fresh
+  _companionRefreshing = true;
+  let tabId = null, before = null;
+  try { before = (await chrome.storage.local.get('companionToken')).companionToken || null; } catch (e) {}
+  try { await chrome.storage.local.set({ companionRefreshAt: Date.now() }); } catch (e) {}
+  try {
+    const tab = await chrome.tabs.create({ url: 'https://wms.companion.golocad.com/attendance', active: false });
+    tabId = tab.id;
+    const start = Date.now();
+    while (Date.now() - start < 30000) {                       // wait up to 30s for SSO to complete
+      await new Promise(r => setTimeout(r, 1500));
+      const s = await chrome.storage.local.get('companionToken');
+      if (s && s.companionToken && s.companionToken !== before) break;   // companion.js captured a fresh token
+    }
+  } catch (e) {} finally {
+    if (tabId != null) { try { await chrome.tabs.remove(tabId); } catch (e) {} }
+    _companionRefreshing = false;
+  }
+}
 // Record the outcome of an attendance sync so the app can show sync health.
 async function reportSyncStatus(ok, message, records) {
   const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co';
@@ -174,8 +207,9 @@ async function syncAttendance() {
   const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co';
   const SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
   const SBH = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' };
+  await refreshCompanionToken();   // try a hands-off Google-SSO refresh via a background tab first
   const token = await getCompanionToken();
-  if (!token) { await reportSyncStatus(false, 'No LOCAD Ops session — open wms.companion.golocad.com and sign in (then it keeps syncing ~24h without a tab open).', null); return; }
+  if (!token) { await reportSyncStatus(false, 'No LOCAD Ops session — auto-refresh could not complete (your Google session may have expired). Open wms.companion.golocad.com once to sign in.', null); return; }
   const AH = { Authorization: 'Bearer ' + token };
   let whs = null;
   try {
