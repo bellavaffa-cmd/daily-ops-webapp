@@ -141,14 +141,33 @@ async function getWmsToken() {
 // lists the warehouses the user can access, pulls attendance history for each
 // over a rolling window, and upserts to the Supabase `attendance` table.
 function _jwtExp(t) { try { return JSON.parse(atob(String(t).split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).exp || 0; } catch (e) { return 0; } }
-// Prefer a live open LOCAD Ops tab; else the stored access token (valid ~24h)
-// captured at the last visit — so attendance syncs with no tab open, like WMS.
+// Read the token straight from a tab's localStorage via scripting.executeScript. This
+// works even when the companion.js content script isn't running in that tab (content
+// scripts only inject into tabs loaded AFTER the extension updates) — which is why
+// syncing failed with a tab open. Falls back to messaging the content script.
+async function readTokenFromTab(tabId) {
+  try {
+    const r = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => { try { return (JSON.parse(localStorage.getItem('tokens')) || {}).access || null; } catch (e) { return null; } },
+    });
+    const t = r && r[0] && r[0].result;
+    if (t) return t;
+  } catch (e) {}
+  try {
+    const r = await new Promise((res) => { chrome.tabs.sendMessage(tabId, { action: 'getCompanionToken' }, (x) => { void chrome.runtime.lastError; res(x); }); });
+    if (r && r.token) return r.token;
+  } catch (e) {}
+  return null;
+}
+// Prefer a live open LOCAD Ops tab (read directly); else the stored access token
+// (valid ~24h) captured at the last visit — so attendance syncs with no tab open.
 async function getCompanionToken() {
   try {
     const tabs = await chrome.tabs.query({ url: 'https://wms.companion.golocad.com/*' });
-    if (tabs && tabs.length) {
-      const r = await new Promise((res) => { chrome.tabs.sendMessage(tabs[0].id, { action: 'getCompanionToken' }, (x) => { void chrome.runtime.lastError; res(x); }); });
-      if (r && r.token) { try { chrome.storage.local.set({ companionToken: r.token, companionTokenExp: _jwtExp(r.token) }); } catch (e) {} return r.token; }
+    for (const tab of (tabs || [])) {
+      const t = await readTokenFromTab(tab.id);
+      if (t) { try { chrome.storage.local.set({ companionToken: t, companionTokenExp: _jwtExp(t) }); } catch (e) {} return t; }
     }
   } catch (e) {}
   try {
@@ -174,8 +193,7 @@ async function refreshCompanionToken() {
   } catch (e) {}
   try { const open = await chrome.tabs.query({ url: 'https://wms.companion.golocad.com/*' }); if (open && open.length) return; } catch (e) {}   // a live tab already keeps it fresh
   _companionRefreshing = true;
-  let tabId = null, before = null;
-  try { before = (await chrome.storage.local.get('companionToken')).companionToken || null; } catch (e) {}
+  let tabId = null;
   try { await chrome.storage.local.set({ companionRefreshAt: Date.now() }); } catch (e) {}
   try {
     const tab = await chrome.tabs.create({ url: 'https://wms.companion.golocad.com/attendance', active: false });
@@ -183,8 +201,8 @@ async function refreshCompanionToken() {
     const start = Date.now();
     while (Date.now() - start < 30000) {                       // wait up to 30s for SSO to complete
       await new Promise(r => setTimeout(r, 1500));
-      const s = await chrome.storage.local.get('companionToken');
-      if (s && s.companionToken && s.companionToken !== before) break;   // companion.js captured a fresh token
+      const t = await readTokenFromTab(tabId);                 // read the token directly once SSO lands
+      if (t) { try { chrome.storage.local.set({ companionToken: t, companionTokenExp: _jwtExp(t) }); } catch (e) {} break; }
     }
   } catch (e) {} finally {
     if (tabId != null) { try { await chrome.tabs.remove(tabId); } catch (e) {} }

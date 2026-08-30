@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WMS → Report Error",
-  "version": "3.26",
+  "version": "3.27",
   "description": "Opens the Daily Ops report form for WMS packing orders, auto-triggers on carrier/AWB errors, and syncs LOCAD Ops attendance.",
   "content_scripts": [
     {
@@ -32,7 +32,7 @@
     "https://mywmsquery.logiwa.com/*",
     "https://hmpkjmnxoidesnnoecfm.supabase.co/*"
   ],
-  "permissions": ["tabs", "sidePanel", "storage", "alarms"],
+  "permissions": ["tabs", "sidePanel", "storage", "alarms", "scripting"],
   "side_panel": {
     "default_path": "sidepanel.html"
   },
