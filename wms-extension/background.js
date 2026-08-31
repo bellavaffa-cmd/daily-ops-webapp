@@ -394,7 +394,7 @@ async function syncInboundShipments(force) {
     complete_pct: c.complete_percentage == null ? null : c.complete_percentage,
     warehouse: c.warehouse || null,
     warehouse_id: c.warehouse_id == null ? null : c.warehouse_id,
-    brand: c.brand || null,
+    brand: (c.brand && typeof c.brand === 'object') ? (c.brand.name || null) : (c.brand || null),
     planned_date: dOnly(c.consignment_date),
     estimated_arrival: dOnly(c.estimated_arrival_date),
     carrier_name: c.carrier_name || null,

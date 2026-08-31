@@ -7287,6 +7287,8 @@
   // but the Partner Hub returns the bare name ("LOCAD Joo Koon FC"). Match case-insensitively
   // after stripping that trailing " (XX-YYY)" code so access scoping still works for inbound.
   const _stripWhCode = s => String(s || '').replace(/\s*\([A-Za-z]{2,4}-[A-Za-z0-9]+\)\s*$/, '').trim().toLowerCase();
+  // Partner Hub sends brand as {id,name}; extract the name (= the WMS brand name).
+  const brandName = b => { if (b == null) return ''; if (typeof b === 'object') return b.name || ''; const s = String(b); if (s.charAt(0) === '{') { try { return JSON.parse(s).name || s; } catch (e) {} } return s; };
   let _whAllowNorm = null, _whAllowNormFrom = null;
   function inboundWhAllowed(wh) {
     if (!_whAllow) return false;
@@ -7329,7 +7331,7 @@
     if (selStatus === 'open') rows = rows.filter(r => OPEN_SET.includes(r.status));
     else if (selStatus === 'CANCELLED') rows = rows.filter(r => r.status === 'CANCELLED' || r.status === 'ASN_REJECTED');
     else if (selStatus !== 'all') rows = rows.filter(r => r.status === selStatus);
-    if (q) rows = rows.filter(r => (r.consignment_number || '').toLowerCase().includes(q) || (r.brand || '').toLowerCase().includes(q) || (r.tracking_number || '').toLowerCase().includes(q));
+    if (q) rows = rows.filter(r => (r.consignment_number || '').toLowerCase().includes(q) || brandName(r.brand).toLowerCase().includes(q) || (r.tracking_number || '').toLowerCase().includes(q));
     const kpiEl = document.getElementById('inboundKpis');
     const cnt = ss => base.filter(r => ss.includes(r.status)).length;
     const card = (label, val, color) => `<div class="card" style="padding:14px 16px"><div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${color};margin-bottom:8px">${label}</div><div style="font-size:1.7rem;font-weight:700;color:var(--text);line-height:1">${Number(val).toLocaleString()}</div></div>`;
@@ -7348,7 +7350,7 @@
       const pct = r.complete_pct != null ? Math.round(r.complete_pct) : (cq ? Math.round(100 * (rq || 0) / cq) : null);
       return `<tr style="border-top:1px solid var(--border)">
       <td style="padding:7px 18px;color:var(--text);white-space:nowrap">${escHtml(r.consignment_number || ('#' + r.id))}</td>
-      <td style="padding:7px 14px;color:var(--text);white-space:nowrap">${escHtml(r.brand || '—')}</td>
+      <td style="padding:7px 14px;color:var(--text);white-space:nowrap">${escHtml(brandName(r.brand) || '—')}</td>
       <td style="padding:7px 14px;color:var(--muted);white-space:nowrap">${escHtml(r.wh || '')}</td>
       <td style="padding:7px 14px;white-space:nowrap">${badge(r.status)}</td>
       <td style="padding:7px 14px;color:var(--muted);white-space:nowrap">${dfmt(r.planned_date)}</td>
