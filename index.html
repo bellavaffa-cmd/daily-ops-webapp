@@ -7365,6 +7365,9 @@
       let tags = r.tags; try { if (typeof tags === 'string' && tags.charAt(0) === '[') tags = JSON.parse(tags); } catch (e) {}
       const tagStr = Array.isArray(tags) ? tags.map(t => (t && typeof t === 'object') ? (t.name || t.label || JSON.stringify(t)) : String(t)).join(', ') : (tags ? String(tags) : '');
       const field = (label, val) => `<div><div style="font-size:.62rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:2px">${label}</div><div style="color:var(--text)">${val == null || val === '' ? '—' : escHtml(String(val))}</div></div>`;
+      const phUrl = 'https://partner.golocad.com/partnerhub/inbound/manage-inbound-shipment/' + encodeURIComponent(r.id);
+      const wmsUrl = 'https://wms.golocad.com/en/wms/purchase-order/list?code=' + encodeURIComponent(r.consignment_number || '') + '&codeqt=eq&ps=100';
+      const linkBtn = (href, label) => `<a href="${href}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:5px;font-size:.76rem;padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);text-decoration:none;white-space:nowrap">${label} <span style="color:var(--muted);font-size:.9em">↗</span></a>`;
       return `<tr style="border-top:1px solid var(--border)">
       <td style="padding:7px 18px;white-space:nowrap"><span class="inb-toggle" onclick="toggleInboundRow(${r.id})" style="cursor:pointer;color:var(--primary,#4ade80);font-weight:600;user-select:none" title="Show details"><span id="inbcar-${r.id}" style="display:inline-block;width:.9em;color:var(--muted)">${exp ? '▾' : '▸'}</span>${escHtml(r.consignment_number || ('#' + r.id))}</span></td>
       <td style="padding:7px 14px;color:var(--text);white-space:nowrap">${escHtml(brandName(r.brand) || '—')}</td>
@@ -7385,6 +7388,10 @@
         ${field('Progress', pct != null ? pct + '%' : '—')}
         ${field('Created', dtfmt(r.src_created_at))}
         ${field('Tags', tagStr)}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+        ${linkBtn(wmsUrl, 'Open in WMS')}
+        ${linkBtn(phUrl, 'Open in Partner Hub')}
       </div>
     </td></tr>`; }).join('') : `<tr><td colspan="7" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No inbound shipments match this filter.</td></tr>`;
   }
