@@ -2467,30 +2467,35 @@
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px">
       <div>
         <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Inbound</div>
-        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Purchase orders per warehouse · open + recently completed/cancelled · from Logiwa · <span id="inboundStamp"></span></div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Inbound shipments (ASNs) per warehouse · last 60 days · from LOCAD Partner Hub · <span id="inboundStamp"></span></div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="inboundWarehouse" onchange="onInboundWhChange(this.value)" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer"></select>
         <select id="inboundStatusFilter" onchange="renderInbound()" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
-          <option value="open" selected>Open (Pending + Started)</option>
-          <option value="Pending">Pending</option>
-          <option value="Started">Started</option>
-          <option value="Completed">Completed (recent)</option>
-          <option value="Cancelled">Cancelled (recent)</option>
+          <option value="open" selected>In progress</option>
+          <option value="ASN_PENDING">Pending approval</option>
+          <option value="ASN_APPROVED">Upcoming</option>
+          <option value="STOCK_RECEIVED">Received</option>
+          <option value="STOCK_COUNT">Counting</option>
+          <option value="STOCK_INBOUNDED">Inbounded</option>
+          <option value="COMPLETED">Completed</option>
+          <option value="CANCELLED">Cancelled / rejected</option>
           <option value="all">All</option>
         </select>
-        <input id="inboundSearch" oninput="renderInbound()" placeholder="PO # or vendor" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);min-width:150px">
-        <button type="button" id="inboundSyncBtn" onclick="syncInboundNow(this)" title="Pull the latest POs from Logiwa" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--primary,#4ade80);background:var(--surface2);color:var(--text);cursor:pointer">⭳ Sync now</button>
+        <input id="inboundSearch" oninput="renderInbound()" placeholder="Consignment #, brand" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);min-width:150px">
+        <button type="button" id="inboundSyncBtn" onclick="syncInboundNow(this)" title="Pull the latest inbound shipments from the Partner Hub" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--primary,#4ade80);background:var(--surface2);color:var(--text);cursor:pointer">⭳ Sync now</button>
       </div>
     </div>
-    <div id="inboundKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px"></div>
+    <div id="inboundKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:16px"></div>
     <div class="card" style="padding:0;overflow:hidden">
       <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.82rem"><thead><tr style="background:var(--surface2)">
-        <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">PO #</th>
-        <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Vendor</th>
+        <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Consignment #</th>
+        <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Brand</th>
         <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Warehouse</th>
         <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Status</th>
         <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Planned arrival</th>
-        <th style="text-align:right;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Qty</th>
+        <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Received / Qty</th>
+        <th style="text-align:right;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Progress</th>
       </tr></thead><tbody id="inboundTable"></tbody></table></div>
     </div>
   </div>
@@ -7266,14 +7271,29 @@
   }
   // ── Inbound purchase orders ──────────────────────────────────────────────
   let inboundData = [], inboundStatus = null;
-  const INBOUND_ORDER = { Started: 0, Pending: 1, Completed: 2, Cancelled: 3 };
+  const INBOUND_ORDER = { ASN_PENDING: 0, ASN_APPROVED: 1, STOCK_RECEIVED: 2, STOCK_COUNT: 3, STOCK_INBOUNDED: 4, ASN_DRAFT: 5, COMPLETED: 6, CANCELLED: 7, ASN_REJECTED: 8 };
+  const INBOUND_STATUS = {
+    ASN_DRAFT: { label: 'Draft', color: '#64748b' },
+    ASN_PENDING: { label: 'Pending approval', color: '#fcd34d' },
+    ASN_APPROVED: { label: 'Upcoming', color: '#93c5fd' },
+    ASN_REJECTED: { label: 'Rejected', color: '#f87171' },
+    STOCK_RECEIVED: { label: 'Received', color: '#c4b5fd' },
+    STOCK_COUNT: { label: 'Counting', color: '#67e8f9' },
+    STOCK_INBOUNDED: { label: 'Inbounded', color: '#86efac' },
+    COMPLETED: { label: 'Completed', color: '#94a3b8' },
+    CANCELLED: { label: 'Cancelled', color: '#f87171' },
+  };
   async function fetchInbound() {
     try {
-      const [rows, st] = await Promise.all([
-        fetch(SB_URL + '/inbound_po?select=id,code,vendor,wh,status,status_id,planned_arrival,total_qty', { headers: SB_HDR }).then(r => r.ok ? r.json() : []),
-        fetch(SB_URL + '/sync_status?source=eq.inbound&select=*', { headers: SB_HDR }).then(r => r.ok ? r.json() : []),
-      ]);
-      inboundData = (rows || []).filter(r => whAllowed(r.wh));
+      const sel = 'id,consignment_number,status,consignment_qty,received_qty,complete_pct,warehouse,brand,planned_date,estimated_arrival,carrier_name,tracking_number';
+      const rows = [];
+      for (let off = 0; off < 20000; off += 1000) {
+        const page = await fetch(SB_URL + '/inbound_shipment?select=' + sel + '&order=planned_date.asc&limit=1000&offset=' + off, { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+        rows.push(...page);
+        if (!page || page.length < 1000) break;
+      }
+      const st = await fetch(SB_URL + '/sync_status?source=eq.inbound&select=*', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      inboundData = (rows || []).map(r => ({ ...r, wh: r.warehouse })).filter(r => whAllowed(r.wh));
       inboundStatus = (st && st[0]) || null;
     } catch (e) { inboundData = []; inboundStatus = null; }
     renderInbound();
@@ -7282,28 +7302,48 @@
     const tbody = document.getElementById('inboundTable'); if (!tbody) return;
     const stamp = document.getElementById('inboundStamp');
     if (stamp) { const s = inboundStatus; stamp.innerHTML = s && s.synced_at ? ((s.ok ? '' : '<span style="color:#f87171">sync issue · </span>') + 'as of ' + new Date(s.synced_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) : 'not synced yet'; }
+    // Warehouse dropdown (accessible warehouses that have POs; persisted).
+    const whSel = document.getElementById('inboundWarehouse');
+    let pick = localStorage.getItem('inboundWarehouse') || '';
+    if (whSel) {
+      const whs = [...new Set((inboundData || []).filter(r => whAllowed(r.wh)).map(r => r.wh).filter(Boolean))].sort();
+      if (pick && !whs.includes(pick)) pick = '';
+      whSel.innerHTML = '<option value="">All warehouses</option>' + whs.map(w => `<option value="${escHtml(w)}"${w === pick ? ' selected' : ''}>${escHtml(w)}</option>`).join('');
+    }
     const selStatus = document.getElementById('inboundStatusFilter')?.value || 'open';
     const q = (document.getElementById('inboundSearch')?.value || '').toLowerCase().trim();
-    const base = (inboundData || []).filter(r => inWhFilter(r.wh));
+    const base = (inboundData || []).filter(r => whAllowed(r.wh) && (!pick || r.wh === pick));
+    const OPEN_SET = ['ASN_PENDING', 'ASN_APPROVED', 'STOCK_RECEIVED', 'STOCK_COUNT', 'STOCK_INBOUNDED'];
     let rows = base.slice();
-    if (selStatus === 'open') rows = rows.filter(r => r.status === 'Pending' || r.status === 'Started');
+    if (selStatus === 'open') rows = rows.filter(r => OPEN_SET.includes(r.status));
+    else if (selStatus === 'CANCELLED') rows = rows.filter(r => r.status === 'CANCELLED' || r.status === 'ASN_REJECTED');
     else if (selStatus !== 'all') rows = rows.filter(r => r.status === selStatus);
-    if (q) rows = rows.filter(r => (r.code || '').toLowerCase().includes(q) || (r.vendor || '').toLowerCase().includes(q));
+    if (q) rows = rows.filter(r => (r.consignment_number || '').toLowerCase().includes(q) || (r.brand || '').toLowerCase().includes(q) || (r.tracking_number || '').toLowerCase().includes(q));
     const kpiEl = document.getElementById('inboundKpis');
-    const cnt = s => base.filter(r => r.status === s).length;
-    const card = (label, val, color) => `<div class="card" style="padding:16px 18px"><div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${color};margin-bottom:8px">${label}</div><div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${Number(val).toLocaleString()}</div></div>`;
-    if (kpiEl) kpiEl.innerHTML = card('Pending', cnt('Pending'), '#fcd34d') + card('Started', cnt('Started'), '#86efac') + card('Completed', cnt('Completed'), '#94a3b8') + card('Cancelled', cnt('Cancelled'), '#f87171');
-    rows.sort((a, b) => { const so = (INBOUND_ORDER[a.status] ?? 9) - (INBOUND_ORDER[b.status] ?? 9); if (so) return so; const pa = a.planned_arrival || '', pb = b.planned_arrival || ''; return pa < pb ? -1 : pa > pb ? 1 : 0; });
-    const dfmt = t => { if (!t) return '—'; try { return new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); } catch (e) { return String(t).slice(0, 10); } };
-    const badge = s => s === 'Started' ? '<span style="color:#86efac;font-weight:600">Started</span>' : s === 'Pending' ? '<span style="color:#fcd34d;font-weight:600">Pending</span>' : s === 'Completed' ? '<span style="color:#94a3b8;font-weight:600">Completed</span>' : s === 'Cancelled' ? '<span style="color:#f87171;font-weight:600">Cancelled</span>' : escHtml(s || '');
-    tbody.innerHTML = rows.length ? rows.map(r => `<tr style="border-top:1px solid var(--border)">
-      <td style="padding:7px 18px;color:var(--text);white-space:nowrap">${escHtml(r.code || ('#' + r.id))}</td>
-      <td style="padding:7px 14px;color:var(--text);white-space:nowrap">${escHtml(r.vendor || '—')}</td>
+    const cnt = ss => base.filter(r => ss.includes(r.status)).length;
+    const card = (label, val, color) => `<div class="card" style="padding:14px 16px"><div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${color};margin-bottom:8px">${label}</div><div style="font-size:1.7rem;font-weight:700;color:var(--text);line-height:1">${Number(val).toLocaleString()}</div></div>`;
+    if (kpiEl) kpiEl.innerHTML =
+      card('Pending', cnt(['ASN_PENDING']), '#fcd34d') +
+      card('Upcoming', cnt(['ASN_APPROVED']), '#93c5fd') +
+      card('Received', cnt(['STOCK_RECEIVED']), '#c4b5fd') +
+      card('Counting', cnt(['STOCK_COUNT']), '#67e8f9') +
+      card('Inbounded', cnt(['STOCK_INBOUNDED']), '#86efac') +
+      card('Completed', cnt(['COMPLETED']), '#94a3b8');
+    rows.sort((a, b) => { const so = (INBOUND_ORDER[a.status] ?? 9) - (INBOUND_ORDER[b.status] ?? 9); if (so) return so; const pa = a.planned_date || '', pb = b.planned_date || ''; return pa < pb ? -1 : pa > pb ? 1 : 0; });
+    const dfmt = t => { if (!t) return '—'; try { return new Date(t + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); } catch (e) { return String(t).slice(0, 10); } };
+    const badge = s => { const m = INBOUND_STATUS[s]; return m ? `<span style="color:${m.color};font-weight:600">${m.label}</span>` : escHtml(s || ''); };
+    tbody.innerHTML = rows.length ? rows.map(r => {
+      const rq = r.received_qty, cq = r.consignment_qty;
+      const pct = r.complete_pct != null ? Math.round(r.complete_pct) : (cq ? Math.round(100 * (rq || 0) / cq) : null);
+      return `<tr style="border-top:1px solid var(--border)">
+      <td style="padding:7px 18px;color:var(--text);white-space:nowrap">${escHtml(r.consignment_number || ('#' + r.id))}</td>
+      <td style="padding:7px 14px;color:var(--text);white-space:nowrap">${escHtml(r.brand || '—')}</td>
       <td style="padding:7px 14px;color:var(--muted);white-space:nowrap">${escHtml(r.wh || '')}</td>
       <td style="padding:7px 14px;white-space:nowrap">${badge(r.status)}</td>
-      <td style="padding:7px 14px;color:var(--muted);white-space:nowrap">${dfmt(r.planned_arrival)}</td>
-      <td style="padding:7px 18px;text-align:right;color:var(--text)">${r.total_qty != null ? Number(r.total_qty).toLocaleString() : '—'}</td>
-    </tr>`).join('') : `<tr><td colspan="6" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No purchase orders match this filter.</td></tr>`;
+      <td style="padding:7px 14px;color:var(--muted);white-space:nowrap">${dfmt(r.planned_date)}</td>
+      <td style="padding:7px 14px;text-align:right;color:var(--text)">${rq != null ? Number(rq).toLocaleString() : '—'} <span style="color:var(--muted)">/ ${cq != null ? Number(cq).toLocaleString() : '—'}</span></td>
+      <td style="padding:7px 18px;text-align:right;color:var(--muted)">${pct != null ? pct + '%' : '—'}</td>
+    </tr>`; }).join('') : `<tr><td colspan="7" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No inbound shipments match this filter.</td></tr>`;
   }
   function syncInboundNow(btn) {
     const orig = btn ? btn.textContent : null;
@@ -7315,6 +7355,7 @@
     try { window.postMessage({ type: 'wms-sync-inbound' }, '*'); } catch (e) {}
     setTimeout(() => finish(false, 'timed out — POs scan many pages; give it a moment and Refresh.'), 90000);
   }
+  function onInboundWhChange(v) { try { localStorage.setItem('inboundWarehouse', v || ''); } catch (e) {} renderInbound(); }
   function renderAttStatus() {
     const el = document.getElementById('attStatus'); if (!el) return;
     const s = attSyncStatus;

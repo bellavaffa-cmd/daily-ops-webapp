@@ -24,7 +24,7 @@ chrome.alarms.onAlarm.addListener(alarm => {
     performSync(false).catch(e => console.error('[WMS bg] hourly sync:', e.message));
     syncRolesFromLogiwa().catch(() => {});   // WMS → dashboard role sync (throttled, no tab needed)
     syncAttendance().catch(e => console.error('[WMS bg] attendance sync:', e && e.message));   // LOCAD Ops → attendance table
-    syncInboundPOs(false).catch(e => console.error('[WMS bg] inbound sync:', e && e.message));   // Logiwa POs → inbound_po (throttled ~6h)
+    syncInboundShipments(false).catch(e => console.error('[WMS bg] inbound sync:', e && e.message));   // Partner Hub consignments → inbound_shipment (throttled ~2h)
   }
 });
 
@@ -117,7 +117,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // Manual attendance sync (LOCAD Ops → Supabase).
   if (msg.action === 'syncAttendance') { syncAttendance().then(() => sendResponse({ ok: true })).catch(e => sendResponse({ ok: false, error: e && e.message })); return true; }
   // Manual inbound-PO sync (Logiwa → Supabase).
-  if (msg.action === 'syncInbound') { syncInboundPOs(true).then(() => sendResponse({ ok: true })).catch(e => sendResponse({ ok: false, error: e && e.message })); return true; }
+  if (msg.action === 'syncInbound') { syncInboundShipments(true).then(() => sendResponse({ ok: true })).catch(e => sendResponse({ ok: false, error: e && e.message })); return true; }
   // companion.js pushes the LOCAD Ops access token on load so we can sync tab-free.
   if (msg.action === 'storeCompanionToken' && msg.token) { try { chrome.storage.local.set({ companionToken: msg.token, companionTokenExp: msg.exp || _jwtExp(msg.token) }); } catch (e) {} sendResponse({ ok: true }); return false; }
 });
@@ -283,61 +283,131 @@ async function syncAttendance() {
   }
   await reportSyncStatus(!saveErr, saveErr, uniq.length);
 }
-// ── Inbound purchase orders (Logiwa → inbound_po) ───────────────────────────
-// Logiwa has ~200k POs (mostly Completed history) with no server-side status filter,
-// so we scan the most-recently-updated pages and keep OPEN POs (Pending=1, Started=3)
-// always, plus Completed(4)/Cancelled(6) only if updated in the last ~3 weeks (so the
-// tab can show recent inbound without storing the whole 200k history). Mirror semantics:
-// rows not re-seen this sync are dropped. Throttled ~6h (force=true bypasses).
+// ── Inbound shipments (LOCAD Partner Hub → inbound_shipment) ────────────────
+// The partner hub "Manage Inbound Shipments" list (ASNs/consignments) is the
+// authoritative inbound view. API: GET dashboard.golocad.com/api/partnerhub/
+// consignment/consignments/ with `Authorization: Token <partner.golocad.com token>`,
+// params search/start_date/end_date/warehouse(CSV of warehouse ids)/limit/offset,
+// DRF-paginated {count,next,previous,results}. We pull the last ~60 days across the
+// user's warehouses (GWF localStorage) and mirror into inbound_shipment (rows not
+// re-seen this sync are dropped). Throttled ~2h (force=true bypasses).
+// Read the partner-hub token (+ GWF warehouse filter) straight from a partner.golocad.com
+// tab's localStorage via scripting.executeScript (works even if no content script runs there).
+async function readPartnerAuthFromTab(tabId) {
+  try {
+    const r = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => { try { return { token: localStorage.getItem('token') || null, gwf: localStorage.getItem('GWF') || null }; } catch (e) { return null; } },
+    });
+    const v = r && r[0] && r[0].result;
+    if (v && v.token) return v;
+  } catch (e) {}
+  return null;
+}
+// Prefer a live open Partner Hub tab (read directly); else the cached token from the last visit.
+async function getPartnerAuth() {
+  try {
+    const tabs = await chrome.tabs.query({ url: 'https://partner.golocad.com/*' });
+    for (const tab of (tabs || [])) {
+      const v = await readPartnerAuthFromTab(tab.id);
+      if (v && v.token) { try { chrome.storage.local.set({ partnerToken: v.token, partnerGWF: v.gwf || null }); } catch (e) {} return v; }
+    }
+  } catch (e) {}
+  try {
+    const s = await chrome.storage.local.get(['partnerToken', 'partnerGWF']);
+    if (s && s.partnerToken) return { token: s.partnerToken, gwf: s.partnerGWF || null };
+  } catch (e) {}
+  return null;
+}
+// Hands-off refresh: if nothing is cached and no tab is open, open the Partner Hub in a
+// BACKGROUND tab so the existing SSO session silently lands a token, capture it, close the tab.
+// A 3-hour cooldown avoids churn when it can't complete (real login needed).
+let _partnerRefreshing = false;
+async function refreshPartnerToken() {
+  if (_partnerRefreshing) return;
+  try {
+    const s = await chrome.storage.local.get(['partnerToken', 'partnerRefreshAt']);
+    if (s.partnerToken) return;                                                              // have one cached
+    if (s.partnerRefreshAt && Date.now() - Number(s.partnerRefreshAt) < 3 * 60 * 60 * 1000) return;   // tried recently
+  } catch (e) {}
+  try { const open = await chrome.tabs.query({ url: 'https://partner.golocad.com/*' }); if (open && open.length) return; } catch (e) {}
+  _partnerRefreshing = true;
+  let tabId = null;
+  try { await chrome.storage.local.set({ partnerRefreshAt: Date.now() }); } catch (e) {}
+  try {
+    const tab = await chrome.tabs.create({ url: 'https://partner.golocad.com/partnerhub/inbound/manage-inbound-shipment/list', active: false });
+    tabId = tab.id;
+    const start = Date.now();
+    while (Date.now() - start < 30000) {
+      await new Promise(r => setTimeout(r, 1500));
+      const v = await readPartnerAuthFromTab(tabId);
+      if (v && v.token) { try { chrome.storage.local.set({ partnerToken: v.token, partnerGWF: v.gwf || null }); } catch (e) {} break; }
+    }
+  } catch (e) {} finally {
+    if (tabId != null) { try { await chrome.tabs.remove(tabId); } catch (e) {} }
+    _partnerRefreshing = false;
+  }
+}
 async function reportInboundStatus(ok, message, records) {
   const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co', SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
   try { await fetch(`${SB_URL}/rest/v1/sync_status?on_conflict=source`, { method: 'POST', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify([{ source: 'inbound', ok: !!ok, message: message || null, records: records == null ? null : records, synced_at: new Date().toISOString() }]) }); } catch (e) {}
 }
-async function syncInboundPOs(force) {
+async function syncInboundShipments(force) {
   const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co', SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
   const SBH = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' };
   try {
-    if (!force) { const s = await chrome.storage.local.get('inboundSyncAt'); if (s.inboundSyncAt && Date.now() - Number(s.inboundSyncAt) < 6 * 60 * 60 * 1000) return; }
+    if (!force) { const s = await chrome.storage.local.get('inboundSyncAt'); if (s.inboundSyncAt && Date.now() - Number(s.inboundSyncAt) < 2 * 60 * 60 * 1000) return; }
   } catch (e) {}
-  const token = await getWmsToken();
-  if (!token) { await reportInboundStatus(false, 'No WMS session — open wms.golocad.com and log in once.', null); return; }
-  const H = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token };
-  const MAX_PAGES = 50, SIZE = 1000, CONC = 6;
-  const getPage = async (p) => { const r = await fetch(`https://mywmsquery.logiwa.com/api/purchaseorder/list/i/${p}/s/${SIZE}`, { method: 'POST', headers: H, body: '{}' }); if (!r.ok) throw new Error('logiwa ' + r.status); const j = await r.json(); return j.data || j.Data || []; };
-  const byId = {}; let apiErr = 0, ended = false;
-  const RETAIN_MS = 21 * 24 * 60 * 60 * 1000;
-  const keep = (a) => { (a || []).forEach(p => {
-    if (p.id == null) return;
-    const sid = p.purchaseOrderStatusId;
-    if (sid === 1 || sid === 3) { byId[p.id] = p; return; }        // open: always keep
-    if (sid === 4 || sid === 6) {                                   // completed/cancelled: recent only
-      const t = Date.parse(p.updatedDateTime || p.actualReceivingDate || p.actualArrivalDate || '') || 0;
-      if (t && Date.now() - t <= RETAIN_MS) byId[p.id] = p;
-    }
-  }); };
+  await refreshPartnerToken();                                    // hands-off token refresh if none cached
+  const auth = await getPartnerAuth();
+  if (!auth || !auth.token) { await reportInboundStatus(false, 'No Partner Hub session — open partner.golocad.com and log in once.', null); return; }
+  const now = new Date();
+  const sd = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000).toISOString();
+  const ed = now.toISOString();
+  let whCsv = '';
+  try { if (auth.gwf) whCsv = JSON.parse(auth.gwf).join(','); } catch (e) {}
+  const AH = { Authorization: 'Token ' + auth.token };
+  const BASE = 'https://dashboard.golocad.com/api/partnerhub/consignment/consignments/';
+  const dOnly = (x) => { if (!x) return null; const m = String(x).match(/^\d{4}-\d{2}-\d{2}/); return m ? m[0] : null; };
+  const byId = {};
   try {
-    const first = await getPage(0); keep(first);
-    if (first.length >= SIZE) {
-      for (let base = 1; base < MAX_PAGES && !ended; base += CONC) {
-        const batch = []; for (let k = 0; k < CONC && base + k < MAX_PAGES; k++) batch.push(base + k);
-        const res = await Promise.all(batch.map(p => getPage(p).catch(() => { apiErr++; return null; })));
-        res.forEach(a => { if (a) { keep(a); if (a.length < SIZE) ended = true; } });
-      }
+    for (let offset = 0, guard = 0; guard < 80; guard++, offset += 500) {
+      const p = new URLSearchParams({ search: '', start_date: sd, end_date: ed, limit: '500', offset: String(offset) });
+      if (whCsv) p.set('warehouse', whCsv);
+      const r = await fetch(BASE + '?' + p.toString(), { headers: AH });
+      if (r.status === 401 || r.status === 403) { try { await chrome.storage.local.remove('partnerToken'); } catch (e) {} await reportInboundStatus(false, 'Partner Hub session expired — open partner.golocad.com and log in once.', null); return; }
+      if (!r.ok) throw new Error('partnerhub ' + r.status);
+      const j = await r.json();
+      (j.results || []).forEach(c => { if (c.id != null) byId[c.id] = c; });
+      if (!j.next || (j.results || []).length === 0) break;
     }
-  } catch (e) { if (!Object.keys(byId).length) { await reportInboundStatus(false, 'Logiwa PO API error: ' + (e && e.message), null); return; } }
+  } catch (e) { if (!Object.keys(byId).length) { await reportInboundStatus(false, 'Partner Hub API error: ' + (e && e.message), null); return; } }
   try { await chrome.storage.local.set({ inboundSyncAt: Date.now() }); } catch (e) {}
-  const now = new Date().toISOString();
-  const rows = Object.values(byId).map(p => ({
-    id: p.id, code: p.code || null, vendor: p.vendorDisplayName || null, wh: p.warehouseCode || null,
-    status: p.purchaseOrderStatusName || null, status_id: p.purchaseOrderStatusId,
-    po_date: p.purchaseOrderDate || null, planned_arrival: p.plannedArrivalDate || null, actual_arrival: p.actualArrivalDate || null, actual_receiving: p.actualReceivingDate || null,
-    total_qty: p.totalQuantity == null ? null : p.totalQuantity, reference: p.referenceNumber || null, tags: p.tags || null,
-    wms_updated_at: p.updatedDateTime || null, synced_at: now, updated_at: now,
+  const nowIso = now.toISOString();
+  const rows = Object.values(byId).map(c => ({
+    id: c.id,
+    consignment_number: c.consignment_number || null,
+    status: c.consignment_status || null,
+    channel_status: c.channel_status || null,
+    consignment_qty: c.consignment_quantity == null ? null : c.consignment_quantity,
+    received_qty: c.received_quantity == null ? null : c.received_quantity,
+    complete_pct: c.complete_percentage == null ? null : c.complete_percentage,
+    warehouse: c.warehouse || null,
+    warehouse_id: c.warehouse_id == null ? null : c.warehouse_id,
+    brand: c.brand || null,
+    planned_date: dOnly(c.consignment_date),
+    estimated_arrival: dOnly(c.estimated_arrival_date),
+    carrier_name: c.carrier_name || null,
+    tracking_number: Array.isArray(c.tracking_number) ? c.tracking_number.join(', ') : (c.tracking_number || null),
+    inbound_method: c.inbound_method || null,
+    tags: c.tags || null,
+    src_created_at: c.created_at || null,
+    synced_at: nowIso, updated_at: nowIso,
   }));
-  if (!rows.length) { await reportInboundStatus(true, 'No open purchase orders.', 0); return; }
+  if (!rows.length) { await reportInboundStatus(true, 'No inbound shipments in the last 60 days.', 0); return; }
   let saveErr = null;
-  for (let i = 0; i < rows.length; i += 300) { try { const sr = await fetch(`${SB_URL}/rest/v1/inbound_po?on_conflict=id`, { method: 'POST', headers: Object.assign({}, SBH, { Prefer: 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(rows.slice(i, i + 300)) }); if (!sr.ok) saveErr = 'DB save failed (HTTP ' + sr.status + ')'; } catch (e) { saveErr = 'DB save failed: ' + (e && e.message); } }
-  if (!saveErr) { try { await fetch(`${SB_URL}/rest/v1/inbound_po?synced_at=lt.${encodeURIComponent(now)}`, { method: 'DELETE', headers: SBH }); } catch (e) {} }
+  for (let i = 0; i < rows.length; i += 500) { try { const sr = await fetch(`${SB_URL}/rest/v1/inbound_shipment?on_conflict=id`, { method: 'POST', headers: Object.assign({}, SBH, { Prefer: 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(rows.slice(i, i + 500)) }); if (!sr.ok) saveErr = 'DB save failed (HTTP ' + sr.status + ')'; } catch (e) { saveErr = 'DB save failed: ' + (e && e.message); } }
+  if (!saveErr) { try { await fetch(`${SB_URL}/rest/v1/inbound_shipment?synced_at=lt.${encodeURIComponent(nowIso)}`, { method: 'DELETE', headers: SBH }); } catch (e) {} }
   await reportInboundStatus(!saveErr, saveErr, rows.length);
 }
 async function storedWmsIdentity() {

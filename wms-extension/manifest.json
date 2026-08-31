@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WMS → Report Error",
-  "version": "3.30",
+  "version": "3.31",
   "description": "Opens the Daily Ops report form for WMS packing orders, auto-triggers on carrier/AWB errors, and syncs LOCAD Ops attendance.",
   "content_scripts": [
     {
@@ -27,6 +27,7 @@
   "host_permissions": [
     "https://wms.golocad.com/*",
     "https://wms.companion.golocad.com/*",
+    "https://partner.golocad.com/*",
     "https://dashboard.golocad.com/*",
     "https://bellavaffa-cmd.github.io/*",
     "https://mywmsquery.logiwa.com/*",
