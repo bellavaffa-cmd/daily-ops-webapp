@@ -2471,17 +2471,6 @@
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <select id="inboundWarehouse" onchange="onInboundWhChange(this.value)" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer"></select>
-        <select id="inboundStatusFilter" onchange="renderInbound()" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
-          <option value="open" selected>In progress</option>
-          <option value="ASN_PENDING">Pending approval</option>
-          <option value="ASN_APPROVED">Upcoming</option>
-          <option value="STOCK_RECEIVED">Received</option>
-          <option value="STOCK_COUNT">Counting</option>
-          <option value="STOCK_INBOUNDED">Inbounded</option>
-          <option value="COMPLETED">Completed</option>
-          <option value="CANCELLED">Cancelled / rejected</option>
-          <option value="all">All</option>
-        </select>
         <input id="inboundSearch" oninput="renderInbound()" placeholder="Consignment #, brand" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);min-width:150px">
         <button type="button" id="inboundSyncBtn" onclick="syncInboundNow(this)" title="Pull the latest inbound shipments from the Partner Hub" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--primary,#4ade80);background:var(--surface2);color:var(--text);cursor:pointer">⭳ Sync now</button>
       </div>
@@ -7289,6 +7278,8 @@
   const _stripWhCode = s => String(s || '').replace(/\s*\([A-Za-z]{2,4}-[A-Za-z0-9]+\)\s*$/, '').trim().toLowerCase();
   // Partner Hub sends brand as {id,name}; extract the name (= the WMS brand name).
   const brandName = b => { if (b == null) return ''; if (typeof b === 'object') return b.name || ''; const s = String(b); if (s.charAt(0) === '{') { try { return JSON.parse(s).name || s; } catch (e) {} } return s; };
+  let _inboundStatus = 'all';           // status selected via the KPI boxes ('all' = Total)
+  function setInboundStatus(s) { _inboundStatus = s; try { _inboundExpanded.clear(); } catch (e) {} renderInbound(); }
   const _inboundExpanded = new Set();   // consignment ids whose detail row is expanded
   function toggleInboundRow(id) {
     const det = document.getElementById('inbrow-' + id); if (!det) return;
@@ -7331,25 +7322,27 @@
       if (pick && !whs.includes(pick)) pick = '';
       whSel.innerHTML = '<option value="">All warehouses</option>' + whs.map(w => `<option value="${escHtml(w)}"${w === pick ? ' selected' : ''}>${escHtml(w)}</option>`).join('');
     }
-    const selStatus = document.getElementById('inboundStatusFilter')?.value || 'open';
+    const selStatus = _inboundStatus;
     const q = (document.getElementById('inboundSearch')?.value || '').toLowerCase().trim();
     const base = (inboundData || []).filter(r => inboundWhAllowed(r.wh) && (!pick || r.wh === pick));
-    const OPEN_SET = ['ASN_PENDING', 'ASN_APPROVED', 'STOCK_RECEIVED', 'STOCK_COUNT', 'STOCK_INBOUNDED'];
     let rows = base.slice();
-    if (selStatus === 'open') rows = rows.filter(r => OPEN_SET.includes(r.status));
-    else if (selStatus === 'CANCELLED') rows = rows.filter(r => r.status === 'CANCELLED' || r.status === 'ASN_REJECTED');
-    else if (selStatus !== 'all') rows = rows.filter(r => r.status === selStatus);
+    if (selStatus !== 'all') rows = rows.filter(r => r.status === selStatus);
     if (q) rows = rows.filter(r => (r.consignment_number || '').toLowerCase().includes(q) || brandName(r.brand).toLowerCase().includes(q) || (r.tracking_number || '').toLowerCase().includes(q));
     const kpiEl = document.getElementById('inboundKpis');
-    const cnt = ss => base.filter(r => ss.includes(r.status)).length;
-    const card = (label, val, color) => `<div class="card" style="padding:14px 16px"><div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${color};margin-bottom:8px">${label}</div><div style="font-size:1.7rem;font-weight:700;color:var(--text);line-height:1">${Number(val).toLocaleString()}</div></div>`;
+    const cnt = st => base.filter(r => r.status === st).length;
+    // Clickable status boxes double as the filter; the active one is highlighted.
+    const card = (key, label, val, color) => {
+      const on = selStatus === key;
+      return `<div onclick="setInboundStatus('${key}')" class="card" title="Show ${escHtml(label)}" style="padding:14px 16px;cursor:pointer;border:1px solid ${on ? color : 'var(--border)'};${on ? 'box-shadow:inset 0 0 0 1px ' + color + ';' : ''}outline:none;transition:border-color .1s"><div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${color};margin-bottom:8px">${label}</div><div style="font-size:1.7rem;font-weight:700;color:var(--text);line-height:1">${Number(val).toLocaleString()}</div></div>`;
+    };
     if (kpiEl) kpiEl.innerHTML =
-      card('Pending', cnt(['ASN_PENDING']), '#fcd34d') +
-      card('Upcoming', cnt(['ASN_APPROVED']), '#93c5fd') +
-      card('Received', cnt(['STOCK_RECEIVED']), '#c4b5fd') +
-      card('Counting', cnt(['STOCK_COUNT']), '#67e8f9') +
-      card('Inbounded', cnt(['STOCK_INBOUNDED']), '#86efac') +
-      card('Completed', cnt(['COMPLETED']), '#94a3b8');
+      card('all', 'Total', base.length, 'var(--text)') +
+      card('ASN_PENDING', 'Pending', cnt('ASN_PENDING'), '#fcd34d') +
+      card('ASN_APPROVED', 'Upcoming', cnt('ASN_APPROVED'), '#93c5fd') +
+      card('STOCK_RECEIVED', 'Received', cnt('STOCK_RECEIVED'), '#c4b5fd') +
+      card('STOCK_COUNT', 'Counting', cnt('STOCK_COUNT'), '#67e8f9') +
+      card('STOCK_INBOUNDED', 'Inbounded', cnt('STOCK_INBOUNDED'), '#86efac') +
+      card('COMPLETED', 'Completed', cnt('COMPLETED'), '#94a3b8');
     rows.sort((a, b) => { const so = (INBOUND_ORDER[a.status] ?? 9) - (INBOUND_ORDER[b.status] ?? 9); if (so) return so; const pa = a.planned_date || '', pb = b.planned_date || ''; return pa < pb ? -1 : pa > pb ? 1 : 0; });
     const dfmt = t => { if (!t) return '—'; try { return new Date(t + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); } catch (e) { return String(t).slice(0, 10); } };
     const badge = s => { const m = INBOUND_STATUS[s]; return m ? `<span style="color:${m.color};font-weight:600">${m.label}</span>` : escHtml(s || ''); };
