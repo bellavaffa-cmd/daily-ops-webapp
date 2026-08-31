@@ -7283,6 +7283,17 @@
     COMPLETED: { label: 'Completed', color: '#94a3b8' },
     CANCELLED: { label: 'Cancelled', color: '#f87171' },
   };
+  // The app's warehouse names carry a region-code suffix (e.g. "LOCAD Joo Koon FC (SG-JOO)")
+  // but the Partner Hub returns the bare name ("LOCAD Joo Koon FC"). Match case-insensitively
+  // after stripping that trailing " (XX-YYY)" code so access scoping still works for inbound.
+  const _stripWhCode = s => String(s || '').replace(/\s*\([A-Za-z]{2,4}-[A-Za-z0-9]+\)\s*$/, '').trim().toLowerCase();
+  let _whAllowNorm = null, _whAllowNormFrom = null;
+  function inboundWhAllowed(wh) {
+    if (!_whAllow) return false;
+    if (_whAllow.has(wh)) return true;
+    if (_whAllowNorm === null || _whAllowNormFrom !== _whAllow) { _whAllowNormFrom = _whAllow; _whAllowNorm = new Set([..._whAllow].map(_stripWhCode)); }
+    return _whAllowNorm.has(_stripWhCode(wh));
+  }
   async function fetchInbound() {
     try {
       const sel = 'id,consignment_number,status,consignment_qty,received_qty,complete_pct,warehouse,brand,planned_date,estimated_arrival,carrier_name,tracking_number';
@@ -7293,7 +7304,7 @@
         if (!page || page.length < 1000) break;
       }
       const st = await fetch(SB_URL + '/sync_status?source=eq.inbound&select=*', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
-      inboundData = (rows || []).map(r => ({ ...r, wh: r.warehouse })).filter(r => whAllowed(r.wh));
+      inboundData = (rows || []).map(r => ({ ...r, wh: r.warehouse })).filter(r => inboundWhAllowed(r.wh));
       inboundStatus = (st && st[0]) || null;
     } catch (e) { inboundData = []; inboundStatus = null; }
     renderInbound();
@@ -7306,13 +7317,13 @@
     const whSel = document.getElementById('inboundWarehouse');
     let pick = localStorage.getItem('inboundWarehouse') || '';
     if (whSel) {
-      const whs = [...new Set((inboundData || []).filter(r => whAllowed(r.wh)).map(r => r.wh).filter(Boolean))].sort();
+      const whs = [...new Set((inboundData || []).filter(r => inboundWhAllowed(r.wh)).map(r => r.wh).filter(Boolean))].sort();
       if (pick && !whs.includes(pick)) pick = '';
       whSel.innerHTML = '<option value="">All warehouses</option>' + whs.map(w => `<option value="${escHtml(w)}"${w === pick ? ' selected' : ''}>${escHtml(w)}</option>`).join('');
     }
     const selStatus = document.getElementById('inboundStatusFilter')?.value || 'open';
     const q = (document.getElementById('inboundSearch')?.value || '').toLowerCase().trim();
-    const base = (inboundData || []).filter(r => whAllowed(r.wh) && (!pick || r.wh === pick));
+    const base = (inboundData || []).filter(r => inboundWhAllowed(r.wh) && (!pick || r.wh === pick));
     const OPEN_SET = ['ASN_PENDING', 'ASN_APPROVED', 'STOCK_RECEIVED', 'STOCK_COUNT', 'STOCK_INBOUNDED'];
     let rows = base.slice();
     if (selStatus === 'open') rows = rows.filter(r => OPEN_SET.includes(r.status));
