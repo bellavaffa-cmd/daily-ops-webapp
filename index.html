@@ -2312,6 +2312,7 @@
     </div>
 
     <!-- KPI Cards -->
+    <div id="prodTempWarning" style="margin-bottom:16px"></div>
     <div id="productivityKpis" style="margin-bottom:16px"></div>
 
     <!-- Completed orders — trend & forecast (throughput) -->
@@ -5849,6 +5850,7 @@
       }).join('') : `<tr><td colspan="6" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No data yet.</td></tr>`;
     }
 
+    try { renderTempUnassignedWarning(); } catch (e) { }
     renderHourlyRate(selWh);
     renderProdTrend();
     renderProdHourlyTable();
@@ -6281,6 +6283,7 @@
   let tempStaffNames = [];       // distinct attendance names for the "assigned to" datalist
   let tempAssignToday = {};      // account_id -> staff_name for TODAY (resets daily)
   let tempOperatorMap = {};      // normalized WMS operator name -> today's assigned staff
+  let tempWmsInfo = {};          // normalized WMS operator name -> { wms_name, label, staff|null }
   const TEMP_TOKEN = 'daily-ops-temp-vault-v1';
   function _b64e(buf){ let s=''; const a=new Uint8Array(buf); for(let i=0;i<a.length;i++) s+=String.fromCharCode(a[i]); return btoa(s); }
   function _b64d(s){ const b=atob(s), a=new Uint8Array(b.length); for(let i=0;i<b.length;i++) a[i]=b.charCodeAt(i); return a; }
@@ -6303,18 +6306,44 @@
   async function fetchTempAssignments(){ tempAssignToday={}; try { const rows = await fetch(SB_URL+'/temp_assignment?assign_date=eq.'+localDateStr()+'&select=account_id,staff_name', { headers:SB_HDR }).then(r=>r.ok?r.json():[]); (rows||[]).forEach(r=>{ if(r.staff_name) tempAssignToday[r.account_id]=r.staff_name; }); } catch(e){ tempAssignToday={}; } }
   // Build "WMS operator name -> today's assigned staff" (plaintext only, no passphrase).
   // Lets productivity views show the real person using a shared temp Logiwa account.
+  // Also tracks EVERY temp account (assigned or not) so we can flag active-but-unassigned.
   async function fetchTempOperatorMap(){
     try {
       const [accs, asg] = await Promise.all([
-        fetch(SB_URL+'/temp_accounts?select=id,wms_name', { headers:SB_HDR }).then(r=>r.ok?r.json():[]),
+        fetch(SB_URL+'/temp_accounts?select=id,label,wms_name', { headers:SB_HDR }).then(r=>r.ok?r.json():[]),
         fetch(SB_URL+'/temp_assignment?assign_date=eq.'+localDateStr()+'&select=account_id,staff_name', { headers:SB_HDR }).then(r=>r.ok?r.json():[]),
       ]);
       const byId={}; (asg||[]).forEach(a=>{ if(a.staff_name) byId[a.account_id]=a.staff_name; });
-      const map={}; (accs||[]).forEach(a=>{ if(a.wms_name && byId[a.id]) map[String(a.wms_name).trim().toLowerCase()]=byId[a.id]; });
-      tempOperatorMap = map;
-    } catch(e){ tempOperatorMap={}; }
+      const map={}, info={};
+      (accs||[]).forEach(a=>{ if(a.wms_name){ const k=String(a.wms_name).trim().toLowerCase(); const staff=byId[a.id]||null; info[k]={ wms_name:a.wms_name, label:a.label, staff }; if(staff) map[k]=staff; } });
+      tempOperatorMap = map; tempWmsInfo = info;
+    } catch(e){ tempOperatorMap={}; tempWmsInfo={}; }
   }
   function tempDisplayName(name){ if(!name) return name; const m=tempOperatorMap[String(name).trim().toLowerCase()]; return m || name; }
+  // Alert managers/supervisors when a temp Logiwa account is picking/packing today but
+  // hasn't been assigned to a temp staff member (so productivity still shows the login).
+  function renderTempUnassignedWarning(){
+    const el = document.getElementById('prodTempWarning'); if(!el) return;
+    if (_userRole && !['Admin','Manager','Supervisor'].includes(_userRole)) { el.innerHTML=''; return; }
+    const today = localDateStr();
+    const active = {};
+    (typeof userPerf !== 'undefined' ? (userPerf||[]) : []).forEach(r => {
+      if (r.activity_date !== today || !whAllowed(r.warehouse_code)) return;
+      const nm = r.executed_by_name; if(!nm) return;
+      const inf = tempWmsInfo[String(nm).trim().toLowerCase()];
+      if (!inf || inf.staff) return;   // not a temp account, or already assigned
+      const o = Number(r.picked_orders||0) + Number(r.packed_orders||0); if (o <= 0) return;
+      (active[inf.wms_name] = active[inf.wms_name] || { wms_name: inf.wms_name, label: inf.label, orders: 0 }).orders += o;
+    });
+    const rows = Object.values(active).sort((a,b)=>b.orders-a.orders);
+    if (!rows.length) { el.innerHTML=''; return; }
+    const list = rows.map(r => `<b style="color:var(--text)">${escHtml(r.wms_name)}</b>${r.label?` <span style="opacity:.7">(${escHtml(r.label)})</span>`:''} · ${Number(r.orders).toLocaleString()}`).join(' &nbsp;·&nbsp; ');
+    el.innerHTML = `<div style="border:1px solid #fbbf24;background:rgba(251,191,36,.12);border-radius:10px;padding:11px 14px">
+      <div style="font-size:.82rem;font-weight:700;color:#fbbf24">⚠ ${rows.length} temp ${rows.length===1?'account is':'accounts are'} working with no staff assigned today</div>
+      <div style="margin-top:5px;font-size:.78rem;color:var(--muted)">${list}</div>
+      <div style="margin-top:6px;font-size:.72rem;color:var(--muted)">Assign them in <b>Temp Accounts</b> so productivity shows the real person.</div>
+    </div>`;
+  }
   async function openTempView(){ await Promise.all([fetchTempVault(), fetchTempAccounts(), fetchTempStaffNames(), fetchTempAssignments()]); renderTemp(); }
   function renderTemp(){
     const badge=document.getElementById('tempLockBadge'), btns=document.getElementById('tempHeaderBtns'), body=document.getElementById('tempBody');
