@@ -7288,6 +7288,17 @@
     if (open) _inboundExpanded.add(id); else _inboundExpanded.delete(id);
     const car = document.getElementById('inbcar-' + id); if (car) car.textContent = open ? '▾' : '▸';
   }
+  function collapseInboundRows() {
+    if (!_inboundExpanded.size) return;
+    _inboundExpanded.forEach(id => { const d = document.getElementById('inbrow-' + id); if (d) d.style.display = 'none'; const c = document.getElementById('inbcar-' + id); if (c) c.textContent = '▸'; });
+    _inboundExpanded.clear();
+  }
+  // Clicking anywhere outside an open detail panel (and not on a row toggle) collapses it.
+  document.addEventListener('click', function (e) {
+    if (!_inboundExpanded.size) return;
+    if (e.target.closest && (e.target.closest('.inb-toggle') || e.target.closest('tr[id^="inbrow-"]'))) return;
+    collapseInboundRows();
+  });
   let _whAllowNorm = null, _whAllowNormFrom = null;
   function inboundWhAllowed(wh) {
     if (!_whAllow) return false;
@@ -7355,7 +7366,7 @@
       const tagStr = Array.isArray(tags) ? tags.map(t => (t && typeof t === 'object') ? (t.name || t.label || JSON.stringify(t)) : String(t)).join(', ') : (tags ? String(tags) : '');
       const field = (label, val) => `<div><div style="font-size:.62rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:2px">${label}</div><div style="color:var(--text)">${val == null || val === '' ? '—' : escHtml(String(val))}</div></div>`;
       return `<tr style="border-top:1px solid var(--border)">
-      <td style="padding:7px 18px;white-space:nowrap"><span onclick="toggleInboundRow(${r.id})" style="cursor:pointer;color:var(--primary,#4ade80);font-weight:600;user-select:none" title="Show details"><span id="inbcar-${r.id}" style="display:inline-block;width:.9em;color:var(--muted)">${exp ? '▾' : '▸'}</span>${escHtml(r.consignment_number || ('#' + r.id))}</span></td>
+      <td style="padding:7px 18px;white-space:nowrap"><span class="inb-toggle" onclick="toggleInboundRow(${r.id})" style="cursor:pointer;color:var(--primary,#4ade80);font-weight:600;user-select:none" title="Show details"><span id="inbcar-${r.id}" style="display:inline-block;width:.9em;color:var(--muted)">${exp ? '▾' : '▸'}</span>${escHtml(r.consignment_number || ('#' + r.id))}</span></td>
       <td style="padding:7px 14px;color:var(--text);white-space:nowrap">${escHtml(brandName(r.brand) || '—')}</td>
       <td style="padding:7px 14px;color:var(--muted);white-space:nowrap">${escHtml(r.wh || '')}</td>
       <td style="padding:7px 14px;white-space:nowrap">${badge(r.status)}</td>
