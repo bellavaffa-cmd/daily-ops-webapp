@@ -1365,6 +1365,10 @@
         </button>
       </div>
     </div>
+    <button class="snav-btn" id="snav-btn-inbound" onclick="showView('inbound')">
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8v13H3V8M1 3h22v5H1zM12 12v6m0 0l-3-3m3 3l3-3"/></svg>
+      Inbound
+    </button>
     <button class="snav-btn" id="snav-btn-briefing" onclick="showView('briefing')">
       <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3l1.9 4.3 4.6.4-3.5 3 1.1 4.6L12 13l-4.1 2.3 1.1-4.6-3.5-3 4.6-.4z"/></svg>
       Daily Briefing
@@ -2458,6 +2462,36 @@
 
   </div>
 
+  <!-- ── INBOUND VIEW (purchase orders) ── -->
+  <div class="view" id="view-inbound">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+      <div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Inbound</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Open purchase orders per warehouse (Pending &amp; Started) · from Logiwa · <span id="inboundStamp"></span></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="inboundStatusFilter" onchange="renderInbound()" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
+          <option value="">All open</option>
+          <option value="Pending">Pending</option>
+          <option value="Started">Started</option>
+        </select>
+        <input id="inboundSearch" oninput="renderInbound()" placeholder="PO # or vendor" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);min-width:150px">
+        <button type="button" id="inboundSyncBtn" onclick="syncInboundNow(this)" title="Pull the latest POs from Logiwa" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--primary,#4ade80);background:var(--surface2);color:var(--text);cursor:pointer">⭳ Sync now</button>
+      </div>
+    </div>
+    <div id="inboundKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px"></div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.82rem"><thead><tr style="background:var(--surface2)">
+        <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">PO #</th>
+        <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Vendor</th>
+        <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Warehouse</th>
+        <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Status</th>
+        <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Planned arrival</th>
+        <th style="text-align:right;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Qty</th>
+      </tr></thead><tbody id="inboundTable"></tbody></table></div>
+    </div>
+  </div>
+
   <!-- ── DAILY BRIEFING VIEW (AI) ── -->
   <div class="view" id="view-briefing">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px">
@@ -2952,6 +2986,7 @@
     { key: 'packingErrorTabShortage', navId: 'snav-btn-shortage', view: 'shortage', toggleId: 'tabToggleShortage' },
     { key: 'packingErrorTabProductivity', navId: 'snav-btn-productivity', view: 'productivity', toggleId: 'tabToggleProductivity' },
     { key: 'packingErrorTabJobs',     navId: 'snav-btn-jobs',     view: 'jobs',     toggleId: 'tabToggleJobs'     },
+    { key: 'packingErrorTabInbound',  navId: 'snav-btn-inbound',  view: 'inbound',  toggleId: 'tabToggleInbound'  },
     { key: 'packingErrorTabCs',       navId: 'snav-btn-cs',       view: 'cs',       toggleId: 'tabToggleCs'       },
     { key: 'packingErrorTabBriefing', navId: 'snav-btn-briefing', view: 'briefing', toggleId: 'tabToggleBriefing' },
     { key: 'packingErrorTabAttendance', navId: 'snav-btn-attendance', view: 'attendance', toggleId: 'tabToggleAttendance' },
@@ -7226,6 +7261,55 @@
     try { window.postMessage({ type: 'wms-sync-attendance' }, '*'); } catch (e) {}
     setTimeout(() => finish(false, 'timed out — is the extension installed and updated? Reload this page after updating it.'), 30000);
   }
+  // ── Inbound purchase orders ──────────────────────────────────────────────
+  let inboundData = [], inboundStatus = null;
+  const INBOUND_ORDER = { Started: 0, Pending: 1 };
+  async function fetchInbound() {
+    try {
+      const [rows, st] = await Promise.all([
+        fetch(SB_URL + '/inbound_po?select=id,code,vendor,wh,status,status_id,planned_arrival,total_qty', { headers: SB_HDR }).then(r => r.ok ? r.json() : []),
+        fetch(SB_URL + '/sync_status?source=eq.inbound&select=*', { headers: SB_HDR }).then(r => r.ok ? r.json() : []),
+      ]);
+      inboundData = (rows || []).filter(r => whAllowed(r.wh));
+      inboundStatus = (st && st[0]) || null;
+    } catch (e) { inboundData = []; inboundStatus = null; }
+    renderInbound();
+  }
+  function renderInbound() {
+    const tbody = document.getElementById('inboundTable'); if (!tbody) return;
+    const stamp = document.getElementById('inboundStamp');
+    if (stamp) { const s = inboundStatus; stamp.innerHTML = s && s.synced_at ? ((s.ok ? '' : '<span style="color:#f87171">sync issue · </span>') + 'as of ' + new Date(s.synced_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) : 'not synced yet'; }
+    const selStatus = document.getElementById('inboundStatusFilter')?.value || '';
+    const q = (document.getElementById('inboundSearch')?.value || '').toLowerCase().trim();
+    let rows = (inboundData || []).filter(r => inWhFilter(r.wh));
+    if (selStatus) rows = rows.filter(r => r.status === selStatus);
+    if (q) rows = rows.filter(r => (r.code || '').toLowerCase().includes(q) || (r.vendor || '').toLowerCase().includes(q));
+    const kpiEl = document.getElementById('inboundKpis');
+    const pend = rows.filter(r => r.status === 'Pending').length, start = rows.filter(r => r.status === 'Started').length;
+    const card = (label, val, color) => `<div class="card" style="padding:16px 18px"><div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${color};margin-bottom:8px">${label}</div><div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${Number(val).toLocaleString()}</div></div>`;
+    if (kpiEl) kpiEl.innerHTML = card('Open POs', rows.length, 'var(--text)') + card('Pending', pend, '#fcd34d') + card('Started', start, '#86efac');
+    rows.sort((a, b) => { const so = (INBOUND_ORDER[a.status] ?? 9) - (INBOUND_ORDER[b.status] ?? 9); if (so) return so; const pa = a.planned_arrival || '', pb = b.planned_arrival || ''; return pa < pb ? -1 : pa > pb ? 1 : 0; });
+    const dfmt = t => { if (!t) return '—'; try { return new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); } catch (e) { return String(t).slice(0, 10); } };
+    const badge = s => s === 'Started' ? '<span style="color:#86efac;font-weight:600">Started</span>' : s === 'Pending' ? '<span style="color:#fcd34d;font-weight:600">Pending</span>' : escHtml(s || '');
+    tbody.innerHTML = rows.length ? rows.map(r => `<tr style="border-top:1px solid var(--border)">
+      <td style="padding:7px 18px;color:var(--text);white-space:nowrap">${escHtml(r.code || ('#' + r.id))}</td>
+      <td style="padding:7px 14px;color:var(--text);white-space:nowrap">${escHtml(r.vendor || '—')}</td>
+      <td style="padding:7px 14px;color:var(--muted);white-space:nowrap">${escHtml(r.wh || '')}</td>
+      <td style="padding:7px 14px;white-space:nowrap">${badge(r.status)}</td>
+      <td style="padding:7px 14px;color:var(--muted);white-space:nowrap">${dfmt(r.planned_arrival)}</td>
+      <td style="padding:7px 18px;text-align:right;color:var(--text)">${r.total_qty != null ? Number(r.total_qty).toLocaleString() : '—'}</td>
+    </tr>`).join('') : `<tr><td colspan="6" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No open purchase orders${selStatus || q ? ' match your filter' : ''}.</td></tr>`;
+  }
+  function syncInboundNow(btn) {
+    const orig = btn ? btn.textContent : null;
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Syncing…'; }
+    let done = false;
+    const finish = (ok, err) => { if (done) return; done = true; window.removeEventListener('message', onMsg); if (btn) { btn.disabled = false; btn.textContent = orig || '⭳ Sync now'; } fetchInbound(); if (err) { try { showToast('Inbound sync: ' + err, false); } catch (e) {} } };
+    const onMsg = (e) => { if (e.source !== window || !e.data || e.data.type !== 'wms-sync-inbound-result') return; finish(e.data.ok, e.data.ok ? null : (e.data.error || 'no WMS session')); };
+    window.addEventListener('message', onMsg);
+    try { window.postMessage({ type: 'wms-sync-inbound' }, '*'); } catch (e) {}
+    setTimeout(() => finish(false, 'timed out — POs scan many pages; give it a moment and Refresh.'), 90000);
+  }
   function renderAttStatus() {
     const el = document.getElementById('attStatus'); if (!el) return;
     const s = attSyncStatus;
@@ -8523,6 +8607,7 @@
     if (v === 'cs') { try { fetchCustomerSuccess(); } catch(e){} }
     if (v === 'b2c') { try { fetchAiForecast(true); } catch(e){} }
     if (v === 'shortage') { try { fetchShortageAi(true, false); } catch(e){} }
+    if (v === 'inbound') { try { fetchInbound(); } catch(e){} }
     if (v === 'briefing') { try { renderBriefing(); fetchBriefing(true, false); } catch(e){} }
     if (v === 'weekly') { try { renderWeekly(); fetchWeekly(true, false); } catch(e){} }
     if (v === 'temp') { try { openTempView(); } catch(e){} }

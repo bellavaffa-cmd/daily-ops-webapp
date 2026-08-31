@@ -85,6 +85,17 @@ window.addEventListener('message', (e) => {
     return;
   }
 
+  // Dashboard asks to sync inbound POs now → relay to the background worker.
+  if (e.data.type === 'wms-sync-inbound') {
+    try {
+      chrome.runtime.sendMessage({ action: 'syncInbound' }, (resp) => {
+        const ok = !chrome.runtime.lastError && resp && resp.ok;
+        window.postMessage({ type: 'wms-sync-inbound-result', ok: !!ok, error: (resp && resp.error) || (chrome.runtime.lastError && chrome.runtime.lastError.message) || null }, '*');
+      });
+    } catch (err) { window.postMessage({ type: 'wms-sync-inbound-result', ok: false, error: String(err) }, '*'); }
+    return;
+  }
+
   if (e.data.type !== 'wms-ext-close') return;
   if (window.parent !== window) {
     // We're inside an iframe — signal the WMS page to close the overlay

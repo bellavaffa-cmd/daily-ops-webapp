@@ -24,6 +24,7 @@ chrome.alarms.onAlarm.addListener(alarm => {
     performSync(false).catch(e => console.error('[WMS bg] hourly sync:', e.message));
     syncRolesFromLogiwa().catch(() => {});   // WMS → dashboard role sync (throttled, no tab needed)
     syncAttendance().catch(e => console.error('[WMS bg] attendance sync:', e && e.message));   // LOCAD Ops → attendance table
+    syncInboundPOs(false).catch(e => console.error('[WMS bg] inbound sync:', e && e.message));   // Logiwa POs → inbound_po (throttled ~6h)
   }
 });
 
@@ -115,6 +116,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'syncRoles') { syncRolesFromLogiwa().catch(() => {}); sendResponse({ ok: true }); return false; }
   // Manual attendance sync (LOCAD Ops → Supabase).
   if (msg.action === 'syncAttendance') { syncAttendance().then(() => sendResponse({ ok: true })).catch(e => sendResponse({ ok: false, error: e && e.message })); return true; }
+  // Manual inbound-PO sync (Logiwa → Supabase).
+  if (msg.action === 'syncInbound') { syncInboundPOs(true).then(() => sendResponse({ ok: true })).catch(e => sendResponse({ ok: false, error: e && e.message })); return true; }
   // companion.js pushes the LOCAD Ops access token on load so we can sync tab-free.
   if (msg.action === 'storeCompanionToken' && msg.token) { try { chrome.storage.local.set({ companionToken: msg.token, companionTokenExp: msg.exp || _jwtExp(msg.token) }); } catch (e) {} sendResponse({ ok: true }); return false; }
 });
@@ -279,6 +282,53 @@ async function syncAttendance() {
     try { const sr = await fetch(`${SB_URL}/rest/v1/attendance?on_conflict=id`, { method: 'POST', headers: Object.assign({}, SBH, { Prefer: 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(uniq.slice(i, i + 500)) }); if (!sr.ok) saveErr = 'DB save failed (HTTP ' + sr.status + ')'; } catch (e) { saveErr = 'DB save failed: ' + (e && e.message); }
   }
   await reportSyncStatus(!saveErr, saveErr, uniq.length);
+}
+// ── Inbound purchase orders (Logiwa → inbound_po) ───────────────────────────
+// Logiwa has ~200k POs (mostly Completed history) with no server-side status filter,
+// so we scan the most-recently-updated pages and keep only OPEN POs (Pending=1,
+// Started=3). Mirror semantics: rows not re-seen this sync are dropped. Throttled to
+// ~6h since POs change slowly (force=true from a manual trigger bypasses the throttle).
+async function reportInboundStatus(ok, message, records) {
+  const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co', SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
+  try { await fetch(`${SB_URL}/rest/v1/sync_status?on_conflict=source`, { method: 'POST', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify([{ source: 'inbound', ok: !!ok, message: message || null, records: records == null ? null : records, synced_at: new Date().toISOString() }]) }); } catch (e) {}
+}
+async function syncInboundPOs(force) {
+  const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co', SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
+  const SBH = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' };
+  try {
+    if (!force) { const s = await chrome.storage.local.get('inboundSyncAt'); if (s.inboundSyncAt && Date.now() - Number(s.inboundSyncAt) < 6 * 60 * 60 * 1000) return; }
+  } catch (e) {}
+  const token = await getWmsToken();
+  if (!token) { await reportInboundStatus(false, 'No WMS session — open wms.golocad.com and log in once.', null); return; }
+  const H = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token };
+  const MAX_PAGES = 50, SIZE = 1000, CONC = 6;
+  const getPage = async (p) => { const r = await fetch(`https://mywmsquery.logiwa.com/api/purchaseorder/list/i/${p}/s/${SIZE}`, { method: 'POST', headers: H, body: '{}' }); if (!r.ok) throw new Error('logiwa ' + r.status); const j = await r.json(); return j.data || j.Data || []; };
+  const byId = {}; let apiErr = 0, ended = false;
+  const keep = (a) => { (a || []).forEach(p => { if (p.id != null && (p.purchaseOrderStatusId === 1 || p.purchaseOrderStatusId === 3)) byId[p.id] = p; }); };
+  try {
+    const first = await getPage(0); keep(first);
+    if (first.length >= SIZE) {
+      for (let base = 1; base < MAX_PAGES && !ended; base += CONC) {
+        const batch = []; for (let k = 0; k < CONC && base + k < MAX_PAGES; k++) batch.push(base + k);
+        const res = await Promise.all(batch.map(p => getPage(p).catch(() => { apiErr++; return null; })));
+        res.forEach(a => { if (a) { keep(a); if (a.length < SIZE) ended = true; } });
+      }
+    }
+  } catch (e) { if (!Object.keys(byId).length) { await reportInboundStatus(false, 'Logiwa PO API error: ' + (e && e.message), null); return; } }
+  try { await chrome.storage.local.set({ inboundSyncAt: Date.now() }); } catch (e) {}
+  const now = new Date().toISOString();
+  const rows = Object.values(byId).map(p => ({
+    id: p.id, code: p.code || null, vendor: p.vendorDisplayName || null, wh: p.warehouseCode || null,
+    status: p.purchaseOrderStatusName || null, status_id: p.purchaseOrderStatusId,
+    po_date: p.purchaseOrderDate || null, planned_arrival: p.plannedArrivalDate || null, actual_arrival: p.actualArrivalDate || null, actual_receiving: p.actualReceivingDate || null,
+    total_qty: p.totalQuantity == null ? null : p.totalQuantity, reference: p.referenceNumber || null, tags: p.tags || null,
+    wms_updated_at: p.updatedDateTime || null, synced_at: now, updated_at: now,
+  }));
+  if (!rows.length) { await reportInboundStatus(true, 'No open purchase orders.', 0); return; }
+  let saveErr = null;
+  for (let i = 0; i < rows.length; i += 300) { try { const sr = await fetch(`${SB_URL}/rest/v1/inbound_po?on_conflict=id`, { method: 'POST', headers: Object.assign({}, SBH, { Prefer: 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(rows.slice(i, i + 300)) }); if (!sr.ok) saveErr = 'DB save failed (HTTP ' + sr.status + ')'; } catch (e) { saveErr = 'DB save failed: ' + (e && e.message); } }
+  if (!saveErr) { try { await fetch(`${SB_URL}/rest/v1/inbound_po?synced_at=lt.${encodeURIComponent(now)}`, { method: 'DELETE', headers: SBH }); } catch (e) {} }
+  await reportInboundStatus(!saveErr, saveErr, rows.length);
 }
 async function storedWmsIdentity() {
   try {
