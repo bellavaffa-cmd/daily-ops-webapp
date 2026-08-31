@@ -7289,6 +7289,14 @@
   const _stripWhCode = s => String(s || '').replace(/\s*\([A-Za-z]{2,4}-[A-Za-z0-9]+\)\s*$/, '').trim().toLowerCase();
   // Partner Hub sends brand as {id,name}; extract the name (= the WMS brand name).
   const brandName = b => { if (b == null) return ''; if (typeof b === 'object') return b.name || ''; const s = String(b); if (s.charAt(0) === '{') { try { return JSON.parse(s).name || s; } catch (e) {} } return s; };
+  const _inboundExpanded = new Set();   // consignment ids whose detail row is expanded
+  function toggleInboundRow(id) {
+    const det = document.getElementById('inbrow-' + id); if (!det) return;
+    const open = det.style.display === 'none';
+    det.style.display = open ? '' : 'none';
+    if (open) _inboundExpanded.add(id); else _inboundExpanded.delete(id);
+    const car = document.getElementById('inbcar-' + id); if (car) car.textContent = open ? '▾' : '▸';
+  }
   let _whAllowNorm = null, _whAllowNormFrom = null;
   function inboundWhAllowed(wh) {
     if (!_whAllow) return false;
@@ -7298,7 +7306,7 @@
   }
   async function fetchInbound() {
     try {
-      const sel = 'id,consignment_number,status,consignment_qty,received_qty,complete_pct,warehouse,brand,planned_date,estimated_arrival,carrier_name,tracking_number';
+      const sel = 'id,consignment_number,status,channel_status,consignment_qty,received_qty,complete_pct,warehouse,brand,planned_date,estimated_arrival,carrier_name,tracking_number,inbound_method,tags,src_created_at';
       const rows = [];
       for (let off = 0; off < 20000; off += 1000) {
         const page = await fetch(SB_URL + '/inbound_shipment?select=' + sel + '&order=planned_date.asc&limit=1000&offset=' + off, { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
@@ -7348,15 +7356,33 @@
     tbody.innerHTML = rows.length ? rows.map(r => {
       const rq = r.received_qty, cq = r.consignment_qty;
       const pct = r.complete_pct != null ? Math.round(r.complete_pct) : (cq ? Math.round(100 * (rq || 0) / cq) : null);
+      const exp = _inboundExpanded.has(r.id);
+      const dtfmt = t => { if (!t) return '—'; try { return new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return String(t).slice(0, 16); } };
+      let tags = r.tags; try { if (typeof tags === 'string' && tags.charAt(0) === '[') tags = JSON.parse(tags); } catch (e) {}
+      const tagStr = Array.isArray(tags) ? tags.map(t => (t && typeof t === 'object') ? (t.name || t.label || JSON.stringify(t)) : String(t)).join(', ') : (tags ? String(tags) : '');
+      const field = (label, val) => `<div><div style="font-size:.62rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:2px">${label}</div><div style="color:var(--text)">${val == null || val === '' ? '—' : escHtml(String(val))}</div></div>`;
       return `<tr style="border-top:1px solid var(--border)">
-      <td style="padding:7px 18px;color:var(--text);white-space:nowrap">${escHtml(r.consignment_number || ('#' + r.id))}</td>
+      <td style="padding:7px 18px;white-space:nowrap"><span onclick="toggleInboundRow(${r.id})" style="cursor:pointer;color:var(--primary,#4ade80);font-weight:600;user-select:none" title="Show details"><span id="inbcar-${r.id}" style="display:inline-block;width:.9em;color:var(--muted)">${exp ? '▾' : '▸'}</span>${escHtml(r.consignment_number || ('#' + r.id))}</span></td>
       <td style="padding:7px 14px;color:var(--text);white-space:nowrap">${escHtml(brandName(r.brand) || '—')}</td>
       <td style="padding:7px 14px;color:var(--muted);white-space:nowrap">${escHtml(r.wh || '')}</td>
       <td style="padding:7px 14px;white-space:nowrap">${badge(r.status)}</td>
       <td style="padding:7px 14px;color:var(--muted);white-space:nowrap">${dfmt(r.planned_date)}</td>
       <td style="padding:7px 14px;text-align:right;color:var(--text)">${rq != null ? Number(rq).toLocaleString() : '—'} <span style="color:var(--muted)">/ ${cq != null ? Number(cq).toLocaleString() : '—'}</span></td>
       <td style="padding:7px 18px;text-align:right;color:var(--muted)">${pct != null ? pct + '%' : '—'}</td>
-    </tr>`; }).join('') : `<tr><td colspan="7" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No inbound shipments match this filter.</td></tr>`;
+    </tr>
+    <tr id="inbrow-${r.id}" style="display:${exp ? '' : 'none'};background:var(--surface2)"><td colspan="7" style="padding:12px 18px 14px 40px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 20px;font-size:.8rem">
+        ${field('Estimated arrival', dfmt(r.estimated_arrival))}
+        ${field('Carrier', r.carrier_name)}
+        ${field('Tracking #', r.tracking_number)}
+        ${field('Inbound method', r.inbound_method)}
+        ${field('Channel status', r.channel_status)}
+        ${field('Received / Expected', (rq != null ? Number(rq).toLocaleString() : '—') + ' / ' + (cq != null ? Number(cq).toLocaleString() : '—'))}
+        ${field('Progress', pct != null ? pct + '%' : '—')}
+        ${field('Created', dtfmt(r.src_created_at))}
+        ${field('Tags', tagStr)}
+      </div>
+    </td></tr>`; }).join('') : `<tr><td colspan="7" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No inbound shipments match this filter.</td></tr>`;
   }
   function syncInboundNow(btn) {
     const orig = btn ? btn.textContent : null;
