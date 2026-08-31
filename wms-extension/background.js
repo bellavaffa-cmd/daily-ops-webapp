@@ -285,9 +285,10 @@ async function syncAttendance() {
 }
 // ── Inbound purchase orders (Logiwa → inbound_po) ───────────────────────────
 // Logiwa has ~200k POs (mostly Completed history) with no server-side status filter,
-// so we scan the most-recently-updated pages and keep only OPEN POs (Pending=1,
-// Started=3). Mirror semantics: rows not re-seen this sync are dropped. Throttled to
-// ~6h since POs change slowly (force=true from a manual trigger bypasses the throttle).
+// so we scan the most-recently-updated pages and keep OPEN POs (Pending=1, Started=3)
+// always, plus Completed(4)/Cancelled(6) only if updated in the last ~3 weeks (so the
+// tab can show recent inbound without storing the whole 200k history). Mirror semantics:
+// rows not re-seen this sync are dropped. Throttled ~6h (force=true bypasses).
 async function reportInboundStatus(ok, message, records) {
   const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co', SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
   try { await fetch(`${SB_URL}/rest/v1/sync_status?on_conflict=source`, { method: 'POST', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify([{ source: 'inbound', ok: !!ok, message: message || null, records: records == null ? null : records, synced_at: new Date().toISOString() }]) }); } catch (e) {}
@@ -304,7 +305,16 @@ async function syncInboundPOs(force) {
   const MAX_PAGES = 50, SIZE = 1000, CONC = 6;
   const getPage = async (p) => { const r = await fetch(`https://mywmsquery.logiwa.com/api/purchaseorder/list/i/${p}/s/${SIZE}`, { method: 'POST', headers: H, body: '{}' }); if (!r.ok) throw new Error('logiwa ' + r.status); const j = await r.json(); return j.data || j.Data || []; };
   const byId = {}; let apiErr = 0, ended = false;
-  const keep = (a) => { (a || []).forEach(p => { if (p.id != null && (p.purchaseOrderStatusId === 1 || p.purchaseOrderStatusId === 3)) byId[p.id] = p; }); };
+  const RETAIN_MS = 21 * 24 * 60 * 60 * 1000;
+  const keep = (a) => { (a || []).forEach(p => {
+    if (p.id == null) return;
+    const sid = p.purchaseOrderStatusId;
+    if (sid === 1 || sid === 3) { byId[p.id] = p; return; }        // open: always keep
+    if (sid === 4 || sid === 6) {                                   // completed/cancelled: recent only
+      const t = Date.parse(p.updatedDateTime || p.actualReceivingDate || p.actualArrivalDate || '') || 0;
+      if (t && Date.now() - t <= RETAIN_MS) byId[p.id] = p;
+    }
+  }); };
   try {
     const first = await getPage(0); keep(first);
     if (first.length >= SIZE) {

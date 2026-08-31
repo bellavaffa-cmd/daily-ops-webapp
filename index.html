@@ -2467,13 +2467,16 @@
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px">
       <div>
         <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Inbound</div>
-        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Open purchase orders per warehouse (Pending &amp; Started) · from Logiwa · <span id="inboundStamp"></span></div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Purchase orders per warehouse · open + recently completed/cancelled · from Logiwa · <span id="inboundStamp"></span></div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <select id="inboundStatusFilter" onchange="renderInbound()" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
-          <option value="">All open</option>
+          <option value="open" selected>Open (Pending + Started)</option>
           <option value="Pending">Pending</option>
           <option value="Started">Started</option>
+          <option value="Completed">Completed (recent)</option>
+          <option value="Cancelled">Cancelled (recent)</option>
+          <option value="all">All</option>
         </select>
         <input id="inboundSearch" oninput="renderInbound()" placeholder="PO # or vendor" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);min-width:150px">
         <button type="button" id="inboundSyncBtn" onclick="syncInboundNow(this)" title="Pull the latest POs from Logiwa" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--primary,#4ade80);background:var(--surface2);color:var(--text);cursor:pointer">⭳ Sync now</button>
@@ -7263,7 +7266,7 @@
   }
   // ── Inbound purchase orders ──────────────────────────────────────────────
   let inboundData = [], inboundStatus = null;
-  const INBOUND_ORDER = { Started: 0, Pending: 1 };
+  const INBOUND_ORDER = { Started: 0, Pending: 1, Completed: 2, Cancelled: 3 };
   async function fetchInbound() {
     try {
       const [rows, st] = await Promise.all([
@@ -7279,18 +7282,20 @@
     const tbody = document.getElementById('inboundTable'); if (!tbody) return;
     const stamp = document.getElementById('inboundStamp');
     if (stamp) { const s = inboundStatus; stamp.innerHTML = s && s.synced_at ? ((s.ok ? '' : '<span style="color:#f87171">sync issue · </span>') + 'as of ' + new Date(s.synced_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) : 'not synced yet'; }
-    const selStatus = document.getElementById('inboundStatusFilter')?.value || '';
+    const selStatus = document.getElementById('inboundStatusFilter')?.value || 'open';
     const q = (document.getElementById('inboundSearch')?.value || '').toLowerCase().trim();
-    let rows = (inboundData || []).filter(r => inWhFilter(r.wh));
-    if (selStatus) rows = rows.filter(r => r.status === selStatus);
+    const base = (inboundData || []).filter(r => inWhFilter(r.wh));
+    let rows = base.slice();
+    if (selStatus === 'open') rows = rows.filter(r => r.status === 'Pending' || r.status === 'Started');
+    else if (selStatus !== 'all') rows = rows.filter(r => r.status === selStatus);
     if (q) rows = rows.filter(r => (r.code || '').toLowerCase().includes(q) || (r.vendor || '').toLowerCase().includes(q));
     const kpiEl = document.getElementById('inboundKpis');
-    const pend = rows.filter(r => r.status === 'Pending').length, start = rows.filter(r => r.status === 'Started').length;
+    const cnt = s => base.filter(r => r.status === s).length;
     const card = (label, val, color) => `<div class="card" style="padding:16px 18px"><div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${color};margin-bottom:8px">${label}</div><div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${Number(val).toLocaleString()}</div></div>`;
-    if (kpiEl) kpiEl.innerHTML = card('Open POs', rows.length, 'var(--text)') + card('Pending', pend, '#fcd34d') + card('Started', start, '#86efac');
+    if (kpiEl) kpiEl.innerHTML = card('Pending', cnt('Pending'), '#fcd34d') + card('Started', cnt('Started'), '#86efac') + card('Completed', cnt('Completed'), '#94a3b8') + card('Cancelled', cnt('Cancelled'), '#f87171');
     rows.sort((a, b) => { const so = (INBOUND_ORDER[a.status] ?? 9) - (INBOUND_ORDER[b.status] ?? 9); if (so) return so; const pa = a.planned_arrival || '', pb = b.planned_arrival || ''; return pa < pb ? -1 : pa > pb ? 1 : 0; });
     const dfmt = t => { if (!t) return '—'; try { return new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); } catch (e) { return String(t).slice(0, 10); } };
-    const badge = s => s === 'Started' ? '<span style="color:#86efac;font-weight:600">Started</span>' : s === 'Pending' ? '<span style="color:#fcd34d;font-weight:600">Pending</span>' : escHtml(s || '');
+    const badge = s => s === 'Started' ? '<span style="color:#86efac;font-weight:600">Started</span>' : s === 'Pending' ? '<span style="color:#fcd34d;font-weight:600">Pending</span>' : s === 'Completed' ? '<span style="color:#94a3b8;font-weight:600">Completed</span>' : s === 'Cancelled' ? '<span style="color:#f87171;font-weight:600">Cancelled</span>' : escHtml(s || '');
     tbody.innerHTML = rows.length ? rows.map(r => `<tr style="border-top:1px solid var(--border)">
       <td style="padding:7px 18px;color:var(--text);white-space:nowrap">${escHtml(r.code || ('#' + r.id))}</td>
       <td style="padding:7px 14px;color:var(--text);white-space:nowrap">${escHtml(r.vendor || '—')}</td>
@@ -7298,7 +7303,7 @@
       <td style="padding:7px 14px;white-space:nowrap">${badge(r.status)}</td>
       <td style="padding:7px 14px;color:var(--muted);white-space:nowrap">${dfmt(r.planned_arrival)}</td>
       <td style="padding:7px 18px;text-align:right;color:var(--text)">${r.total_qty != null ? Number(r.total_qty).toLocaleString() : '—'}</td>
-    </tr>`).join('') : `<tr><td colspan="6" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No open purchase orders${selStatus || q ? ' match your filter' : ''}.</td></tr>`;
+    </tr>`).join('') : `<tr><td colspan="6" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No purchase orders match this filter.</td></tr>`;
   }
   function syncInboundNow(btn) {
     const orig = btn ? btn.textContent : null;
