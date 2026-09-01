@@ -7317,6 +7317,19 @@
   const vasChip = st => `<span title="Partner Hub VAS: ${escHtml(st || '')}" style="margin-left:6px;font-size:.6rem;font-weight:700;letter-spacing:.03em;padding:1px 6px;border-radius:999px;background:rgba(251,146,60,.15);color:#fb923c;border:1px solid rgba(251,146,60,.45);vertical-align:middle">VAS</span>`;
   const VAS_CATEGORIES = ['INBOUND', 'OUTBOUND', 'OTHERS'];
   const VAS_REQUESTORS = ['BRAND', 'WAREHOUSE', 'LOCAD'];
+  // Services charged per unit (need SKU + qty) vs by UOM (need UOM + qty).
+  const VAS_SKU_SERVICES = ['Labelling', 'Kitting', 'Sorting'];
+  const VAS_UOM_SERVICES = ['Loading', 'Unloading'];
+  const VAS_UOMS = [
+    { code: 'WH6', label: 'WH6 — No. of 6-Wheeler Trucks' },
+    { code: 'WH10', label: 'WH10 — No. of 10-Wheeler Trucks' },
+    { code: 'CP20', label: 'CP20 — 20FT Containers (Palletized)' },
+    { code: 'CP40', label: 'CP40 — 40FT Containers (Palletized)' },
+    { code: 'CU20', label: 'CU20 — 20FT Containers (Unpalletized)' },
+    { code: 'CU40', label: 'CU40 — 40FT Containers (Unpalletized)' },
+  ];
+  let _vasModalId = null;      // consignment id the Request-VAS modal is for
+  let _vasModalSkus = null;    // cached SKU list for that consignment (null = not loaded yet)
   const _inboundExpanded = new Set();   // consignment ids whose detail row is expanded
   const _inboundItems = {};             // consignment id -> SKU lines (cached after first fetch)
   function toggleInboundRow(id) {
@@ -7328,21 +7341,31 @@
     if (open) loadInboundItems(id);
   }
   // Fetch a consignment's SKU lines live via the extension bridge (Partner Hub token lives in the extension).
+  // Returns a Promise resolving to the items array, or null on failure/timeout. Cached per id.
+  function requestInboundItems(id) {
+    return new Promise((resolve) => {
+      if (_inboundItems[id]) return resolve(_inboundItems[id]);
+      const reqId = 'itm-' + id + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+      let done = false;
+      const onMsg = (e) => {
+        if (e.source !== window || !e.data || e.data.type !== 'wms-inbound-items-result' || e.data.reqId !== reqId) return;
+        done = true; window.removeEventListener('message', onMsg);
+        if (e.data.ok && Array.isArray(e.data.items)) { _inboundItems[id] = e.data.items; resolve(e.data.items); } else resolve(null);
+      };
+      window.addEventListener('message', onMsg);
+      try { window.postMessage({ type: 'wms-inbound-items', id: id, reqId: reqId }, '*'); } catch (e) {}
+      setTimeout(() => { if (done) return; done = true; window.removeEventListener('message', onMsg); resolve(null); }, 15000);
+    });
+  }
   function loadInboundItems(id) {
     const el = document.getElementById('inbitems-' + id); if (!el) return;
     if (_inboundItems[id]) { renderInboundItems(id, _inboundItems[id]); return; }
     el.textContent = 'Loading…';
-    const reqId = 'itm-' + id + '-' + (Date.now());
-    let done = false;
-    const onMsg = (e) => {
-      if (e.source !== window || !e.data || e.data.type !== 'wms-inbound-items-result' || e.data.reqId !== reqId) return;
-      done = true; window.removeEventListener('message', onMsg);
-      if (e.data.ok && Array.isArray(e.data.items)) { _inboundItems[id] = e.data.items; renderInboundItems(id, e.data.items); }
-      else { el.innerHTML = '<span style="color:var(--muted)">Couldn\'t load SKUs' + (e.data.error ? ' — ' + escHtml(e.data.error) : '') + '. Needs the WMS extension (v3.33+) with a Partner Hub session.</span>'; }
-    };
-    window.addEventListener('message', onMsg);
-    try { window.postMessage({ type: 'wms-inbound-items', id: id, reqId: reqId }, '*'); } catch (e) {}
-    setTimeout(() => { if (done) return; done = true; window.removeEventListener('message', onMsg); const c = document.getElementById('inbitems-' + id); if (c && c.textContent === 'Loading…') c.innerHTML = '<span style="color:var(--muted)">SKU lookup timed out — ensure the WMS extension is loaded and you\'re logged into the Partner Hub.</span>'; }, 15000);
+    requestInboundItems(id).then(items => {
+      const c = document.getElementById('inbitems-' + id); if (!c) return;
+      if (items) renderInboundItems(id, items);
+      else c.innerHTML = '<span style="color:var(--muted)">Couldn\'t load SKUs — needs the WMS extension (v3.33+) with a Partner Hub session.</span>';
+    });
   }
   function renderInboundItems(id, items) {
     const el = document.getElementById('inbitems-' + id); if (!el) return;
@@ -7363,6 +7386,7 @@
   function openVasRequest(id) {
     const r = (inboundData || []).find(x => x.id === id); if (!r) return;
     closeVasModal();
+    _vasModalId = id; _vasModalSkus = _inboundItems[id] || null;
     const cap = s => s.charAt(0) + s.slice(1).toLowerCase();
     const catOpts = VAS_CATEGORIES.map(c => `<option value="${c}"${c === 'INBOUND' ? ' selected' : ''}>${cap(c)}</option>`).join('');
     const reqOpts = VAS_REQUESTORS.map(c => `<option value="${c}"${c === 'BRAND' ? ' selected' : ''}>${cap(c)}</option>`).join('');
@@ -7380,7 +7404,8 @@
         <div>${lbl}Consignment</div><div style="font-weight:600">${escHtml(r.consignment_number || ('#' + r.id))} · ${escHtml(brandName(r.brand) || '')} · ${escHtml(r.wh || '')}</div></div>
         <label style="display:block">${lbl}VAS type</div><select id="vasCat" style="${inCss}">${catOpts}</select></label>
         <label style="display:block">${lbl}Requestor</div><select id="vasReq" style="${inCss}">${reqOpts}</select></label>
-        <label style="display:block">${lbl}Service</div><select id="vasDetails" style="${inCss}"><option value="" selected disabled>Select service…</option><option value="Labelling">Labelling</option><option value="Kitting">Kitting</option><option value="Sorting">Sorting</option><option value="Loading">Loading</option><option value="Unloading">Unloading</option><option value="Others">Others</option></select></label>
+        <label style="display:block">${lbl}Service</div><select id="vasDetails" onchange="onVasServiceChange()" style="${inCss}"><option value="" selected disabled>Select service…</option><option value="Labelling">Labelling</option><option value="Kitting">Kitting</option><option value="Sorting">Sorting</option><option value="Loading">Loading</option><option value="Unloading">Unloading</option><option value="Others">Others</option></select></label>
+        <div id="vasLines"></div>
         <label style="display:block">${lbl}Requested by</div><input id="vasBy" value="${escHtml(who)}" placeholder="Your name" style="${inCss}"></label>
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
@@ -7391,15 +7416,80 @@
     document.body.appendChild(ov);
   }
   function closeVasModal() { const m = document.getElementById('vasModal'); if (m) m.remove(); }
+  const _vasLnCss = 'flex:1;min-width:0;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)';
+  const _vasQtyCss = 'width:84px;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)';
+  const _vasXBtn = '<button type="button" onclick="this.parentNode.remove()" title="Remove" style="padding:5px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:pointer">✕</button>';
+  // Service drives the sub-form: per-unit services need SKU+qty lines; UOM services need UOM+qty lines.
+  function onVasServiceChange() {
+    const svc = document.getElementById('vasDetails')?.value || '';
+    const cont = document.getElementById('vasLines'); if (!cont) return;
+    if (VAS_SKU_SERVICES.includes(svc)) {
+      cont.innerHTML = `<div style="color:var(--muted);font-size:.72rem;margin:2px 0 6px">SKUs &amp; quantity to ${escHtml(svc.toLowerCase())} (charged per unit)</div><div id="vasLineRows"></div><button type="button" onclick="vasAddSkuLine()" style="margin-top:2px;font-size:.75rem;padding:4px 10px;border-radius:6px;border:1px dashed var(--border);background:transparent;color:var(--text);cursor:pointer">+ Add SKU</button>`;
+      if (_vasModalSkus) { vasAddSkuLine(); }
+      else {
+        const rows = document.getElementById('vasLineRows'); if (rows) rows.innerHTML = '<div style="color:var(--muted);font-size:.78rem">Loading SKUs…</div>';
+        requestInboundItems(_vasModalId).then(items => { _vasModalSkus = items || []; const rr = document.getElementById('vasLineRows'); if (rr) { rr.innerHTML = ''; vasAddSkuLine(); } });
+      }
+    } else if (VAS_UOM_SERVICES.includes(svc)) {
+      cont.innerHTML = `<div style="color:var(--muted);font-size:.72rem;margin:2px 0 6px">UOM &amp; quantity (charged by UOM)</div><div id="vasLineRows"></div><button type="button" onclick="vasAddUomLine()" style="margin-top:2px;font-size:.75rem;padding:4px 10px;border-radius:6px;border:1px dashed var(--border);background:transparent;color:var(--text);cursor:pointer">+ Add UOM</button>`;
+      vasAddUomLine();
+    } else { cont.innerHTML = ''; }
+  }
+  function vasAddSkuLine() {
+    const rows = document.getElementById('vasLineRows'); if (!rows) return;
+    let skuField;
+    if (_vasModalSkus && _vasModalSkus.length) {
+      const opts = _vasModalSkus.map(it => `<option value="${escHtml(it.sku || '')}" data-name="${escHtml(it.name || '')}">${escHtml((it.sku || '') + (it.name ? ' — ' + it.name : ''))}</option>`).join('');
+      skuField = `<select class="vas-line-sku" style="${_vasLnCss}"><option value="" selected disabled>Select SKU…</option>${opts}</select>`;
+    } else {
+      skuField = `<input class="vas-line-sku" placeholder="SKU" style="${_vasLnCss}">`;
+    }
+    const div = document.createElement('div'); div.className = 'vas-line'; div.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:center';
+    div.innerHTML = `${skuField}<input class="vas-line-qty" type="number" min="0" placeholder="Qty" style="${_vasQtyCss}">${_vasXBtn}`;
+    rows.appendChild(div);
+  }
+  function vasAddUomLine() {
+    const rows = document.getElementById('vasLineRows'); if (!rows) return;
+    const opts = VAS_UOMS.map(u => `<option value="${u.code}">${escHtml(u.label)}</option>`).join('');
+    const div = document.createElement('div'); div.className = 'vas-line'; div.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:center';
+    div.innerHTML = `<select class="vas-line-uom" style="${_vasLnCss}">${opts}</select><input class="vas-line-qty" type="number" min="0" placeholder="Qty" style="${_vasQtyCss}">${_vasXBtn}`;
+    rows.appendChild(div);
+  }
+  function collectVasLines(mode) {
+    const out = [];
+    [...document.querySelectorAll('#vasLineRows .vas-line')].forEach(row => {
+      const qty = parseFloat(row.querySelector('.vas-line-qty')?.value || '');
+      if (!(qty > 0)) return;
+      if (mode === 'sku') {
+        const el = row.querySelector('.vas-line-sku'); const sku = (el?.value || '').trim(); if (!sku) return;
+        let name = ''; if (el && el.tagName === 'SELECT') { const o = el.selectedOptions[0]; name = o ? (o.getAttribute('data-name') || '') : ''; }
+        out.push({ sku: sku, name: name, qty: qty });
+      } else if (mode === 'uom') {
+        const uom = (row.querySelector('.vas-line-uom')?.value || '').trim(); if (!uom) return;
+        out.push({ uom: uom, qty: qty });
+      }
+    });
+    return out;
+  }
   function submitVasRequest(id) {
     const r = (inboundData || []).find(x => x.id === id); if (!r) return;
     const cat = document.getElementById('vasCat')?.value || 'INBOUND';
     const reqt = document.getElementById('vasReq')?.value || 'BRAND';
-    const details = (document.getElementById('vasDetails')?.value || '').trim();
+    const service = (document.getElementById('vasDetails')?.value || '').trim();
     const by = (document.getElementById('vasBy')?.value || '').trim();
-    if (!details) { try { showToast('Select a service first.', false); } catch (e) {} const d = document.getElementById('vasDetails'); if (d) d.focus(); return; }
+    if (!service) { try { showToast('Select a service first.', false); } catch (e) {} const d = document.getElementById('vasDetails'); if (d) d.focus(); return; }
+    const mode = VAS_SKU_SERVICES.includes(service) ? 'sku' : VAS_UOM_SERVICES.includes(service) ? 'uom' : 'none';
+    let lines = null, total = null, detailsText = service;
+    if (mode !== 'none') {
+      lines = collectVasLines(mode);
+      if (!lines.length) { try { showToast(mode === 'sku' ? 'Add at least one SKU with quantity.' : 'Add at least one UOM with quantity.', false); } catch (e) {} return; }
+      total = lines.reduce((s, l) => s + (Number(l.qty) || 0), 0);
+      detailsText = service + ' · ' + (mode === 'sku'
+        ? (lines.length + ' SKU' + (lines.length > 1 ? 's' : '') + ', ' + total.toLocaleString() + ' units')
+        : lines.map(l => l.qty + '× ' + l.uom).join(', '));
+    }
     const btn = document.getElementById('vasSubmitBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
-    const row = { consignment_id: r.id, consignment_number: r.consignment_number || null, warehouse: r.wh || null, brand: brandName(r.brand) || null, vas_category: cat, requestor_type: reqt, details: details, requested_by: by || null, status: 'new' };
+    const row = { consignment_id: r.id, consignment_number: r.consignment_number || null, warehouse: r.wh || null, brand: brandName(r.brand) || null, vas_category: cat, requestor_type: reqt, service: service, details: detailsText, lines: lines, total_qty: total, requested_by: by || null, status: 'new' };
     fetch(SB_URL + '/vas_request', { method: 'POST', headers: { ...SB_HDR, Prefer: 'return=minimal' }, body: JSON.stringify([row]) })
       .then(res => { if (!res.ok) throw new Error('HTTP ' + res.status); closeVasModal(); try { showToast('VAS request sent to Customer Success.', true); } catch (e) {} try { fetchVasRequests(); } catch (e) {} })
       .catch(e => { if (btn) { btn.disabled = false; btn.textContent = 'Submit request'; } try { showToast('Could not save VAS request: ' + (e && e.message), false); } catch (x) {} });
@@ -7462,6 +7552,12 @@
     const cap = s => s ? s.charAt(0) + s.slice(1).toLowerCase() : '';
     const phUrl = r => 'https://partner.golocad.com/partnerhub/inbound/manage-inbound-shipment/' + encodeURIComponent(r.consignment_id || '');
     const phLink = r => `<a href="${phUrl(r)}" target="_blank" rel="noopener" title="Open consignment in Partner Hub" style="font-size:.72rem;padding:3px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);text-decoration:none;white-space:nowrap">Partner Hub ↗</a>`;
+    const vasLinesHtml = r => {
+      let ls = r.lines; try { if (typeof ls === 'string') ls = JSON.parse(ls); } catch (e) { ls = null; }
+      if (!Array.isArray(ls) || !ls.length) return '';
+      const items = ls.map(l => l.sku ? (escHtml(l.sku) + (l.name ? ' (' + escHtml(l.name) + ')' : '') + ' ×' + Number(l.qty).toLocaleString()) : (escHtml(l.uom || '') + ' ×' + Number(l.qty).toLocaleString()));
+      return '<div style="font-size:.7rem;color:var(--muted);margin-top:3px;line-height:1.5">' + items.join('<br>') + '</div>';
+    };
     tbody.innerHTML = rows.length ? rows.map(r => {
       const consCell = escHtml(r.consignment_number || ('#' + (r.consignment_id || '')));
       const whCell = escHtml(r.warehouse || '—');
@@ -7492,7 +7588,7 @@
         <td style="padding:8px 14px;color:var(--muted);white-space:nowrap">${whCell}</td>
         <td style="padding:8px 14px;white-space:nowrap"><span style="font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:999px;background:rgba(74,222,128,.13);color:#4ade80;border:1px solid rgba(74,222,128,.4)">REQUEST</span></td>
         <td style="padding:8px 14px;color:var(--muted);white-space:nowrap">${escHtml(cap(r.vas_category))}${r.requestor_type ? ' · ' + escHtml(cap(r.requestor_type)) : ''}</td>
-        <td style="padding:8px 14px;color:var(--text);max-width:280px">${escHtml(r.details || '')}</td>
+        <td style="padding:8px 14px;color:var(--text);max-width:320px">${escHtml(r.details || '')}${vasLinesHtml(r)}</td>
         <td style="padding:8px 14px;color:var(--muted);white-space:nowrap">${escHtml(r.requested_by || '—')}<div style="font-size:.68rem;color:var(--muted)">${dtfmt(r.created_at)}</div></td>
         <td style="padding:8px 14px;white-space:nowrap"><span style="color:${vs.color};font-weight:600">${vs.label}</span></td>
         <td style="padding:8px 18px;text-align:right;white-space:nowrap"><div style="display:inline-flex;gap:5px;flex-wrap:wrap;justify-content:flex-end">${act.join('')}</div></td>
