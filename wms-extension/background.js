@@ -119,6 +119,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // Manual inbound-PO sync (Logiwa → Supabase).
   if (msg.action === 'syncInbound') { syncInboundShipments(true).then(() => sendResponse({ ok: true })).catch(e => sendResponse({ ok: false, error: e && e.message })); return true; }
   if (msg.action === 'getInboundItems') { getInboundItems(msg.id).then(items => sendResponse({ ok: true, items })).catch(e => sendResponse({ ok: false, error: e && e.message })); return true; }
+  // Error dashboard: look up the WMS shipment-order status for a set of order ids.
+  if (msg.action === 'wmsOrderStatuses') { lookupOrderStatuses(msg.orderIds).then(statuses => sendResponse({ ok: true, statuses })).catch(e => sendResponse({ ok: false, error: e && e.message })); return true; }
   // companion.js pushes the LOCAD Ops access token on load so we can sync tab-free.
   if (msg.action === 'storeCompanionToken' && msg.token) { try { chrome.storage.local.set({ companionToken: msg.token, companionTokenExp: msg.exp || _jwtExp(msg.token) }); } catch (e) {} sendResponse({ ok: true }); return false; }
 });
@@ -139,6 +141,36 @@ async function getWmsToken() {
     if (s && s.wmsToken && (!s.wmsTokenExp || Number(s.wmsTokenExp) * 1000 > Date.now())) return s.wmsToken;
   } catch (e) {}
   return null;
+}
+// ── WMS shipment-order status lookup (for the error dashboard) ───────────────
+// The WMS list APIs ignore body/URL filters EXCEPT the `queries` structure the UI
+// sends. Filter by Code=<order id> on the unshipped list, then the shipped list.
+// Returns { <order_id>: statusName }. Small batches (errors are few), 5-way concurrency.
+async function lookupOrderStatuses(orderIds) {
+  const token = await getWmsToken();
+  if (!token) throw new Error('No WMS session — open wms.golocad.com and log in once.');
+  const H = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token };
+  const mkBody = (code) => ({ queries: [{ field: 'Code', uniqueFieldName: 'Code.code', keyword: 'code', label: 'Code', value: code, summaryValue: '', comparator: 'equal', comparatorLabel: 'equals', type: 'string', uiType: 'string' }], sorts: [] });
+  const one = async (code) => {
+    for (const seg of ['unshipped', 'shipped']) {
+      try {
+        const r = await fetch('https://mywmsquery.logiwa.com/api/shipmentorder/list/' + seg + '/i/0/s/5', { method: 'POST', headers: H, body: JSON.stringify(mkBody(code)) });
+        if (!r.ok) continue;
+        const j = await r.json(); const arr = (j && (j.data || j.Data)) || [];
+        const hit = arr.find(o => o.code === code || o.channelOrderNumber === code) || (arr.length === 1 ? arr[0] : null);
+        if (hit) return hit.shipmentOrderStatusName || null;
+      } catch (e) {}
+    }
+    return null;
+  };
+  const uniq = [...new Set((orderIds || []).filter(Boolean).map(String))].slice(0, 60);
+  const out = {}; const CONC = 5;
+  for (let i = 0; i < uniq.length; i += CONC) {
+    const batch = uniq.slice(i, i + CONC);
+    const res = await Promise.all(batch.map(c => one(c).then(s => [c, s]).catch(() => [c, null])));
+    res.forEach(([c, s]) => { out[c] = s; });
+  }
+  return out;
 }
 // ── Attendance sync (LOCAD Ops / wms.companion.golocad.com → Supabase) ───────
 // Reads the Cognito access token from an open LOCAD Ops tab (via companion.js),

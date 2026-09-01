@@ -1927,6 +1927,7 @@
               <th>Tote</th>
               <th>Brand</th>
               <th>Error Type</th>
+              <th>WMS Status</th>
               <th>Status</th>
               <th style="width:40px"></th>
             </tr>
@@ -7411,6 +7412,32 @@
       setTimeout(() => { if (done) return; done = true; window.removeEventListener('message', onMsg); resolve(null); }, 15000);
     });
   }
+  // WMS shipment-order status for error orders (looked up live via the extension).
+  const _wmsOrderStatus = {};   // order_id -> status name (or null once attempted)
+  function requestWmsStatuses(orderIds) {
+    return new Promise((resolve) => {
+      const need = [...new Set((orderIds || []).filter(Boolean).map(String))].filter(id => !(id in _wmsOrderStatus));
+      if (!need.length) return resolve(_wmsOrderStatus);
+      const reqId = 'wst-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+      let done = false;
+      const finish = () => { if (done) return; done = true; window.removeEventListener('message', onMsg); need.forEach(id => { if (!(id in _wmsOrderStatus)) _wmsOrderStatus[id] = null; }); resolve(_wmsOrderStatus); };
+      const onMsg = (e) => {
+        if (e.source !== window || !e.data || e.data.type !== 'wms-order-statuses-result' || e.data.reqId !== reqId) return;
+        if (e.data.ok && e.data.statuses) Object.keys(e.data.statuses).forEach(k => { _wmsOrderStatus[k] = e.data.statuses[k]; });
+        finish();
+      };
+      window.addEventListener('message', onMsg);
+      try { window.postMessage({ type: 'wms-order-statuses', orderIds: need, reqId }, '*'); } catch (e) {}
+      setTimeout(finish, 20000);
+    });
+  }
+  function wmsStatusCell(id) {
+    if (!id || !(id in _wmsOrderStatus)) return '<span style="color:var(--muted);font-size:.8rem">…</span>';
+    const s = _wmsOrderStatus[id];
+    if (!s) return '<span style="color:var(--muted);font-size:.8rem">—</span>';
+    const c = /ship/i.test(s) ? '#86efac' : /cancel|reject/i.test(s) ? '#f87171' : /pack/i.test(s) ? '#c4b5fd' : /pick/i.test(s) ? '#93c5fd' : '#fcd34d';
+    return `<span style="color:${c};font-weight:600;font-size:.8rem;white-space:nowrap">${escHtml(s)}</span>`;
+  }
   function loadInboundItems(id) {
     const el = document.getElementById('inbitems-' + id); if (!el) return;
     if (_inboundItems[id]) { renderInboundItems(id, _inboundItems[id]); return; }
@@ -10005,7 +10032,7 @@ function fail(error) {
               </div>` : '';
       const expandedRow = isOpen ? `
         <tr class="expanded-row">
-          <td colspan="8">
+          <td colspan="10">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px">
             <div class="expanded-detail" style="flex:1">
               <div class="detail-item"><span class="detail-label">Order ID</span><span class="detail-value" style="display:inline-flex;align-items:center;gap:8px"><span class="td-mono">${e.orderId||'—'}</span>${e.orderId ? `<button onclick="copyText('${e.orderId.replace(/'/g,"\\'")}',this)" title="Copy order ID" style="display:inline-flex;align-items:center;padding:3px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;cursor:pointer;color:var(--muted);transition:border-color .15s" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'"><svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>` : ''}</span></div>
@@ -10031,10 +10058,15 @@ function fail(error) {
           <td class="td-muted" style="font-size:.8rem">${e.toteNum||'—'}</td>
           <td class="td-muted" style="font-size:.8rem">${e.brand || '—'}</td>
           <td><span class="badge ${badgeClass(e.errorType)}">${e.errorType}</span></td>
+          <td>${wmsStatusCell(e.orderId)}</td>
           <td><select class="status-select status-${statusCls(e.status)}" onchange="updateStatus('${e.id}', this.value)"><option ${e.status==='Open'?'selected':''}>Open</option><option ${e.status==='In Progress'?'selected':''}>In Progress</option><option ${e.status==='Resolved'?'selected':''}>Resolved</option></select></td>
           <td style="text-align:center">${(e.status||'Open') === 'Resolved' ? `<button class="btn-delete-row" onclick="deleteRecord('${e.id}')" title="Delete record"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg></button>` : ''}</td>
         </tr>${expandedRow}`;
     }).join('');
+
+    // Look up WMS shipment-order status for any shown orders not yet known, then repaint.
+    const _needIds = rows.map(e => e.orderId).filter(Boolean);
+    if (_needIds.some(id => !(id in _wmsOrderStatus))) { try { requestWmsStatuses(_needIds).then(() => { try { renderTable(); } catch (e) {} }); } catch (e) {} }
 
     // Sync select-all checkbox state
     const allChecked = rows.length > 0 && rows.every(e => selectedIds.has(String(e.id)));

@@ -110,6 +110,19 @@ window.addEventListener('message', (e) => {
     return;
   }
 
+  // Error dashboard asks for the WMS shipment-order status of a set of order ids →
+  // relay to the background worker (which reads the WMS token and looks each up live).
+  if (e.data.type === 'wms-order-statuses') {
+    const reqId = e.data.reqId;
+    try {
+      chrome.runtime.sendMessage({ action: 'wmsOrderStatuses', orderIds: e.data.orderIds }, (resp) => {
+        const ok = !chrome.runtime.lastError && resp && resp.ok;
+        window.postMessage({ type: 'wms-order-statuses-result', reqId, ok: !!ok, statuses: (resp && resp.statuses) || null, error: (resp && resp.error) || (chrome.runtime.lastError && chrome.runtime.lastError.message) || null }, '*');
+      });
+    } catch (err) { window.postMessage({ type: 'wms-order-statuses-result', reqId, ok: false, error: String(err) }, '*'); }
+    return;
+  }
+
   if (e.data.type !== 'wms-ext-close') return;
   if (window.parent !== window) {
     // We're inside an iframe — signal the WMS page to close the overlay
