@@ -1300,8 +1300,8 @@
     @media (max-width: 768px) {
       .fab-report { bottom: 72px; right: 16px; padding: 13px; }
     }
-    /* Per-tab warehouse dropdowns are replaced by the single app-wide filter in the top bar. */
-    #inboundWarehouse, #vasWarehouse, #briefingWarehouse, #weeklyWarehouse, #attWarehouse, #csWarehouse, #productivityViewWarehouse { display: none !important; }
+    /* Every per-view warehouse filter is replaced by the single app-wide filter in the top bar. */
+    #inboundWarehouse, #vasWarehouse, #briefingWarehouse, #weeklyWarehouse, #attWarehouse, #csWarehouse, #productivityViewWarehouse, #warehouseFilter, .wh-multi { display: none !important; }
   </style>
 </head>
 <body>
@@ -9900,9 +9900,9 @@ function fail(error) {
     const activeErrors = dashStatus === 'inprogress' ? inProgressErrors : openErrors;
 
     const q    = document.getElementById('searchInput').value.toLowerCase();
-    const whF  = document.getElementById('warehouseFilter')?.value || '';
+    const whF  = singleWh();
     const rows = activeErrors.filter(e => {
-      if (whF && e.warehouse !== whF) return false;
+      if (whF && !whEq(e.warehouse, whF)) return false;
       if (!q) return true;
       return [e.orderId, e.toteNum, e.errorType, e.status || 'Open', e.warehouse || '']
         .some(v => (v||'').toLowerCase().includes(q));
@@ -10344,9 +10344,9 @@ function fail(error) {
       : errors.filter(e => (e.status || 'Open') === 'Open');
 
     const q   = document.getElementById('searchInput').value.toLowerCase();
-    const whF = document.getElementById('warehouseFilter')?.value || '';
+    const whF = singleWh();
     const rows = activeErrors.filter(e => {
-      if (whF && e.warehouse !== whF) return false;
+      if (whF && !whEq(e.warehouse, whF)) return false;
       if (!q) return true;
       return [e.orderId, e.toteNum, e.errorType, e.status || 'Open', e.warehouse || '']
         .some(v => (v || '').toLowerCase().includes(q));
