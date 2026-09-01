@@ -3553,12 +3553,26 @@
     const totMpN   = B2C_KEYS.reduce((a, k) => b2cExcl.has(k) ? a : a + Number(mpN[k] || 0), 0);
     const totNext  = B2C_KEYS.reduce((a, k) => b2cExcl.has(k) ? a : a + Number(nextN[k] || 0), 0);
 
+    // Orders with an open packing error get their own "Error" box, pulled out of
+    // Packing — every error type is a packing-station error, so an error order is at
+    // the packing stage. Today's operational view only (tomorrow orders aren't packed).
+    const _isToday = (opts.day || 'today') !== 'tomorrow';
+    const _errWhs = filtered.map(r => r.wh).filter(Boolean);
+    const _errOrders = _isToday
+      ? new Set((typeof errors !== 'undefined' ? errors : [])
+          .filter(e => (e.status || 'Open') !== 'Resolved' && (!_errWhs.length || _errWhs.some(w => whEq(w, e.warehouse))))
+          .map(e => e.orderId).filter(Boolean))
+      : new Set();
+    const errCount = _errOrders.size;
+    const packingShown = Math.max(0, tot.packing - errCount);
+
     const statuses = [
       { key: 'new',     label: 'Open',            count: tot.new,     color: '#fb923c', ...mpOf('new') },
       { key: 'rfp',     label: 'Ready to Pick',   count: tot.rfp,     color: '#fcd34d', ...mpOf('rfp') },
       { key: 'picking', label: 'Picking Started', count: tot.picking, color: '#93c5fd', ...mpOf('picking') },
       { key: 'picked',  label: 'Ready to Pack',   count: tot.picked,  color: '#86efac', ...mpOf('picked') },
-      { key: 'packing', label: 'Packing Started', count: tot.packing, color: '#c4b5fd', ...mpOf('packing') },
+      { key: 'packing', label: 'Packing Started', count: packingShown, color: '#c4b5fd', ...mpOf('packing') },
+      ...(errCount ? [{ key: 'error', label: 'Error', count: errCount, color: '#f87171', nonmp: 0, prioritymp: 0, mpNextday: 0, nextDay: 0 }] : []),
       { key: 'total',   label: 'Total Orders',    count: total,       color: 'var(--text)', nonmp: totNonmp, prioritymp: totPrio, mpNextday: totMpN, nextDay: totNext },
     ];
 
@@ -3574,6 +3588,14 @@
 
     return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(${opts.minCard||140}px,1fr));gap:12px">
       ${statuses.map(s => {
+        if (s.key === 'error') {
+          return `
+        <div class="card" title="Orders with an open packing error — pulled out of Packing (all error types are packing-station errors)." style="position:relative;padding:16px 18px;border:1px solid rgba(248,113,113,.45)">
+          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px">${s.label}</div>
+          <div style="font-size:2rem;font-weight:700;line-height:1;color:var(--text)">${fmt(s.count)}</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:5px">orders with open errors</div>
+        </div>`;
+        }
         const isTotal  = s.key === 'total';
         const excluded = !isTotal && b2cExcl.has(s.key);
         const statusIds = isTotal ? WMS_B2C_ALL_STATUS : [WMS_STATUS_ID[s.label]];
@@ -8988,6 +9010,8 @@
       if (document.getElementById('view-dash').classList.contains('active')) {
         initWarehouseFilter(); renderStats(); renderTable();
       }
+      // Errors feed the B2C "Error" status box → refresh it when errors change.
+      try { if (document.getElementById('view-b2c')?.classList.contains('active') && typeof renderB2C === 'function') renderB2C(); } catch (e) {}
       setSyncStatus('ok', `Synced ${new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`);
     } catch (err) {
       console.error('Supabase read error:', err);
