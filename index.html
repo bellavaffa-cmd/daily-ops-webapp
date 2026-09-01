@@ -2503,12 +2503,14 @@
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <select id="vasWarehouse" onchange="onVasWhChange(this.value)" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer"></select>
         <select id="vasStatusFilter" onchange="renderVasRequests()" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
-          <option value="open" selected>Open (New + In progress)</option>
-          <option value="new">New</option>
-          <option value="in_progress">In progress</option>
-          <option value="done">Done</option>
-          <option value="cancelled">Cancelled</option>
-          <option value="all">All</option>
+          <option value="open" selected>Open requests (New + In progress)</option>
+          <option value="new">New requests</option>
+          <option value="in_progress">In-progress requests</option>
+          <option value="done">Done requests</option>
+          <option value="cancelled">Cancelled requests</option>
+          <option value="requests">All requests</option>
+          <option value="existing">In Partner Hub (existing VAS)</option>
+          <option value="all">All (requests + existing)</option>
         </select>
         <input id="vasSearch" oninput="renderVasRequests()" placeholder="Consignment, brand, details" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);min-width:170px">
         <button type="button" onclick="fetchVasRequests()" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">⟳ Refresh</button>
@@ -2520,6 +2522,7 @@
         <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Consignment</th>
         <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Brand</th>
         <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Warehouse</th>
+        <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Source</th>
         <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Type</th>
         <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Details</th>
         <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Requested by</th>
@@ -7415,15 +7418,20 @@
   let vasData = [];
   async function fetchVasRequests() {
     try {
-      const rows = await fetch(SB_URL + '/vas_request?select=*&order=created_at.desc&limit=2000', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
-      vasData = (rows || []).filter(r => !r.warehouse || inboundWhAllowed(r.warehouse));   // scope to the viewer's warehouses
+      const [reqs, existing] = await Promise.all([
+        fetch(SB_URL + '/vas_request?select=*&order=created_at.desc&limit=2000', { headers: SB_HDR }).then(r => r.ok ? r.json() : []),
+        fetch(SB_URL + '/inbound_shipment?vas_id=not.is.null&select=id,consignment_number,warehouse,brand,vas_id,vas_status,vas_ref&limit=5000', { headers: SB_HDR }).then(r => r.ok ? r.json() : []),
+      ]);
+      const R = (reqs || []).map(r => ({ ...r, kind: 'request' }));
+      const E = (existing || []).map(r => ({ kind: 'existing', consignment_id: r.id, consignment_number: r.consignment_number, warehouse: r.warehouse, brand: r.brand, vas_id: r.vas_id, vas_status: r.vas_status, vas_ref: r.vas_ref, created_at: null }));
+      vasData = [...R, ...E].filter(r => !r.warehouse || inboundWhAllowed(r.warehouse));   // scope to the viewer's warehouses
     } catch (e) { vasData = []; }
     renderVasRequests();
   }
   function onVasWhChange(v) { try { localStorage.setItem('vasWarehouse', v || ''); } catch (e) {} renderVasRequests(); }
   function renderVasRequests() {
     const tbody = document.getElementById('vasTable'); if (!tbody) return;
-    const stamp = document.getElementById('vasStamp'); if (stamp) stamp.textContent = vasData.length + ' request' + (vasData.length === 1 ? '' : 's');
+    const stamp = document.getElementById('vasStamp'); if (stamp) { const nr = vasData.filter(r => r.kind === 'request').length, ne = vasData.filter(r => r.kind === 'existing').length; stamp.textContent = nr + ' request' + (nr === 1 ? '' : 's') + ' · ' + ne + ' in Partner Hub'; }
     const whSel = document.getElementById('vasWarehouse');
     let pick = localStorage.getItem('vasWarehouse') || '';
     if (whSel) {
@@ -7435,35 +7443,57 @@
     const q = (document.getElementById('vasSearch')?.value || '').toLowerCase().trim();
     const base = vasData.filter(r => !pick || r.warehouse === pick);
     let rows = base.slice();
-    if (sel === 'open') rows = rows.filter(r => r.status === 'new' || r.status === 'in_progress');
-    else if (sel !== 'all') rows = rows.filter(r => r.status === sel);
-    if (q) rows = rows.filter(r => (r.consignment_number || '').toLowerCase().includes(q) || (r.brand || '').toLowerCase().includes(q) || (r.details || '').toLowerCase().includes(q));
+    if (sel === 'open') rows = rows.filter(r => r.kind === 'request' && (r.status === 'new' || r.status === 'in_progress'));
+    else if (sel === 'requests') rows = rows.filter(r => r.kind === 'request');
+    else if (sel === 'existing') rows = rows.filter(r => r.kind === 'existing');
+    else if (sel !== 'all') rows = rows.filter(r => r.kind === 'request' && r.status === sel);
+    if (q) rows = rows.filter(r => (r.consignment_number || '').toLowerCase().includes(q) || (r.brand || '').toLowerCase().includes(q) || (r.details || '').toLowerCase().includes(q) || (r.vas_ref || '').toLowerCase().includes(q));
     const kpiEl = document.getElementById('vasKpis');
-    const cnt = st => base.filter(r => r.status === st).length;
+    const cntReq = st => base.filter(r => r.kind === 'request' && r.status === st).length;
     const card = (label, val, color) => `<div class="card" style="padding:14px 16px"><div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${color};margin-bottom:8px">${label}</div><div style="font-size:1.7rem;font-weight:700;color:var(--text);line-height:1">${Number(val).toLocaleString()}</div></div>`;
-    if (kpiEl) kpiEl.innerHTML = card('New', cnt('new'), '#fcd34d') + card('In progress', cnt('in_progress'), '#93c5fd') + card('Done', cnt('done'), '#86efac') + card('Cancelled', cnt('cancelled'), '#94a3b8');
+    if (kpiEl) kpiEl.innerHTML = card('New requests', cntReq('new'), '#fcd34d') + card('In progress', cntReq('in_progress'), '#93c5fd') + card('Done', cntReq('done'), '#86efac') + card('In Partner Hub', base.filter(r => r.kind === 'existing').length, '#fb923c');
     const VS = { new: { label: 'New', color: '#fcd34d' }, in_progress: { label: 'In progress', color: '#93c5fd' }, done: { label: 'Done', color: '#86efac' }, cancelled: { label: 'Cancelled', color: '#94a3b8' } };
+    const phColor = st => st === 'COMPLETED' ? '#86efac' : st === 'APPROVED' ? '#93c5fd' : st === 'PENDING' ? '#fcd34d' : (st === 'CANCELLED' || st === 'REJECTED') ? '#f87171' : '#c4b5fd';
     const dtfmt = t => { if (!t) return '—'; try { return new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (e) { return String(t).slice(0, 16); } };
     const cap = s => s ? s.charAt(0) + s.slice(1).toLowerCase() : '';
     const phUrl = r => 'https://partner.golocad.com/partnerhub/inbound/manage-inbound-shipment/' + encodeURIComponent(r.consignment_id || '');
+    const phLink = r => `<a href="${phUrl(r)}" target="_blank" rel="noopener" title="Open consignment in Partner Hub" style="font-size:.72rem;padding:3px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);text-decoration:none;white-space:nowrap">Partner Hub ↗</a>`;
     tbody.innerHTML = rows.length ? rows.map(r => {
+      const consCell = escHtml(r.consignment_number || ('#' + (r.consignment_id || '')));
+      const whCell = escHtml(r.warehouse || '—');
+      const brandCell = escHtml(r.brand || '—');
+      if (r.kind === 'existing') {
+        const st = r.vas_status || '';
+        return `<tr style="border-top:1px solid var(--border)">
+          <td style="padding:8px 18px;color:var(--text);white-space:nowrap">${consCell}</td>
+          <td style="padding:8px 14px;color:var(--text);white-space:nowrap">${brandCell}</td>
+          <td style="padding:8px 14px;color:var(--muted);white-space:nowrap">${whCell}</td>
+          <td style="padding:8px 14px;white-space:nowrap"><span style="font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:999px;background:rgba(251,146,60,.15);color:#fb923c;border:1px solid rgba(251,146,60,.45)">PARTNER HUB</span></td>
+          <td style="padding:8px 14px;color:var(--muted);white-space:nowrap">—</td>
+          <td style="padding:8px 14px;color:var(--muted);max-width:280px">${r.vas_ref ? 'Ref ' + escHtml(r.vas_ref) : '—'}</td>
+          <td style="padding:8px 14px;color:var(--muted);white-space:nowrap">—</td>
+          <td style="padding:8px 14px;white-space:nowrap"><span style="color:${phColor(st)};font-weight:600">${escHtml(cap(st) || '—')}</span></td>
+          <td style="padding:8px 18px;text-align:right;white-space:nowrap">${phLink(r)}</td>
+        </tr>`;
+      }
       const vs = VS[r.status] || { label: r.status, color: 'var(--muted)' };
       const act = [];
       if (r.status === 'new') act.push(`<button type="button" onclick="setVasStatus(${r.id},'in_progress')" style="font-size:.72rem;padding:3px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">Start</button>`);
       if (r.status === 'new' || r.status === 'in_progress') act.push(`<button type="button" onclick="setVasStatus(${r.id},'done')" style="font-size:.72rem;padding:3px 8px;border-radius:5px;border:1px solid rgba(134,239,172,.5);background:var(--surface2);color:#86efac;cursor:pointer">Done</button>`);
       if (r.status !== 'cancelled' && r.status !== 'done') act.push(`<button type="button" onclick="setVasStatus(${r.id},'cancelled')" style="font-size:.72rem;padding:3px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:pointer">Cancel</button>`);
-      act.push(`<a href="${phUrl(r)}" target="_blank" rel="noopener" title="Open consignment in Partner Hub" style="font-size:.72rem;padding:3px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);text-decoration:none;white-space:nowrap">Partner Hub ↗</a>`);
+      act.push(phLink(r));
       return `<tr style="border-top:1px solid var(--border)">
-        <td style="padding:8px 18px;color:var(--text);white-space:nowrap">${escHtml(r.consignment_number || ('#' + (r.consignment_id || '')))}</td>
-        <td style="padding:8px 14px;color:var(--text);white-space:nowrap">${escHtml(r.brand || '—')}</td>
-        <td style="padding:8px 14px;color:var(--muted);white-space:nowrap">${escHtml(r.warehouse || '—')}</td>
+        <td style="padding:8px 18px;color:var(--text);white-space:nowrap">${consCell}</td>
+        <td style="padding:8px 14px;color:var(--text);white-space:nowrap">${brandCell}</td>
+        <td style="padding:8px 14px;color:var(--muted);white-space:nowrap">${whCell}</td>
+        <td style="padding:8px 14px;white-space:nowrap"><span style="font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:999px;background:rgba(74,222,128,.13);color:#4ade80;border:1px solid rgba(74,222,128,.4)">REQUEST</span></td>
         <td style="padding:8px 14px;color:var(--muted);white-space:nowrap">${escHtml(cap(r.vas_category))}${r.requestor_type ? ' · ' + escHtml(cap(r.requestor_type)) : ''}</td>
         <td style="padding:8px 14px;color:var(--text);max-width:280px">${escHtml(r.details || '')}</td>
         <td style="padding:8px 14px;color:var(--muted);white-space:nowrap">${escHtml(r.requested_by || '—')}<div style="font-size:.68rem;color:var(--muted)">${dtfmt(r.created_at)}</div></td>
         <td style="padding:8px 14px;white-space:nowrap"><span style="color:${vs.color};font-weight:600">${vs.label}</span></td>
         <td style="padding:8px 18px;text-align:right;white-space:nowrap"><div style="display:inline-flex;gap:5px;flex-wrap:wrap;justify-content:flex-end">${act.join('')}</div></td>
       </tr>`;
-    }).join('') : `<tr><td colspan="8" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No VAS requests match this filter.</td></tr>`;
+    }).join('') : `<tr><td colspan="9" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No VAS records match this filter.</td></tr>`;
   }
   function setVasStatus(id, status) {
     const who = (typeof _dashDeviceLabel !== 'undefined' && _dashDeviceLabel) ? _dashDeviceLabel : null;
