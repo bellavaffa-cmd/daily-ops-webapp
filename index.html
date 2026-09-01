@@ -1369,6 +1369,10 @@
       <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8v13H3V8M1 3h22v5H1zM12 12v6m0 0l-3-3m3 3l3-3"/></svg>
       Inbound
     </button>
+    <button class="snav-btn" id="snav-btn-vas" onclick="showView('vas')">
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+      VAS
+    </button>
     <button class="snav-btn" id="snav-btn-briefing" onclick="showView('briefing')">
       <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3l1.9 4.3 4.6.4-3.5 3 1.1 4.6L12 13l-4.1 2.3 1.1-4.6-3.5-3 4.6-.4z"/></svg>
       Daily Briefing
@@ -2489,6 +2493,42 @@
     </div>
   </div>
 
+  <!-- ── VAS REQUESTS VIEW (Customer Success dashboard) ── -->
+  <div class="view" id="view-vas">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+      <div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">VAS Requests</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Value-added-service requests raised from inbound shipments · Customer Success actions them &amp; creates the VAS in the Partner Hub · <span id="vasStamp"></span></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="vasWarehouse" onchange="onVasWhChange(this.value)" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer"></select>
+        <select id="vasStatusFilter" onchange="renderVasRequests()" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
+          <option value="open" selected>Open (New + In progress)</option>
+          <option value="new">New</option>
+          <option value="in_progress">In progress</option>
+          <option value="done">Done</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="all">All</option>
+        </select>
+        <input id="vasSearch" oninput="renderVasRequests()" placeholder="Consignment, brand, details" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);min-width:170px">
+        <button type="button" onclick="fetchVasRequests()" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">⟳ Refresh</button>
+      </div>
+    </div>
+    <div id="vasKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:16px"></div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.82rem"><thead><tr style="background:var(--surface2)">
+        <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Consignment</th>
+        <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Brand</th>
+        <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Warehouse</th>
+        <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Type</th>
+        <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em">Details</th>
+        <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Requested by</th>
+        <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Status</th>
+        <th style="text-align:right;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Actions</th>
+      </tr></thead><tbody id="vasTable"></tbody></table></div>
+    </div>
+  </div>
+
   <!-- ── DAILY BRIEFING VIEW (AI) ── -->
   <div class="view" id="view-briefing">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px">
@@ -2984,6 +3024,7 @@
     { key: 'packingErrorTabProductivity', navId: 'snav-btn-productivity', view: 'productivity', toggleId: 'tabToggleProductivity' },
     { key: 'packingErrorTabJobs',     navId: 'snav-btn-jobs',     view: 'jobs',     toggleId: 'tabToggleJobs'     },
     { key: 'packingErrorTabInbound',  navId: 'snav-btn-inbound',  view: 'inbound',  toggleId: 'tabToggleInbound'  },
+    { key: 'packingErrorTabVas',      navId: 'snav-btn-vas',      view: 'vas',      toggleId: 'tabToggleVas'      },
     { key: 'packingErrorTabCs',       navId: 'snav-btn-cs',       view: 'cs',       toggleId: 'tabToggleCs'       },
     { key: 'packingErrorTabBriefing', navId: 'snav-btn-briefing', view: 'briefing', toggleId: 'tabToggleBriefing' },
     { key: 'packingErrorTabAttendance', navId: 'snav-btn-attendance', view: 'attendance', toggleId: 'tabToggleAttendance' },
@@ -7280,13 +7321,157 @@
   const brandName = b => { if (b == null) return ''; if (typeof b === 'object') return b.name || ''; const s = String(b); if (s.charAt(0) === '{') { try { return JSON.parse(s).name || s; } catch (e) {} } return s; };
   let _inboundStatus = 'all';           // status selected via the KPI boxes ('all' = Total)
   function setInboundStatus(s) { _inboundStatus = s; try { _inboundExpanded.clear(); } catch (e) {} renderInbound(); }
+  const vasChip = st => `<span title="Partner Hub VAS: ${escHtml(st || '')}" style="margin-left:6px;font-size:.6rem;font-weight:700;letter-spacing:.03em;padding:1px 6px;border-radius:999px;background:rgba(251,146,60,.15);color:#fb923c;border:1px solid rgba(251,146,60,.45);vertical-align:middle">VAS</span>`;
+  const VAS_CATEGORIES = ['INBOUND', 'OUTBOUND', 'OTHERS'];
+  const VAS_REQUESTORS = ['BRAND', 'WAREHOUSE', 'LOCAD'];
   const _inboundExpanded = new Set();   // consignment ids whose detail row is expanded
+  const _inboundItems = {};             // consignment id -> SKU lines (cached after first fetch)
   function toggleInboundRow(id) {
     const det = document.getElementById('inbrow-' + id); if (!det) return;
     const open = det.style.display === 'none';
     det.style.display = open ? '' : 'none';
     if (open) _inboundExpanded.add(id); else _inboundExpanded.delete(id);
     const car = document.getElementById('inbcar-' + id); if (car) car.textContent = open ? '▾' : '▸';
+    if (open) loadInboundItems(id);
+  }
+  // Fetch a consignment's SKU lines live via the extension bridge (Partner Hub token lives in the extension).
+  function loadInboundItems(id) {
+    const el = document.getElementById('inbitems-' + id); if (!el) return;
+    if (_inboundItems[id]) { renderInboundItems(id, _inboundItems[id]); return; }
+    el.textContent = 'Loading…';
+    const reqId = 'itm-' + id + '-' + (Date.now());
+    let done = false;
+    const onMsg = (e) => {
+      if (e.source !== window || !e.data || e.data.type !== 'wms-inbound-items-result' || e.data.reqId !== reqId) return;
+      done = true; window.removeEventListener('message', onMsg);
+      if (e.data.ok && Array.isArray(e.data.items)) { _inboundItems[id] = e.data.items; renderInboundItems(id, e.data.items); }
+      else { el.innerHTML = '<span style="color:var(--muted)">Couldn\'t load SKUs' + (e.data.error ? ' — ' + escHtml(e.data.error) : '') + '. Needs the WMS extension (v3.33+) with a Partner Hub session.</span>'; }
+    };
+    window.addEventListener('message', onMsg);
+    try { window.postMessage({ type: 'wms-inbound-items', id: id, reqId: reqId }, '*'); } catch (e) {}
+    setTimeout(() => { if (done) return; done = true; window.removeEventListener('message', onMsg); const c = document.getElementById('inbitems-' + id); if (c && c.textContent === 'Loading…') c.innerHTML = '<span style="color:var(--muted)">SKU lookup timed out — ensure the WMS extension is loaded and you\'re logged into the Partner Hub.</span>'; }, 15000);
+  }
+  function renderInboundItems(id, items) {
+    const el = document.getElementById('inbitems-' + id); if (!el) return;
+    if (!items.length) { el.innerHTML = '<span style="color:var(--muted)">No SKU lines on this consignment.</span>'; return; }
+    const body = items.map(it => `<tr style="border-top:1px solid var(--border)">
+      <td style="padding:4px 12px 4px 0;color:var(--text);white-space:nowrap">${escHtml(it.sku || '—')}</td>
+      <td style="padding:4px 12px;color:var(--text)">${escHtml(it.name || '—')}</td>
+      <td style="padding:4px 12px;text-align:right;color:var(--text)">${it.qty != null ? Number(it.qty).toLocaleString() : '—'}</td>
+      <td style="padding:4px 12px;text-align:right;color:var(--muted)">${it.received != null ? Number(it.received).toLocaleString() : '—'}</td>
+      <td style="padding:4px 0 4px 12px;color:var(--muted);white-space:nowrap">${it.expiry ? escHtml(it.expiry) : '—'}</td>
+    </tr>`).join('');
+    el.innerHTML = `<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:.78rem;min-width:440px"><thead><tr style="color:var(--muted)">
+      <th style="text-align:left;padding:2px 12px 5px 0;font-weight:600">SKU</th><th style="text-align:left;padding:2px 12px;font-weight:600">Product</th>
+      <th style="text-align:right;padding:2px 12px;font-weight:600">Qty</th><th style="text-align:right;padding:2px 12px;font-weight:600">Received</th>
+      <th style="text-align:left;padding:2px 0 5px 12px;font-weight:600">Expiry</th></tr></thead><tbody>${body}</tbody></table></div>`;
+  }
+  // ── Request VAS (in-app only; queues for Customer Success — NOT written to LOCAD) ──
+  function openVasRequest(id) {
+    const r = (inboundData || []).find(x => x.id === id); if (!r) return;
+    closeVasModal();
+    const cap = s => s.charAt(0) + s.slice(1).toLowerCase();
+    const catOpts = VAS_CATEGORIES.map(c => `<option value="${c}"${c === 'INBOUND' ? ' selected' : ''}>${cap(c)}</option>`).join('');
+    const reqOpts = VAS_REQUESTORS.map(c => `<option value="${c}"${c === 'BRAND' ? ' selected' : ''}>${cap(c)}</option>`).join('');
+    const who = (typeof _dashDeviceLabel !== 'undefined' && _dashDeviceLabel) ? _dashDeviceLabel : '';
+    const ov = document.createElement('div');
+    ov.id = 'vasModal';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.onclick = (e) => { if (e.target === ov) closeVasModal(); };
+    const lbl = '<div style="color:var(--muted);font-size:.72rem;margin-bottom:3px">';
+    const inCss = 'width:100%;padding:7px 9px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text);box-sizing:border-box';
+    ov.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;max-width:460px;width:100%;padding:20px 22px;color:var(--text);box-shadow:0 10px 40px rgba(0,0,0,.4)">
+      <div style="font-size:1rem;font-weight:700;margin-bottom:4px">Request VAS</div>
+      <div style="font-size:.76rem;color:var(--muted);margin-bottom:16px">Queues for Customer Success to create in the Partner Hub — this does <b>not</b> submit to LOCAD.</div>
+      <div style="display:grid;gap:12px;font-size:.82rem">
+        <div>${lbl}Consignment</div><div style="font-weight:600">${escHtml(r.consignment_number || ('#' + r.id))} · ${escHtml(brandName(r.brand) || '')} · ${escHtml(r.wh || '')}</div></div>
+        <label style="display:block">${lbl}VAS type</div><select id="vasCat" style="${inCss}">${catOpts}</select></label>
+        <label style="display:block">${lbl}Requestor</div><select id="vasReq" style="${inCss}">${reqOpts}</select></label>
+        <label style="display:block">${lbl}Details / instructions</div><textarea id="vasDetails" rows="3" placeholder="What VAS is needed? (e.g. relabel, bundle 2-for-1, insert flyer…)" style="${inCss};resize:vertical"></textarea></label>
+        <label style="display:block">${lbl}Requested by</div><input id="vasBy" value="${escHtml(who)}" placeholder="Your name" style="${inCss}"></label>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
+        <button type="button" onclick="closeVasModal()" style="font-size:.82rem;padding:7px 14px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">Cancel</button>
+        <button type="button" id="vasSubmitBtn" onclick="submitVasRequest(${r.id})" style="font-size:.82rem;padding:7px 14px;border-radius:7px;border:1px solid var(--primary,#4ade80);background:var(--primary,#4ade80);color:#04150a;font-weight:600;cursor:pointer">Submit request</button>
+      </div>
+    </div>`;
+    document.body.appendChild(ov);
+  }
+  function closeVasModal() { const m = document.getElementById('vasModal'); if (m) m.remove(); }
+  function submitVasRequest(id) {
+    const r = (inboundData || []).find(x => x.id === id); if (!r) return;
+    const cat = document.getElementById('vasCat')?.value || 'INBOUND';
+    const reqt = document.getElementById('vasReq')?.value || 'BRAND';
+    const details = (document.getElementById('vasDetails')?.value || '').trim();
+    const by = (document.getElementById('vasBy')?.value || '').trim();
+    if (!details) { try { showToast('Add VAS details first.', false); } catch (e) {} const d = document.getElementById('vasDetails'); if (d) d.focus(); return; }
+    const btn = document.getElementById('vasSubmitBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+    const row = { consignment_id: r.id, consignment_number: r.consignment_number || null, warehouse: r.wh || null, brand: brandName(r.brand) || null, vas_category: cat, requestor_type: reqt, details: details, requested_by: by || null, status: 'new' };
+    fetch(SB_URL + '/vas_request', { method: 'POST', headers: { ...SB_HDR, Prefer: 'return=minimal' }, body: JSON.stringify([row]) })
+      .then(res => { if (!res.ok) throw new Error('HTTP ' + res.status); closeVasModal(); try { showToast('VAS request sent to Customer Success.', true); } catch (e) {} try { fetchVasRequests(); } catch (e) {} })
+      .catch(e => { if (btn) { btn.disabled = false; btn.textContent = 'Submit request'; } try { showToast('Could not save VAS request: ' + (e && e.message), false); } catch (x) {} });
+  }
+  // ── VAS Requests dashboard (Customer Success) ──
+  let vasData = [];
+  async function fetchVasRequests() {
+    try {
+      const rows = await fetch(SB_URL + '/vas_request?select=*&order=created_at.desc&limit=2000', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      vasData = (rows || []).filter(r => !r.warehouse || inboundWhAllowed(r.warehouse));   // scope to the viewer's warehouses
+    } catch (e) { vasData = []; }
+    renderVasRequests();
+  }
+  function onVasWhChange(v) { try { localStorage.setItem('vasWarehouse', v || ''); } catch (e) {} renderVasRequests(); }
+  function renderVasRequests() {
+    const tbody = document.getElementById('vasTable'); if (!tbody) return;
+    const stamp = document.getElementById('vasStamp'); if (stamp) stamp.textContent = vasData.length + ' request' + (vasData.length === 1 ? '' : 's');
+    const whSel = document.getElementById('vasWarehouse');
+    let pick = localStorage.getItem('vasWarehouse') || '';
+    if (whSel) {
+      const whs = [...new Set(vasData.map(r => r.warehouse).filter(Boolean))].sort();
+      if (pick && !whs.includes(pick)) pick = '';
+      whSel.innerHTML = '<option value="">All warehouses</option>' + whs.map(w => `<option value="${escHtml(w)}"${w === pick ? ' selected' : ''}>${escHtml(w)}</option>`).join('');
+    }
+    const sel = document.getElementById('vasStatusFilter')?.value || 'open';
+    const q = (document.getElementById('vasSearch')?.value || '').toLowerCase().trim();
+    const base = vasData.filter(r => !pick || r.warehouse === pick);
+    let rows = base.slice();
+    if (sel === 'open') rows = rows.filter(r => r.status === 'new' || r.status === 'in_progress');
+    else if (sel !== 'all') rows = rows.filter(r => r.status === sel);
+    if (q) rows = rows.filter(r => (r.consignment_number || '').toLowerCase().includes(q) || (r.brand || '').toLowerCase().includes(q) || (r.details || '').toLowerCase().includes(q));
+    const kpiEl = document.getElementById('vasKpis');
+    const cnt = st => base.filter(r => r.status === st).length;
+    const card = (label, val, color) => `<div class="card" style="padding:14px 16px"><div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${color};margin-bottom:8px">${label}</div><div style="font-size:1.7rem;font-weight:700;color:var(--text);line-height:1">${Number(val).toLocaleString()}</div></div>`;
+    if (kpiEl) kpiEl.innerHTML = card('New', cnt('new'), '#fcd34d') + card('In progress', cnt('in_progress'), '#93c5fd') + card('Done', cnt('done'), '#86efac') + card('Cancelled', cnt('cancelled'), '#94a3b8');
+    const VS = { new: { label: 'New', color: '#fcd34d' }, in_progress: { label: 'In progress', color: '#93c5fd' }, done: { label: 'Done', color: '#86efac' }, cancelled: { label: 'Cancelled', color: '#94a3b8' } };
+    const dtfmt = t => { if (!t) return '—'; try { return new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (e) { return String(t).slice(0, 16); } };
+    const cap = s => s ? s.charAt(0) + s.slice(1).toLowerCase() : '';
+    const phUrl = r => 'https://partner.golocad.com/partnerhub/inbound/manage-inbound-shipment/' + encodeURIComponent(r.consignment_id || '');
+    tbody.innerHTML = rows.length ? rows.map(r => {
+      const vs = VS[r.status] || { label: r.status, color: 'var(--muted)' };
+      const act = [];
+      if (r.status === 'new') act.push(`<button type="button" onclick="setVasStatus(${r.id},'in_progress')" style="font-size:.72rem;padding:3px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">Start</button>`);
+      if (r.status === 'new' || r.status === 'in_progress') act.push(`<button type="button" onclick="setVasStatus(${r.id},'done')" style="font-size:.72rem;padding:3px 8px;border-radius:5px;border:1px solid rgba(134,239,172,.5);background:var(--surface2);color:#86efac;cursor:pointer">Done</button>`);
+      if (r.status !== 'cancelled' && r.status !== 'done') act.push(`<button type="button" onclick="setVasStatus(${r.id},'cancelled')" style="font-size:.72rem;padding:3px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:pointer">Cancel</button>`);
+      act.push(`<a href="${phUrl(r)}" target="_blank" rel="noopener" title="Open consignment in Partner Hub" style="font-size:.72rem;padding:3px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);text-decoration:none;white-space:nowrap">Partner Hub ↗</a>`);
+      return `<tr style="border-top:1px solid var(--border)">
+        <td style="padding:8px 18px;color:var(--text);white-space:nowrap">${escHtml(r.consignment_number || ('#' + (r.consignment_id || '')))}</td>
+        <td style="padding:8px 14px;color:var(--text);white-space:nowrap">${escHtml(r.brand || '—')}</td>
+        <td style="padding:8px 14px;color:var(--muted);white-space:nowrap">${escHtml(r.warehouse || '—')}</td>
+        <td style="padding:8px 14px;color:var(--muted);white-space:nowrap">${escHtml(cap(r.vas_category))}${r.requestor_type ? ' · ' + escHtml(cap(r.requestor_type)) : ''}</td>
+        <td style="padding:8px 14px;color:var(--text);max-width:280px">${escHtml(r.details || '')}</td>
+        <td style="padding:8px 14px;color:var(--muted);white-space:nowrap">${escHtml(r.requested_by || '—')}<div style="font-size:.68rem;color:var(--muted)">${dtfmt(r.created_at)}</div></td>
+        <td style="padding:8px 14px;white-space:nowrap"><span style="color:${vs.color};font-weight:600">${vs.label}</span></td>
+        <td style="padding:8px 18px;text-align:right;white-space:nowrap"><div style="display:inline-flex;gap:5px;flex-wrap:wrap;justify-content:flex-end">${act.join('')}</div></td>
+      </tr>`;
+    }).join('') : `<tr><td colspan="8" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No VAS requests match this filter.</td></tr>`;
+  }
+  function setVasStatus(id, status) {
+    const who = (typeof _dashDeviceLabel !== 'undefined' && _dashDeviceLabel) ? _dashDeviceLabel : null;
+    const patch = { status: status, updated_at: new Date().toISOString() };
+    if (status === 'in_progress' || status === 'done') patch.actioned_by = who;
+    fetch(SB_URL + '/vas_request?id=eq.' + id, { method: 'PATCH', headers: { ...SB_HDR, Prefer: 'return=minimal' }, body: JSON.stringify(patch) })
+      .then(res => { if (!res.ok) throw new Error('HTTP ' + res.status); const row = vasData.find(x => x.id === id); if (row) row.status = status; renderVasRequests(); })
+      .catch(e => { try { showToast('Could not update: ' + (e && e.message), false); } catch (x) {} });
   }
   function collapseInboundRows() {
     if (!_inboundExpanded.size) return;
@@ -7308,7 +7493,7 @@
   }
   async function fetchInbound() {
     try {
-      const sel = 'id,consignment_number,status,channel_status,consignment_qty,received_qty,complete_pct,warehouse,brand,planned_date,estimated_arrival,carrier_name,tracking_number,inbound_method,tags,src_created_at';
+      const sel = 'id,consignment_number,status,channel_status,consignment_qty,received_qty,complete_pct,warehouse,brand,planned_date,estimated_arrival,carrier_name,tracking_number,inbound_method,tags,src_created_at,vas_id,vas_status,vas_ref';
       const rows = [];
       for (let off = 0; off < 20000; off += 1000) {
         const page = await fetch(SB_URL + '/inbound_shipment?select=' + sel + '&order=planned_date.asc&limit=1000&offset=' + off, { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
@@ -7372,7 +7557,7 @@
       <td style="padding:7px 18px;white-space:nowrap"><span class="inb-toggle" onclick="toggleInboundRow(${r.id})" style="cursor:pointer;color:var(--primary,#4ade80);font-weight:600;user-select:none" title="Show details"><span id="inbcar-${r.id}" style="display:inline-block;width:.9em;color:var(--muted)">${exp ? '▾' : '▸'}</span>${escHtml(r.consignment_number || ('#' + r.id))}</span></td>
       <td style="padding:7px 14px;color:var(--text);white-space:nowrap">${escHtml(brandName(r.brand) || '—')}</td>
       <td style="padding:7px 14px;color:var(--muted);white-space:nowrap">${escHtml(r.wh || '')}</td>
-      <td style="padding:7px 14px;white-space:nowrap">${badge(r.status)}</td>
+      <td style="padding:7px 14px;white-space:nowrap">${badge(r.status)}${r.vas_status ? vasChip(r.vas_status) : ''}</td>
       <td style="padding:7px 14px;color:var(--muted);white-space:nowrap">${dfmt(r.planned_date)}</td>
       <td style="padding:7px 14px;text-align:right;color:var(--text)">${rq != null ? Number(rq).toLocaleString() : '—'} <span style="color:var(--muted)">/ ${cq != null ? Number(cq).toLocaleString() : '—'}</span></td>
       <td style="padding:7px 18px;text-align:right;color:var(--muted)">${pct != null ? pct + '%' : '—'}</td>
@@ -7387,9 +7572,15 @@
         ${field('Received / Expected', (rq != null ? Number(rq).toLocaleString() : '—') + ' / ' + (cq != null ? Number(cq).toLocaleString() : '—'))}
         ${field('Progress', pct != null ? pct + '%' : '—')}
         ${field('Created', dtfmt(r.src_created_at))}
+        ${field('VAS (Partner Hub)', r.vas_status ? (r.vas_status + (r.vas_ref ? ' · ' + r.vas_ref : '')) : 'None')}
         ${field('Tags', tagStr)}
       </div>
-      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <div style="margin-top:14px">
+        <div style="font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px">SKUs in this consignment</div>
+        <div id="inbitems-${r.id}" style="font-size:.8rem;color:var(--muted)">${exp ? 'Loading…' : ''}</div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+        <button type="button" onclick="openVasRequest(${r.id})" style="font-size:.76rem;padding:5px 12px;border-radius:6px;border:1px solid var(--primary,#4ade80);background:var(--primary,#4ade80);color:#04150a;font-weight:600;cursor:pointer">+ Request VAS</button>
         ${linkBtn(wmsUrl, 'Open in WMS')}
         ${linkBtn(phUrl, 'Open in Partner Hub')}
       </div>
@@ -8704,6 +8895,7 @@
     if (v === 'b2c') { try { fetchAiForecast(true); } catch(e){} }
     if (v === 'shortage') { try { fetchShortageAi(true, false); } catch(e){} }
     if (v === 'inbound') { try { fetchInbound(); } catch(e){} }
+    if (v === 'vas') { try { fetchVasRequests(); } catch(e){} }
     if (v === 'briefing') { try { renderBriefing(); fetchBriefing(true, false); } catch(e){} }
     if (v === 'weekly') { try { renderWeekly(); fetchWeekly(true, false); } catch(e){} }
     if (v === 'temp') { try { openTempView(); } catch(e){} }

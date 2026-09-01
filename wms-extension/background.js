@@ -118,6 +118,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'syncAttendance') { syncAttendance().then(() => sendResponse({ ok: true })).catch(e => sendResponse({ ok: false, error: e && e.message })); return true; }
   // Manual inbound-PO sync (Logiwa → Supabase).
   if (msg.action === 'syncInbound') { syncInboundShipments(true).then(() => sendResponse({ ok: true })).catch(e => sendResponse({ ok: false, error: e && e.message })); return true; }
+  if (msg.action === 'getInboundItems') { getInboundItems(msg.id).then(items => sendResponse({ ok: true, items })).catch(e => sendResponse({ ok: false, error: e && e.message })); return true; }
   // companion.js pushes the LOCAD Ops access token on load so we can sync tab-free.
   if (msg.action === 'storeCompanionToken' && msg.token) { try { chrome.storage.local.set({ companionToken: msg.token, companionTokenExp: msg.exp || _jwtExp(msg.token) }); } catch (e) {} sendResponse({ ok: true }); return false; }
 });
@@ -364,9 +365,15 @@ async function syncInboundShipments(force) {
   const now = new Date();
   const sd = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000).toISOString();
   const ed = now.toISOString();
-  let whCsv = '';
-  try { if (auth.gwf) whCsv = JSON.parse(auth.gwf).join(','); } catch (e) {}
   const AH = { Authorization: 'Token ' + auth.token };
+  // Warehouse scope = the user's stable ACCESSIBLE-warehouse set, NOT GWF (which is the
+  // transient UI filter and would make us under-sync + mirror-delete when the user narrows it).
+  let whCsv = '';
+  try {
+    const wr = await fetch('https://dashboard.golocad.com/api/partnerhub/access/warehouses/', { headers: AH });
+    if (wr.ok) { const wj = await wr.json(); const arr = Array.isArray(wj) ? wj : (wj.results || wj.warehouses || []); whCsv = arr.map(w => w.id).filter(x => x != null).join(','); }
+  } catch (e) {}
+  if (!whCsv) { try { if (auth.gwf) whCsv = JSON.parse(auth.gwf).join(','); } catch (e) {} }   // fallback to GWF
   const BASE = 'https://dashboard.golocad.com/api/partnerhub/consignment/consignments/';
   const dOnly = (x) => { if (!x) return null; const m = String(x).match(/^\d{4}-\d{2}-\d{2}/); return m ? m[0] : null; };
   const byId = {};
@@ -402,6 +409,9 @@ async function syncInboundShipments(force) {
     inbound_method: c.inbound_method || null,
     tags: c.tags || null,
     src_created_at: c.created_at || null,
+    vas_id: c.vas_info ? (c.vas_info.id != null ? c.vas_info.id : null) : null,
+    vas_status: c.vas_info ? (c.vas_info.status || null) : null,
+    vas_ref: c.vas_info ? (c.vas_info.ref_no || null) : null,
     synced_at: nowIso, updated_at: nowIso,
   }));
   if (!rows.length) { await reportInboundStatus(true, 'No inbound shipments in the last 60 days.', 0); return; }
@@ -409,6 +419,27 @@ async function syncInboundShipments(force) {
   for (let i = 0; i < rows.length; i += 500) { try { const sr = await fetch(`${SB_URL}/rest/v1/inbound_shipment?on_conflict=id`, { method: 'POST', headers: Object.assign({}, SBH, { Prefer: 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(rows.slice(i, i + 500)) }); if (!sr.ok) saveErr = 'DB save failed (HTTP ' + sr.status + ')'; } catch (e) { saveErr = 'DB save failed: ' + (e && e.message); } }
   if (!saveErr) { try { await fetch(`${SB_URL}/rest/v1/inbound_shipment?synced_at=lt.${encodeURIComponent(nowIso)}`, { method: 'DELETE', headers: SBH }); } catch (e) {} }
   await reportInboundStatus(!saveErr, saveErr, rows.length);
+}
+// On-demand SKU line items for one consignment (used by the app's expand panel, live — not stored).
+async function getInboundItems(id) {
+  const auth = await getPartnerAuth();
+  if (!auth || !auth.token) throw new Error('No Partner Hub session — open partner.golocad.com and log in once.');
+  const r = await fetch('https://dashboard.golocad.com/api/partnerhub/consignment/consignment/products/' + encodeURIComponent(id) + '/?limit=500', { headers: { Authorization: 'Token ' + auth.token } });
+  if (r.status === 401 || r.status === 403) { try { await chrome.storage.local.remove('partnerToken'); } catch (e) {} throw new Error('Partner Hub session expired'); }
+  if (!r.ok) throw new Error('partnerhub ' + r.status);
+  const j = await r.json();
+  const arr = Array.isArray(j) ? j : (j.results || []);
+  return arr.map(it => ({
+    sku: it.inventory_product_sku || null,
+    name: it.inventory_product_name || null,
+    qty: it.consignment_quantity != null ? it.consignment_quantity : null,
+    received: it.received_quantity != null ? it.received_quantity : null,
+    usable: it.usable_quantity != null ? it.usable_quantity : null,
+    expiry: it.expiry_date || null,
+    batch: it.batch || null,
+    barcode: it.barcode || null,
+    pack_type: it.pack_type || null,
+  }));
 }
 async function storedWmsIdentity() {
   try {

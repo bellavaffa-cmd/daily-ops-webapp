@@ -96,6 +96,20 @@ window.addEventListener('message', (e) => {
     return;
   }
 
+  // Dashboard asks for a consignment's SKU line items → relay to the background
+  // worker (which reads the Partner Hub token and fetches them live). reqId
+  // correlates concurrent requests back to the right expanded row.
+  if (e.data.type === 'wms-inbound-items') {
+    const reqId = e.data.reqId;
+    try {
+      chrome.runtime.sendMessage({ action: 'getInboundItems', id: e.data.id }, (resp) => {
+        const ok = !chrome.runtime.lastError && resp && resp.ok;
+        window.postMessage({ type: 'wms-inbound-items-result', reqId, ok: !!ok, items: (resp && resp.items) || null, error: (resp && resp.error) || (chrome.runtime.lastError && chrome.runtime.lastError.message) || null }, '*');
+      });
+    } catch (err) { window.postMessage({ type: 'wms-inbound-items-result', reqId, ok: false, error: String(err) }, '*'); }
+    return;
+  }
+
   if (e.data.type !== 'wms-ext-close') return;
   if (window.parent !== window) {
     // We're inside an iframe — signal the WMS page to close the overlay
