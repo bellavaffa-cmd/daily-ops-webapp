@@ -3203,6 +3203,11 @@
   // compare with a normalized key. globalWh() is the single source of truth
   // ('' = all my warehouses). Per-tab dropdowns are hidden; each render reads globalWh().
   let _currentView = null;
+  // Egress guard: skip a tab's network re-fetch if it ran within `ms` (the last-rendered
+  // content stays on screen). Returns true when a fetch SHOULD run. The top-bar Sync and
+  // any warehouse change bypass this by calling the fetches directly.
+  const _viewFetchAt = {};
+  function _shouldFetch(key, ms) { const t = Date.now(); if (_viewFetchAt[key] && t - _viewFetchAt[key] < ms) return false; _viewFetchAt[key] = t; return true; }
   const _stripWhCode = s => String(s || '').replace(/\s*\([A-Za-z]{2,4}-[A-Za-z0-9]+\)\s*$/, '').trim().toLowerCase();
   function whEq(a, b) { return _stripWhCode(a) === _stripWhCode(b); }
   // The app already has a shared warehouse selection (whFilterSet via getSelectedWhs/
@@ -3227,6 +3232,7 @@
   function onGlobalWhChange(v) {
     try { setSelectedWhs(v ? [v] : (_whAllow ? [..._whAllow] : [])); } catch (e) {}   // v='' → select all = show everything
     populateGlobalWh();
+    try { Object.keys(_viewFetchAt).forEach(k => delete _viewFetchAt[k]); } catch (e) {}   // warehouse changed → let the next view re-fetch
     if (_currentView) showView(_currentView, { keepScroll: true });
   }
   function tabAllowed(view) { return (!_profileTabs || _profileTabs.has(view)) && (!_roleTabs || _roleTabs.has(view)); }
@@ -5038,15 +5044,16 @@
   // Supabase-backed tables (no Logiwa fetch). The extension keeps Supabase fresh
   // on its own (hourly alarm + this app's periodic live sync), so re-reading the
   // cache is how the UI surfaces that data without anyone waiting.
+  // Only re-read the ACTIVE view's tables (the Dashboard mirrors everything, so it
+  // refreshes all). This is the periodic 60s poll — refreshing every table for every
+  // user regardless of the open tab was the dominant Supabase egress cost.
   function refreshFromCache(silent = true) {
-    try { fetchB2CData(silent);   } catch (e) {}
-    try { fetchB2CFlow();         } catch (e) {}
-    try { fetchB2BData();         } catch (e) {}
-    try { fetchB2BOrders();       } catch (e) {}
-    try { fetchShortageData();    } catch (e) {}
-    try { fetchShortageOrders();  } catch (e) {}
-    try { fetchJobData();         } catch (e) {}
-    try { fetchProductivity();    } catch (e) {}
+    const v = _currentView, all = (v === 'dash');
+    try { if (all || v === 'b2c') { fetchB2CData(silent); fetchB2CFlow(); } } catch (e) {}
+    try { if (all || v === 'b2b') { fetchB2BData(); fetchB2BOrders(); } } catch (e) {}
+    try { if (all || v === 'shortage') { fetchShortageData(); fetchShortageOrders(); } } catch (e) {}
+    try { if (all || v === 'jobs') { fetchJobData(); } } catch (e) {}
+    try { if (all || v === 'productivity') { fetchProductivity(); } } catch (e) {}
   }
 
   // One global Sync button (top bar / sidebar footer). Optimistic + non-blocking:
@@ -7213,8 +7220,10 @@
     document.addEventListener('keydown', _uhEsc);
   }
 
-  fetchProductivity();
-  setInterval(fetchProductivity, 5 * 60 * 1000);
+  // Productivity pulls large per-user/snapshot tables — load it lazily (on the
+  // Productivity/Dashboard view) and only poll while one of those is open, instead
+  // of every 5 min for every user regardless of tab. showView triggers the first load.
+  setInterval(() => { if (_currentView === 'productivity' || _currentView === 'dash') fetchProductivity(); }, 5 * 60 * 1000);
 
   // Searchable dropdowns: enhance a native <select> into a type-to-filter combobox.
   // The <select> stays the source of truth (value + change event); we overlay a
@@ -9136,15 +9145,15 @@
     // Toggle Report Error FAB (before renderTable so errors don't hide it)
     const fab = document.getElementById('fabReport');
     if (fab) fab.classList.toggle('visible', v === 'b2c');
-    if (v === 'cs') { try { fetchCustomerSuccess(); } catch(e){} }
+    if (v === 'cs') { if (_shouldFetch('cs', 45000)) { try { fetchCustomerSuccess(); } catch(e){} } }
     if (v === 'b2c') { try { fetchAiForecast(true); } catch(e){} }
     if (v === 'shortage') { try { fetchShortageAi(true, false); } catch(e){} }
-    if (v === 'inbound') { try { fetchInbound(); } catch(e){} }
-    if (v === 'vas') { try { fetchVasRequests(); } catch(e){} }
+    if (v === 'inbound') { if (_shouldFetch('inbound', 45000)) { try { fetchInbound(); } catch(e){} } else { try { renderInbound(); } catch(e){} } }
+    if (v === 'vas') { if (_shouldFetch('vas', 45000)) { try { fetchVasRequests(); } catch(e){} } else { try { renderVasRequests(); } catch(e){} } }
     if (v === 'briefing') { try { renderBriefing(); fetchBriefing(true, false); } catch(e){} }
     if (v === 'weekly') { try { renderWeekly(); fetchWeekly(true, false); } catch(e){} }
     if (v === 'temp') { try { openTempView(); } catch(e){} }
-    if (v === 'attendance') { try { fetchAttendance(); } catch(e){} }
+    if (v === 'attendance') { if (_shouldFetch('attendance', 45000)) { try { fetchAttendance(); } catch(e){} } else { try { renderAttendance(); } catch(e){} } }
     if (v === 'labels') {
       // Load the label printer once per session with a cache-buster. The side
       // panel reloads the app fresh but NOT this nested iframe, so without the
@@ -9158,6 +9167,9 @@
     }
     if (v === 'productivity') {
       try { renderProdTrend(); renderProdHourlyTable(); } catch (e) {}   // paint immediately from cache
+      // Productivity data is loaded lazily (not eagerly at page load) — fetch on open,
+      // throttled so quick tab-switching doesn't re-pull the big snapshot tables.
+      if (_shouldFetch('productivity', 30000)) { try { fetchProductivity(); } catch (e) {} }
       // If the ledgers/hourly haven't loaded yet (opened before init/sync finished),
       // fetch them now — each re-renders on arrival.
       if (!(typeof orderDaily !== 'undefined' && orderDaily && orderDaily.length)) { try { fetchOrderLedgers(); } catch (e) {} }
@@ -9166,7 +9178,7 @@
       // Refresh the temp-account → today's-staff name map, then repaint the operator names.
       try { fetchTempOperatorMap().then(() => { try { populateProdPersonSelect(); renderProductivity(); renderProdHourlyTable(); } catch (e) {} }); } catch (e) {}
     }
-    if (v === 'dash') { try { renderStats(); } catch(e){} try { initWarehouseFilter(); renderTable(); } catch(e){} }
+    if (v === 'dash') { try { renderStats(); } catch(e){} try { initWarehouseFilter(); renderTable(); } catch(e){} try { if (typeof userPerf === 'undefined' || !userPerf || !userPerf.length) fetchProductivity(); } catch(e){} }
     if (v === 'jobs') {
       try { renderJobs(); } catch(e){}
       // Jobs churn fast, so refresh on open — but throttle to at most once / 20s
