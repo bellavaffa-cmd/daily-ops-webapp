@@ -2502,16 +2502,6 @@
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <select id="vasWarehouse" onchange="onVasWhChange(this.value)" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer"></select>
-        <select id="vasStatusFilter" onchange="renderVasRequests()" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">
-          <option value="open" selected>Open requests (New + In progress)</option>
-          <option value="new">New requests</option>
-          <option value="in_progress">In-progress requests</option>
-          <option value="done">Done requests</option>
-          <option value="cancelled">Cancelled requests</option>
-          <option value="requests">All requests</option>
-          <option value="existing">In Partner Hub (existing VAS)</option>
-          <option value="all">All (requests + existing)</option>
-        </select>
         <input id="vasSearch" oninput="renderVasRequests()" placeholder="Consignment, brand, details" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);min-width:170px">
         <button type="button" onclick="fetchVasRequests()" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">⟳ Refresh</button>
       </div>
@@ -7416,6 +7406,18 @@
   }
   // ── VAS Requests dashboard (Customer Success) ──
   let vasData = [];
+  let _vasSel = 'pending_creation';   // which KPI box is selected as the filter
+  function setVasSel(v) { _vasSel = v; renderVasRequests(); }
+  // Box 1 is the in-app queue; the rest mirror the Partner Hub VAS tabs.
+  const VAS_BOXES = [
+    { key: 'pending_creation', label: 'Pending creation', color: '#4ade80' },
+    { key: 'existing_all', label: 'All VAS', color: '#fb923c' },
+    { key: 'DRAFT', label: 'Draft', color: '#94a3b8' },
+    { key: 'PENDING', label: 'Pending approval', color: '#fcd34d' },
+    { key: 'APPROVED', label: 'Approved', color: '#93c5fd' },
+    { key: 'COMPLETED', label: 'Completed', color: '#86efac' },
+    { key: 'VERIFIED', label: 'Verified', color: '#a78bfa' },
+  ];
   async function fetchVasRequests() {
     try {
       const [reqs, existing] = await Promise.all([
@@ -7439,19 +7441,21 @@
       if (pick && !whs.includes(pick)) pick = '';
       whSel.innerHTML = '<option value="">All warehouses</option>' + whs.map(w => `<option value="${escHtml(w)}"${w === pick ? ' selected' : ''}>${escHtml(w)}</option>`).join('');
     }
-    const sel = document.getElementById('vasStatusFilter')?.value || 'open';
     const q = (document.getElementById('vasSearch')?.value || '').toLowerCase().trim();
     const base = vasData.filter(r => !pick || r.warehouse === pick);
-    let rows = base.slice();
-    if (sel === 'open') rows = rows.filter(r => r.kind === 'request' && (r.status === 'new' || r.status === 'in_progress'));
-    else if (sel === 'requests') rows = rows.filter(r => r.kind === 'request');
-    else if (sel === 'existing') rows = rows.filter(r => r.kind === 'existing');
-    else if (sel !== 'all') rows = rows.filter(r => r.kind === 'request' && r.status === sel);
+    const matchBox = (r, key) => {
+      if (key === 'pending_creation') return r.kind === 'request' && (r.status === 'new' || r.status === 'in_progress');
+      if (key === 'existing_all') return r.kind === 'existing';
+      return r.kind === 'existing' && (r.vas_status || '').toUpperCase() === key;
+    };
+    let rows = base.filter(r => matchBox(r, _vasSel));
     if (q) rows = rows.filter(r => (r.consignment_number || '').toLowerCase().includes(q) || (r.brand || '').toLowerCase().includes(q) || (r.details || '').toLowerCase().includes(q) || (r.vas_ref || '').toLowerCase().includes(q));
     const kpiEl = document.getElementById('vasKpis');
-    const cntReq = st => base.filter(r => r.kind === 'request' && r.status === st).length;
-    const card = (label, val, color) => `<div class="card" style="padding:14px 16px"><div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${color};margin-bottom:8px">${label}</div><div style="font-size:1.7rem;font-weight:700;color:var(--text);line-height:1">${Number(val).toLocaleString()}</div></div>`;
-    if (kpiEl) kpiEl.innerHTML = card('New requests', cntReq('new'), '#fcd34d') + card('In progress', cntReq('in_progress'), '#93c5fd') + card('Done', cntReq('done'), '#86efac') + card('In Partner Hub', base.filter(r => r.kind === 'existing').length, '#fb923c');
+    const boxCount = key => base.filter(r => matchBox(r, key)).length;
+    if (kpiEl) kpiEl.innerHTML = VAS_BOXES.map(b => {
+      const on = _vasSel === b.key;
+      return `<div onclick="setVasSel('${b.key}')" class="card" title="Show ${escHtml(b.label)}" style="padding:14px 16px;cursor:pointer;border:1px solid ${on ? b.color : 'var(--border)'};${on ? 'box-shadow:inset 0 0 0 1px ' + b.color + ';' : ''}"><div style="font-size:.63rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${b.color};margin-bottom:8px">${b.label}</div><div style="font-size:1.6rem;font-weight:700;color:var(--text);line-height:1">${boxCount(b.key).toLocaleString()}</div></div>`;
+    }).join('');
     const VS = { new: { label: 'New', color: '#fcd34d' }, in_progress: { label: 'In progress', color: '#93c5fd' }, done: { label: 'Done', color: '#86efac' }, cancelled: { label: 'Cancelled', color: '#94a3b8' } };
     const phColor = st => st === 'COMPLETED' ? '#86efac' : st === 'APPROVED' ? '#93c5fd' : st === 'PENDING' ? '#fcd34d' : (st === 'CANCELLED' || st === 'REJECTED') ? '#f87171' : '#c4b5fd';
     const dtfmt = t => { if (!t) return '—'; try { return new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (e) { return String(t).slice(0, 16); } };
