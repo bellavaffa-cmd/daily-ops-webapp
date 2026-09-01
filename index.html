@@ -7663,12 +7663,15 @@
     };
     if (kpiEl) kpiEl.innerHTML =
       card('all', 'Total', base.length, 'var(--text)') +
+      card('ASN_DRAFT', 'Draft', cnt('ASN_DRAFT'), '#64748b') +
       card('ASN_PENDING', 'Pending', cnt('ASN_PENDING'), '#fcd34d') +
       card('ASN_APPROVED', 'Upcoming', cnt('ASN_APPROVED'), '#93c5fd') +
       card('STOCK_RECEIVED', 'Received', cnt('STOCK_RECEIVED'), '#c4b5fd') +
       card('STOCK_COUNT', 'Counting', cnt('STOCK_COUNT'), '#67e8f9') +
       card('STOCK_INBOUNDED', 'Inbounded', cnt('STOCK_INBOUNDED'), '#86efac') +
-      card('COMPLETED', 'Completed', cnt('COMPLETED'), '#94a3b8');
+      card('COMPLETED', 'Completed', cnt('COMPLETED'), '#94a3b8') +
+      card('CANCELLED', 'Cancelled', cnt('CANCELLED'), '#f87171') +
+      card('ASN_REJECTED', 'Rejected', cnt('ASN_REJECTED'), '#fb7185');
     rows.sort((a, b) => { const so = (INBOUND_ORDER[a.status] ?? 9) - (INBOUND_ORDER[b.status] ?? 9); if (so) return so; const pa = a.planned_date || '', pb = b.planned_date || ''; return pa < pb ? -1 : pa > pb ? 1 : 0; });
     const dfmt = t => { if (!t) return '—'; try { return new Date(t + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); } catch (e) { return String(t).slice(0, 10); } };
     const badge = s => { const m = INBOUND_STATUS[s]; return m ? `<span style="color:${m.color};font-weight:600">${m.label}</span>` : escHtml(s || ''); };
