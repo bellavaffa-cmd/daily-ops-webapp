@@ -7380,7 +7380,7 @@
         <div>${lbl}Consignment</div><div style="font-weight:600">${escHtml(r.consignment_number || ('#' + r.id))} · ${escHtml(brandName(r.brand) || '')} · ${escHtml(r.wh || '')}</div></div>
         <label style="display:block">${lbl}VAS type</div><select id="vasCat" style="${inCss}">${catOpts}</select></label>
         <label style="display:block">${lbl}Requestor</div><select id="vasReq" style="${inCss}">${reqOpts}</select></label>
-        <label style="display:block">${lbl}Details / instructions</div><textarea id="vasDetails" rows="3" placeholder="What VAS is needed? (e.g. relabel, bundle 2-for-1, insert flyer…)" style="${inCss};resize:vertical"></textarea></label>
+        <label style="display:block">${lbl}Service</div><select id="vasDetails" style="${inCss}"><option value="" selected disabled>Select service…</option><option value="Labelling">Labelling</option><option value="Kitting">Kitting</option><option value="Sorting">Sorting</option><option value="Loading">Loading</option><option value="Unloading">Unloading</option><option value="Others">Others</option></select></label>
         <label style="display:block">${lbl}Requested by</div><input id="vasBy" value="${escHtml(who)}" placeholder="Your name" style="${inCss}"></label>
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
@@ -7397,7 +7397,7 @@
     const reqt = document.getElementById('vasReq')?.value || 'BRAND';
     const details = (document.getElementById('vasDetails')?.value || '').trim();
     const by = (document.getElementById('vasBy')?.value || '').trim();
-    if (!details) { try { showToast('Add VAS details first.', false); } catch (e) {} const d = document.getElementById('vasDetails'); if (d) d.focus(); return; }
+    if (!details) { try { showToast('Select a service first.', false); } catch (e) {} const d = document.getElementById('vasDetails'); if (d) d.focus(); return; }
     const btn = document.getElementById('vasSubmitBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
     const row = { consignment_id: r.id, consignment_number: r.consignment_number || null, warehouse: r.wh || null, brand: brandName(r.brand) || null, vas_category: cat, requestor_type: reqt, details: details, requested_by: by || null, status: 'new' };
     fetch(SB_URL + '/vas_request', { method: 'POST', headers: { ...SB_HDR, Prefer: 'return=minimal' }, body: JSON.stringify([row]) })
