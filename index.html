@@ -7691,9 +7691,9 @@
       <td style="padding:7px 14px;color:var(--text);white-space:nowrap">${escHtml(brandName(r.brand) || '—')}</td>
       <td style="padding:7px 14px;color:var(--muted);white-space:nowrap">${escHtml(r.wh || '')}</td>
       <td style="padding:7px 14px;white-space:nowrap">${badge(r.status)}${r.vas_status ? vasChip(r.vas_status) : ''}</td>
-      <td style="padding:7px 14px;color:var(--muted);white-space:nowrap">${dfmt(r.planned_date)}</td>
-      <td style="padding:7px 14px;text-align:right;color:var(--text)">${rq != null ? Number(rq).toLocaleString() : '—'} <span style="color:var(--muted)">/ ${cq != null ? Number(cq).toLocaleString() : '—'}</span></td>
-      <td style="padding:7px 18px;text-align:right;color:var(--muted)">${pct != null ? pct + '%' : '—'}</td>
+      <td data-sort="${r.planned_date || ''}" style="padding:7px 14px;color:var(--muted);white-space:nowrap">${dfmt(r.planned_date)}</td>
+      <td data-sort="${cq != null ? cq : (rq != null ? rq : '')}" style="padding:7px 14px;text-align:right;color:var(--text)">${rq != null ? Number(rq).toLocaleString() : '—'} <span style="color:var(--muted)">/ ${cq != null ? Number(cq).toLocaleString() : '—'}</span></td>
+      <td data-sort="${pct != null ? pct : ''}" style="padding:7px 18px;text-align:right;color:var(--muted)">${pct != null ? pct + '%' : '—'}</td>
     </tr>
     <tr id="inbrow-${r.id}" style="display:${exp ? '' : 'none'};background:var(--surface2)"><td colspan="7" style="padding:12px 18px 14px 40px">
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 20px;font-size:.8rem">
@@ -7730,6 +7730,78 @@
     setTimeout(() => finish(false, 'timed out — POs scan many pages; give it a moment and Refresh.'), 90000);
   }
   function onInboundWhChange(v) { try { localStorage.setItem('inboundWarehouse', v || ''); } catch (e) {} renderInbound(); }
+
+  // ── Generic click-to-sort for every table (asc/desc toggle) ──────────────────
+  // Attaches to all <table> with a <thead><th> + <tbody>. Groups continuation rows
+  // (single-cell/colspan detail rows, e.g. the Inbound expand panel) with their
+  // primary row so pairs stay together. Numeric/date/text aware. A MutationObserver
+  // re-applies the active sort after a table's body re-renders so it stays sticky.
+  function _sortCellCmp(sa, sb, dir) {
+    sa = (sa == null ? '' : String(sa)).trim(); sb = (sb == null ? '' : String(sb)).trim();
+    if (sa === '' && sb !== '') return 1; if (sb === '' && sa !== '') return -1;   // blanks last
+    const numRe = /^[-+]?[\d.,]+%?$/;
+    const aNum = numRe.test(sa.replace(/\s/g, '')) && /\d/.test(sa);
+    const bNum = numRe.test(sb.replace(/\s/g, '')) && /\d/.test(sb);
+    let c;
+    if (aNum && bNum) c = parseFloat(sa.replace(/[,%\s]/g, '')) - parseFloat(sb.replace(/[,%\s]/g, ''));
+    else {
+      const da = Date.parse(sa), db = Date.parse(sb);
+      const aDate = !isNaN(da) && /[a-zA-Z/:-]/.test(sa) && /\d/.test(sa);
+      const bDate = !isNaN(db) && /[a-zA-Z/:-]/.test(sb) && /\d/.test(sb);
+      if (aDate && bDate) c = da - db;
+      else c = sa.localeCompare(sb, undefined, { numeric: true, sensitivity: 'base' });
+    }
+    return dir === 'asc' ? c : -c;
+  }
+  function applyTableSort(table, updateIndicators) {
+    const tbody = table.tBodies[0]; if (!tbody) return;
+    const col = parseInt(table.dataset.sortCol, 10); if (isNaN(col)) return;
+    const dir = table.dataset.sortDir || 'asc';
+    const groups = []; let cur = null;
+    [...tbody.rows].forEach(r => {
+      if (r.cells.length > 1 || !cur) { cur = { key: r, rows: [r] }; groups.push(cur); }
+      else cur.rows.push(r);
+    });
+    if (groups.length < 2) return;
+    const val = g => { const c = g.key.cells[col]; if (!c) return ''; if (c.dataset && c.dataset.sort != null) return c.dataset.sort; return c.textContent.replace(/[▸▾▲▼↗ ]/g, '').trim(); };
+    groups.sort((a, b) => _sortCellCmp(val(a), val(b), dir));
+    if (table.__mo) table.__mo.disconnect();               // don't let our own reorder retrigger the observer
+    const frag = document.createDocumentFragment();
+    groups.forEach(g => g.rows.forEach(r => frag.appendChild(r)));
+    tbody.appendChild(frag);
+    if (table.__mo) { try { table.__mo.observe(tbody, { childList: true }); } catch (e) {} }
+    if (updateIndicators !== false && table.tHead) {
+      table.tHead.querySelectorAll('.sort-ind').forEach(s => s.textContent = '');
+      const th = table.tHead.querySelectorAll('th')[col];
+      const ind = th && th.querySelector('.sort-ind'); if (ind) ind.textContent = dir === 'asc' ? ' ▲' : ' ▼';
+    }
+  }
+  function sortTableBy(table, col) {
+    const same = String(table.dataset.sortCol) === String(col);
+    table.dataset.sortDir = same && (table.dataset.sortDir || 'asc') === 'asc' ? 'desc' : 'asc';
+    table.dataset.sortCol = col;
+    applyTableSort(table, true);
+  }
+  function initSortableTables() {
+    document.querySelectorAll('table').forEach(table => {
+      if (table.__sortable) return;
+      const thead = table.tHead, tbody = table.tBodies[0];
+      if (!thead || !tbody) return;
+      const ths = thead.querySelectorAll('th'); if (!ths.length) return;
+      table.__sortable = true;
+      ths.forEach((th, idx) => {
+        if (th.hasAttribute('data-nosort')) return;
+        th.style.cursor = 'pointer'; th.style.userSelect = 'none';
+        const ind = document.createElement('span'); ind.className = 'sort-ind'; ind.style.cssText = 'display:inline-block;opacity:.6;font-size:.85em';
+        th.appendChild(ind);
+        th.addEventListener('click', () => sortTableBy(table, idx));
+        th.title = 'Click to sort';
+      });
+      try { new MutationObserver(() => { if (table.__sorting) return; if (table.dataset.sortCol) applyTableSort(table, false); }).observe(tbody, { childList: true }); } catch (e) {}
+    });
+  }
+  if (document.readyState !== 'loading') initSortableTables();
+  else document.addEventListener('DOMContentLoaded', initSortableTables);
   function renderAttStatus() {
     const el = document.getElementById('attStatus'); if (!el) return;
     const s = attSyncStatus;
