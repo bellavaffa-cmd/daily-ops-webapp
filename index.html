@@ -7797,7 +7797,7 @@
         th.addEventListener('click', () => sortTableBy(table, idx));
         th.title = 'Click to sort';
       });
-      try { new MutationObserver(() => { if (table.__sorting) return; if (table.dataset.sortCol) applyTableSort(table, false); }).observe(tbody, { childList: true }); } catch (e) {}
+      try { table.__mo = new MutationObserver(() => { if (table.dataset.sortCol) applyTableSort(table, false); }); table.__mo.observe(tbody, { childList: true }); } catch (e) {}
     });
   }
   if (document.readyState !== 'loading') initSortableTables();
