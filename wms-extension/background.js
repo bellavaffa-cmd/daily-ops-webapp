@@ -1013,6 +1013,8 @@ async function performSync(isB2B) {
         packed_orders:    u.packedOrderQuantity || 0,
         picked_items:     u.pickedItemQuantity  || 0,
         packed_items:     u.packedItemQuantity  || 0,
+        received_items:   u.receivedItemQuantity || 0,
+        received_lp:      u.receivedLPQuantity   || 0,
         updated_at:       new Date().toISOString()
       })).filter(u => u.warehouse_code && u.executed_by != null && u.activity_date);
       await sbUpsert('user_performance', perfRows, 'warehouse_code,executed_by,activity_date');

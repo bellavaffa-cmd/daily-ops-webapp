@@ -1375,6 +1375,10 @@
           <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
           Overview
         </button>
+        <button class="snav-btn snav-sub" id="snav-btn-prodinbound" onclick="showView('prodinbound')">
+          <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8v13H3V8M1 3h22v5H1zM12 12v6m0 0l-3-3m3 3l3-3"/></svg>
+          Receiving
+        </button>
       </div>
     </div>
     <button class="snav-btn" id="snav-btn-inbound" onclick="showView('inbound')">
@@ -2432,6 +2436,30 @@
 
   </div>
 
+  <!-- ── RECEIVING (INBOUND PRODUCTIVITY) VIEW ── -->
+  <div class="view" id="view-prodinbound">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+      <div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Receiving · by user</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Items received per user · from Logiwa's user-performance report · <span id="prodInStamp"></span></div>
+      </div>
+      <label style="font-size:.75rem;color:var(--muted)">Date <input type="date" id="prodInDate" onchange="renderProdInbound()" style="margin-left:4px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></label>
+    </div>
+    <div id="prodInKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px"></div>
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">Items received per day · last 14 days</div>
+      <div id="prodInTrend" style="padding:12px 18px;overflow-x:auto"></div>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600;color:var(--text)">By user <span id="prodInRangeLbl" style="font-weight:400;color:var(--muted);font-size:.75rem"></span></div>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.82rem"><thead><tr style="background:var(--surface2)">
+        <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">User</th>
+        <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Received (day)</th>
+        <th style="text-align:right;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Received (30d)</th>
+      </tr></thead><tbody id="prodInTable"></tbody></table></div>
+    </div>
+  </div>
+
   <!-- ── JOBS VIEW ── -->
   <div class="view" id="view-jobs">
 
@@ -2985,6 +3013,7 @@
     { key: 'packingErrorTabB2b',      navId: 'snav-btn-b2b',      view: 'b2b',      toggleId: 'tabToggleB2b'      },
     { key: 'packingErrorTabShortage', navId: 'snav-btn-shortage', view: 'shortage', toggleId: 'tabToggleShortage' },
     { key: 'packingErrorTabProductivity', navId: 'snav-btn-productivity', view: 'productivity', toggleId: 'tabToggleProductivity' },
+    { key: 'packingErrorTabProdInbound', navId: 'snav-btn-prodinbound', view: 'prodinbound', toggleId: 'tabToggleProdInbound' },
     { key: 'packingErrorTabJobs',     navId: 'snav-btn-jobs',     view: 'jobs',     toggleId: 'tabToggleJobs'     },
     { key: 'packingErrorTabInbound',  navId: 'snav-btn-inbound',  view: 'inbound',  toggleId: 'tabToggleInbound'  },
     { key: 'packingErrorTabVas',      navId: 'snav-btn-vas',      view: 'vas',      toggleId: 'tabToggleVas'      },
@@ -5051,7 +5080,7 @@
     try { if (all || v === 'b2b') { fetchB2BData(); fetchB2BOrders(); } } catch (e) {}
     try { if (all || v === 'shortage') { fetchShortageData(); fetchShortageOrders(); } } catch (e) {}
     try { if (all || v === 'jobs') { fetchJobData(); } } catch (e) {}
-    try { if (all || v === 'productivity') { fetchProductivity(); } } catch (e) {}
+    try { if (all || v === 'productivity' || v === 'prodinbound') { fetchProductivity(); } } catch (e) {}
   }
 
   // One global Sync button (top bar / sidebar footer). Optimistic + non-blocking:
@@ -5886,6 +5915,7 @@
       populateProdWarehouseSelect();
       populateProdPersonSelect();
       renderProductivity();
+      try { renderProdInbound(); } catch (e) {}   // receiving view shares this report
       fetchOrderLedgers();  // completed-orders ledger → Productivity trend & forecast card
       fetchProdHourly();    // per-hour-by-warehouse user productivity matrix (selected date)
       fetchHourlyDaily();   // 30-day daily×hourly heatmap (independent RPC)
@@ -6702,6 +6732,46 @@
   // ── Per-hour-by-warehouse user productivity matrix (Logiwa-style) ─────────
   function onProdHourDateChange(v) { prodHourDate = v; fetchProdHourly(); }
   function onProdHourCountChange(v) { try { localStorage.setItem('prodHourCount', v === 'items' ? 'items' : 'orders'); } catch (e) {} renderProdHourlyTable(); }
+  // ── Receiving (inbound) productivity — items received per user, from user_performance ──
+  function renderProdInbound() {
+    const tbody = document.getElementById('prodInTable'); if (!tbody) return;
+    const fmt = n => Number(n || 0).toLocaleString();
+    const selWh = singleWh();
+    const dEl = document.getElementById('prodInDate');
+    const date = (dEl && dEl.value) || localDateStr();
+    if (dEl && !dEl.value) dEl.value = date;
+    const stamp = document.getElementById('prodInStamp'); if (stamp) stamp.textContent = selWh || 'all my warehouses';
+    const cut30 = localDateStr(new Date(Date.now() - 30 * 864e5));
+    const rows = (typeof userPerf !== 'undefined' ? userPerf : []).filter(r => selWh ? whEq(r.warehouse_code, selWh) : whAllowed(r.warehouse_code));
+    const byUser = {}, byDay = {}; let dayTot = 0, tot30 = 0;
+    rows.forEach(r => {
+      const recv = Number(r.received_items || 0); if (recv <= 0) return;
+      const d = String(r.activity_date || '').slice(0, 10);
+      const person = r.executed_by_name || ('#' + r.executed_by);
+      const u = byUser[person] || (byUser[person] = { day: 0, m30: 0 });
+      if (d >= cut30) { u.m30 += recv; tot30 += recv; byDay[d] = (byDay[d] || 0) + recv; }
+      if (d === date) { u.day += recv; dayTot += recv; }
+    });
+    const kpiEl = document.getElementById('prodInKpis');
+    const card = (label, val, color) => `<div class="card" style="padding:14px 16px"><div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${color};margin-bottom:8px">${label}</div><div style="font-size:1.7rem;font-weight:700;color:var(--text);line-height:1">${fmt(val)}</div></div>`;
+    const activeReceivers = Object.values(byUser).filter(u => u.m30 > 0).length;
+    if (kpiEl) kpiEl.innerHTML = card('Received · ' + date, dayTot, '#93c5fd') + card('Received · 30d', tot30, '#86efac') + card('Active receivers · 30d', activeReceivers, '#c4b5fd');
+    const days = []; for (let i = 13; i >= 0; i--) days.push(localDateStr(new Date(Date.now() - i * 864e5)));
+    const maxD = Math.max(1, ...days.map(d => byDay[d] || 0));
+    const trendEl = document.getElementById('prodInTrend');
+    if (trendEl) trendEl.innerHTML = days.map(d => {
+      const v = byDay[d] || 0, pct = (v / maxD * 100).toFixed(1);
+      const lbl = new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px"><div style="width:58px;font-size:.72rem;color:var(--muted);white-space:nowrap">${lbl}</div><div style="flex:1;background:var(--surface2);border-radius:4px;height:14px;overflow:hidden"><div style="height:100%;width:${pct}%;background:#4ade80;opacity:.65"></div></div><div style="width:72px;text-align:right;font-size:.78rem;color:var(--text)">${v ? fmt(v) : ''}</div></div>`;
+    }).join('');
+    const rlbl = document.getElementById('prodInRangeLbl'); if (rlbl) rlbl.textContent = '· day = ' + date + ' · 30d total';
+    const people = Object.keys(byUser).sort((a, b) => byUser[b].m30 - byUser[a].m30);
+    tbody.innerHTML = people.length ? people.map(p => `<tr style="border-top:1px solid var(--border)">
+      <td style="padding:7px 18px;color:var(--text);white-space:nowrap" title="${tempDisplayName(p) !== p ? escHtml(p) : ''}">${escHtml(tempDisplayName(p))}</td>
+      <td style="padding:7px 14px;text-align:right;color:var(--text)">${byUser[p].day ? fmt(byUser[p].day) : ''}</td>
+      <td style="padding:7px 18px;text-align:right;color:var(--text)">${fmt(byUser[p].m30)}</td>
+    </tr>`).join('') : `<tr><td colspan="3" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No receiving activity yet — fills in once the WMS extension (v3.36+) syncs receiving data.</td></tr>`;
+  }
   async function fetchProdHourly() {
     const date = prodHourDate || localDateStr();
     prodHourDate = date;
@@ -7108,7 +7178,7 @@
   // Productivity pulls large per-user/snapshot tables — load it lazily (on the
   // Productivity/Dashboard view) and only poll while one of those is open, instead
   // of every 5 min for every user regardless of tab. showView triggers the first load.
-  setInterval(() => { if (_currentView === 'productivity' || _currentView === 'dash') fetchProductivity(); }, 5 * 60 * 1000);
+  setInterval(() => { if (_currentView === 'productivity' || _currentView === 'prodinbound' || _currentView === 'dash') fetchProductivity(); }, 5 * 60 * 1000);
 
   // Searchable dropdowns: enhance a native <select> into a type-to-filter combobox.
   // The <select> stays the source of truth (value + change event); we overlay a
@@ -9086,6 +9156,11 @@
       try { fetchAiForecast(true); } catch (e) {}
       // Refresh the temp-account → today's-staff name map, then repaint the operator names.
       try { fetchTempOperatorMap().then(() => { try { populateProdPersonSelect(); renderProductivity(); renderProdHourlyTable(); } catch (e) {} }); } catch (e) {}
+    }
+    if (v === 'prodinbound') {
+      try { renderProdInbound(); } catch (e) {}   // paint from cache
+      if (_shouldFetch('productivity', 30000)) { try { fetchProductivity(); } catch (e) {} }   // shares the outbound user-performance report
+      try { fetchTempOperatorMap().then(() => { try { renderProdInbound(); } catch (e) {} }); } catch (e) {}
     }
     if (v === 'dash') { try { renderStats(); } catch(e){} try { initWarehouseFilter(); renderTable(); } catch(e){} try { if (typeof userPerf === 'undefined' || !userPerf || !userPerf.length) fetchProductivity(); } catch(e){} }
     if (v === 'jobs') {
