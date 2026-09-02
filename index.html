@@ -3274,10 +3274,7 @@
   // ── Exclude-from-total toggles (B2C / B2B KPI status boxes) ─────────────
   // Each status box has a top-right button to drop that status from the "Total
   // Orders" count (and the table's Total column). Persisted per tab.
-  function getExcluded(tab) {
-    try { return JSON.parse(localStorage.getItem(tab + 'Excluded') || '[]'); }
-    catch (e) { return []; }
-  }
+  function getExcluded(tab) { return []; }   // exclude-from-total feature removed — nothing is ever excluded
   function toggleExcluded(tab, key) {
     const set = new Set(getExcluded(tab));
     if (set.has(key)) set.delete(key); else set.add(key);
@@ -3286,16 +3283,8 @@
     // Reflect the change in the dashboard's mirrored box widgets too.
     if (_dashGrid && typeof dashRefreshWidgets === 'function') dashRefreshWidgets();
   }
-  // Small round toggle pinned to the top-right of a status card.
-  function excludeBtn(tab, key, isExcluded) {
-    const label = isExcluded ? 'Include in total' : 'Exclude from total';
-    const glyph = isExcluded ? '+' : '−';
-    return `<button type="button" title="${label}" aria-label="${label}"
-      onclick="event.preventDefault();event.stopPropagation();toggleExcluded('${tab}','${key}')"
-      style="position:absolute;top:8px;right:8px;width:20px;height:20px;line-height:17px;text-align:center;
-      border-radius:50%;border:1px solid var(--border);background:var(--surface2);color:var(--muted);
-      font-size:.9rem;font-weight:700;cursor:pointer;padding:0;z-index:2">${glyph}</button>`;
-  }
+  // Exclude-from-total buttons removed from the status boxes.
+  function excludeBtn(tab, key, isExcluded) { return ''; }
 
   // ── Warehouse view filter (multi-select, shared by B2C/B2B/Shortage) ────
   // Stored as a JSON array of warehouse codes in `whFilterSet`; empty = all.
