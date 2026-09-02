@@ -760,8 +760,12 @@ async function performSync(isB2B) {
     // deliberately NOT sent: it's user-set in the app and a partial upsert
     // (merge-duplicates only touches the columns in the body) preserves it.
     const SYNC_TS = new Date().toISOString();   // one stamp for this sync's per-order rows → used to mirror-delete departed orders
+    // Collapse to one row per order_id — the same order can appear multiple times in
+    // `all` (split shipments / lines). Upserting duplicate conflict keys in one command
+    // errors Postgres 21000 and (being swallowed) silently drops the whole write.
+    const uniqById = arr => { const m = new Map(); for (const r of arr) if (r && r.order_id && !m.has(r.order_id)) m.set(r.order_id, r); return [...m.values()]; };
     const B2B_SM = { 6: 'open', 8: 'rfp', 9: 'picking', 12: 'pack_ready', 13: 'packing', 16: 'ready_ship' };
-    const b2bOrders = all
+    const b2bOrders = uniqById(all
       .filter(o => o.shipmentOrderTypeName === 'B2B')
       .map(o => ({
         order_id: String(o.code ?? o.identifier ?? ''),
@@ -771,7 +775,7 @@ async function performSync(isB2B) {
         expected_ship_date: o.expectedShipmentDate || null,
         updated_at: SYNC_TS
       }))
-      .filter(o => o.order_id && o.wh && o.status);
+      .filter(o => o.order_id && o.wh && o.status));
 
     // 4c. Shortage: age-bucket pivot (any order type, statusId 2 = "Shortage" —
     // confirmed via a real Logiwa WMS filter URL, not guessed) + one row per
@@ -794,7 +798,7 @@ async function performSync(isB2B) {
     }
     const shortageRows = Object.values(shortageWhs).map(r => ({ ...r, updated_at: new Date().toISOString() }));
 
-    const shortageOrders = all
+    const shortageOrders = uniqById(all
       .filter(o => o.shipmentOrderStatusId === 2)
       .map(o => ({
         order_id: String(o.code ?? o.identifier ?? ''),
@@ -804,25 +808,37 @@ async function performSync(isB2B) {
         brand: o.clientDisplayName || null,
         updated_at: SYNC_TS
       }))
-      .filter(o => o.order_id && o.wh);
+      .filter(o => o.order_id && o.wh));
 
     // B2C aging orders: open B2C orders aged >= 1 day. The B2C carrier field is generic, so
     // the real carrier = the Channel: value parsed from the WMS note (tiktok, shopee, …).
     // Feeds the B2C tab's Aging Orders section (thresholds applied client-side per carrier).
     const _chan = note => { const m = /Channel\s*:\s*([^,)]+)/i.exec(note || ''); return m ? m[1].trim().toLowerCase() : null; };
-    const agingOrders = all
-      .filter(o => o.shipmentOrderTypeName === 'B2C' && Number(o.orderAge || 0) >= 1)
-      .map(o => ({
-        order_id:   String(o.code ?? o.identifier ?? ''),
-        wh:         o.warehouseCode,
+    // Dedupe by order_id: the same B2C order can appear more than once in `all`
+    // (split shipments / multiple lines across the extra statuses the all-status
+    // aging filter includes). A single upsert with duplicate conflict keys errors
+    // 21000 ("ON CONFLICT ... cannot affect row a second time"), so collapse to one
+    // row per order — keep the highest age so the oldest state wins.
+    const _agingById = new Map();
+    for (const o of all) {
+      if (o.shipmentOrderTypeName !== 'B2C' || Number(o.orderAge || 0) < 1) continue;
+      const order_id = String(o.code ?? o.identifier ?? '');
+      const wh = o.warehouseCode;
+      if (!order_id || !wh) continue;
+      const age_days = Math.round(Number(o.orderAge || 0));
+      const prev = _agingById.get(order_id);
+      if (prev && prev.age_days >= age_days) continue;
+      _agingById.set(order_id, {
+        order_id, wh,
         brand:      o.clientDisplayName || null,
         carrier:    _chan(o.note),
-        age_days:   Math.round(Number(o.orderAge || 0)),
+        age_days,
         status:     o.shipmentOrderStatusName || null,
         order_date: (o.shipmentOrderDate || '').slice(0, 10) || null,
         synced_at:  SYNC_TS
-      }))
-      .filter(o => o.order_id && o.wh);
+      });
+    }
+    const agingOrders = [..._agingById.values()];
 
     // 4d. B2C brand breakdown per (wh, status, day) → { brand: {mp_only,
     // mp_nextday, nonmp, total} }. Feeds the status-box drill-down. Tags:
@@ -964,8 +980,15 @@ async function performSync(isB2B) {
           };
         })
         .filter(o => o.order_id && o.wh);
-      for (let i = 0; i < b2cOrders.length; i += 2000) {
-        const chunk = b2cOrders.slice(i, i + 2000);
+      // Dedupe by order_id — the same order can appear more than once in `all`
+      // (split shipments / multiple lines); a chunk with duplicate conflict keys
+      // errors 21000 ("ON CONFLICT ... cannot affect row a second time"), which
+      // (being swallowed below) would silently drop the whole b2c_orders write.
+      const _b2cById = new Map();
+      for (const row of b2cOrders) if (!_b2cById.has(row.order_id)) _b2cById.set(row.order_id, row);
+      const b2cOrdersUniq = [..._b2cById.values()];
+      for (let i = 0; i < b2cOrdersUniq.length; i += 2000) {
+        const chunk = b2cOrdersUniq.slice(i, i + 2000);
         const r = await fetch(`${SB_URL}/rest/v1/b2c_orders?on_conflict=order_id`, {
           method: 'POST',
           headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
