@@ -4916,11 +4916,30 @@
         else if (packRate === 0) setEta('—', 'need packing activity');
         else if (netPack <= 0) setEta('Not clearing', 'inflow ≥ packing (' + fmt(inflow) + '/hr in)', '#f87171');
         else {
+          const now = Date.now();
           const hPack = unpacked / netPack, hPick = netPick > 0 ? unpicked / netPick : (unpicked > 0 ? Infinity : 0);
-          const hrs = Math.max(hPack, hPick);
-          if (!isFinite(hrs)) setEta('Not clearing', 'picking can’t keep up', '#f87171');
-          else if (hrs > 14) setEta('14h+', 'at net ' + fmt(netPack) + '/hr', '#fbbf24');
-          else setEta(tStr(Date.now() + hrs * 3600 * 1000), fmtDur(hrs) + ' · ' + (hPick > hPack ? 'picking-bound' : 'packing-bound'), '#fbbf24');
+          const bound = (hPick > hPack) ? 'picking-bound' : 'packing-bound';
+          if (!isFinite(Math.max(hPack, hPick))) { setEta('Not clearing', 'picking can’t keep up', '#f87171'); }
+          else {
+            // Hours/breaks-aware projection when exactly ONE warehouse is selected (its own
+            // operating hours + timezone). "All warehouses" / no config → naive projection.
+            const sel = (typeof getSelectedWhs === 'function') ? getSelectedWhs() : [];
+            const cfg = (sel.length === 1 && typeof opsFor === 'function') ? opsFor(sel[0]) : null;
+            const pPack = (cfg && cfg.tz) ? _projectDone(unpacked, netPack, cfg, now) : null;
+            const pPick = (cfg && cfg.tz) ? (netPick > 0 ? _projectDone(unpicked, netPick, cfg, now) : { doneMs: now }) : null;
+            if (pPack && pPick && (pPack.over || pPick.over)) {
+              setEta('Next day+', 'won’t clear in the next few shifts · net ' + fmt(netPack) + '/hr', '#fbbf24');
+            } else if (pPack && pPick && pPack.doneMs && pPick.doneMs) {
+              const done = Math.max(pPack.doneMs, pPick.doneMs);
+              const clk = new Intl.DateTimeFormat([], { timeZone: cfg.tz, weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date(done));
+              setEta(clk, fmtDur((done - now) / 3600000) + ' incl. breaks & closed hrs · ' + bound, '#fbbf24');
+            } else {
+              // Naive fallback: constant rate, ignores operating hours.
+              const hrs = Math.max(hPack, hPick);
+              if (hrs > 14) setEta('14h+', 'at net ' + fmt(netPack) + '/hr', '#fbbf24');
+              else setEta(tStr(now + hrs * 3600 * 1000), fmtDur(hrs) + ' · ' + bound, '#fbbf24');
+            }
+          }
         }
       }
       wEl.textContent = flowStatusLine();
