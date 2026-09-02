@@ -3556,7 +3556,8 @@
     // only B2C-order errors.
     const _isToday = (opts.day || 'today') !== 'tomorrow';
     const _errWhs = filtered.map(r => r.wh).filter(Boolean);
-    const _b2bIds = new Set((typeof b2bOrders !== 'undefined' ? b2bOrders : []).map(o => String(o.order_id)).filter(Boolean));
+    let _b2bIds = new Set();
+    try { _b2bIds = new Set((b2bOrders || []).map(o => String(o.order_id)).filter(Boolean)); } catch (e) {}   // b2bOrders is declared later; TDZ-safe (typeof throws on a let in TDZ)
     const _errOrders = _isToday
       ? new Set((typeof errors !== 'undefined' ? errors : [])
           .filter(e => (e.status || 'Open') !== 'Resolved' && (!_errWhs.length || _errWhs.some(w => whEq(w, e.warehouse))) && !_b2bIds.has(String(e.orderId)))
