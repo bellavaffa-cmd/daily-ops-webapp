@@ -4908,7 +4908,23 @@
         const sumK = k => whRows.reduce((a, r) => a + Number(r[k] || 0), 0);
         const unpicked = sumK('new') + sumK('rfp') + sumK('picking');
         const unpacked = unpicked + sumK('picked') + sumK('packing');
-        const pickRate = Math.max(0, latest.picked - prev.picked), packRate = packVal, inflow = newVal || 0;
+        // Smoothed rates for the ETA: average pick/pack throughput over up to the last ~3
+        // hours (same activity day) and mean inflow over that window — steadier than a single
+        // 1-hour delta, so the projection doesn't swing on one noisy hour. (The tiles above
+        // still show the raw last-hour figures.)
+        let smPrev = prev, smHrs = (latest.t - prev.t) / 3600000;
+        for (let i = 1; i < prodArr.length; i++) {
+          const bkt = prodArr[i];
+          if (latest.date && bkt.date && bkt.date !== latest.date) continue;
+          const gap = latest.t - bkt.t;
+          if (gap < 30 * 60 * 1000) continue;
+          if (gap > 200 * 60 * 1000) break;   // prodArr is newest-first → stop once beyond ~3.3h
+          smPrev = bkt; smHrs = gap / 3600000;
+        }
+        const packRate = smHrs > 0 ? Math.max(0, latest.packed - smPrev.packed) / smHrs : packVal;
+        const pickRate = smHrs > 0 ? Math.max(0, latest.picked - smPrev.picked) / smHrs : Math.max(0, latest.picked - prev.picked);
+        const inflowRecent = inflowArr.filter(x => (latest.t - x.t) <= 3 * 60 * 60 * 1000);
+        const inflow = inflowRecent.length ? (inflowRecent.reduce((a, x) => a + x.val, 0) / inflowRecent.length) : (newVal || 0);
         const netPack = packRate - inflow, netPick = pickRate - inflow;
         const setEta = (txt, sub, color) => { etaEl.textContent = txt; etaEl.style.color = color || 'var(--text)'; if (etaSub) etaSub.textContent = sub || ''; };
         const fmtDur = h => { const m = Math.round(h * 60); if (m < 60) return '~' + m + 'm'; return '~' + Math.floor(m / 60) + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : ''); };
