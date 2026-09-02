@@ -3552,11 +3552,14 @@
     // Orders with an open packing error get their own "Error" box, pulled out of
     // Packing — every error type is a packing-station error, so an error order is at
     // the packing stage. Today's operational view only (tomorrow orders aren't packed).
+    // B2C-only: exclude any error whose order_id is a known B2B order so this counts
+    // only B2C-order errors.
     const _isToday = (opts.day || 'today') !== 'tomorrow';
     const _errWhs = filtered.map(r => r.wh).filter(Boolean);
+    const _b2bIds = new Set((typeof b2bOrders !== 'undefined' ? b2bOrders : []).map(o => String(o.order_id)).filter(Boolean));
     const _errOrders = _isToday
       ? new Set((typeof errors !== 'undefined' ? errors : [])
-          .filter(e => (e.status || 'Open') !== 'Resolved' && (!_errWhs.length || _errWhs.some(w => whEq(w, e.warehouse))))
+          .filter(e => (e.status || 'Open') !== 'Resolved' && (!_errWhs.length || _errWhs.some(w => whEq(w, e.warehouse))) && !_b2bIds.has(String(e.orderId)))
           .map(e => e.orderId).filter(Boolean))
       : new Set();
     const errCount = _errOrders.size;
