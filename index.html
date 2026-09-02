@@ -5112,6 +5112,9 @@
     { wh: 'LOCAD Umm Ramool FC',                open: 0, rfp: 0, picking: 0, pack_ready: 0, packing: 0 },
   ];
 
+  let _b2bStatus = '';   // status selected via the KPI boxes ('' = all/Total) → filters the orders table
+  function setB2bStatus(k) { _b2bStatus = (k === 'total') ? '' : k; try { renderB2B(); } catch (e) {} try { renderB2BOrders(); } catch (e) {} }
+  function b2bBoxClick(e, key) { if (e && e.target && e.target.closest('a,button')) return; setB2bStatus(key); }   // let the WMS number link / exclude button work
   function renderB2B() {
     const sel = getSelectedWhs();
 
@@ -5155,13 +5158,14 @@
         const subtitle = isTotal
           ? (b2bExcl.size ? `excludes ${b2bExcl.size} status${b2bExcl.size > 1 ? 'es' : ''}` : 'across all statuses')
           : (excluded ? 'Excluded from total' : pct(s.count, total) + ' of total');
+        const active = isTotal ? (_b2bStatus === '') : (_b2bStatus === s.key);
         return `
-        <a class="card kpi-link" href="${url}" target="_blank" title="Open in WMS" style="position:relative;padding:16px 18px;text-decoration:none;color:inherit;display:block${excluded ? ';opacity:.5' : ''}">
+        <div class="card kpi-link" onclick="b2bBoxClick(event,'${s.key}')" title="Click to filter the orders table by ${escHtml(s.label)}" style="cursor:pointer;position:relative;padding:16px 18px${excluded ? ';opacity:.5' : ''};border:1px solid ${active ? s.color : 'var(--border)'};${active ? 'box-shadow:inset 0 0 0 1px ' + s.color + ';' : ''}">
           ${isTotal ? '' : excludeBtn('b2b', s.key, excluded)}
           <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${s.color};margin-bottom:8px${excluded ? ';text-decoration:line-through' : ''}">${s.label}</div>
-          <div style="font-size:2rem;font-weight:700;color:var(--text);line-height:1">${fmt(s.count)}</div>
+          <a class="mp-link" href="${url}" target="_blank" title="Open in WMS" onclick="event.stopPropagation()" style="display:inline-block;text-decoration:none;color:var(--text);font-size:2rem;font-weight:700;line-height:1">${fmt(s.count)}</a>
           <div style="font-size:.72rem;color:var(--muted);margin-top:5px">${subtitle}</div>
-        </a>`;
+        </div>`;
       }).join('')}
     </div>`;
 
@@ -5319,15 +5323,15 @@
   }
 
   function renderB2BOrders() {
-    const filtered = b2bOrders.filter(o => inWhFilter(o.wh));
+    const filtered = b2bOrders.filter(o => inWhFilter(o.wh) && (!_b2bStatus || o.status === _b2bStatus));
 
     const countEl = document.getElementById('b2bOrdersCount');
-    if (countEl) countEl.textContent = filtered.length ? `(${filtered.length.toLocaleString()})` : '';
+    if (countEl) { const lbl = _b2bStatus ? ((B2B_STATUS_META[_b2bStatus] || {}).label || _b2bStatus) + ': ' : ''; countEl.textContent = `(${lbl}${filtered.length.toLocaleString()})`; }
 
     const tbl = document.getElementById('b2bOrdersTable');
     if (!tbl) return;
     if (!filtered.length) {
-      tbl.innerHTML = `<tr><td colspan="6" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No B2B orders synced yet.</td></tr>`;
+      tbl.innerHTML = `<tr><td colspan="6" style="padding:16px 18px;color:var(--muted);font-size:.82rem">${_b2bStatus ? 'No B2B orders in this status.' : 'No B2B orders synced yet.'}</td></tr>`;
       return;
     }
     tbl.innerHTML = filtered.map(o => {
