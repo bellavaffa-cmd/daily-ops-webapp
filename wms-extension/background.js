@@ -759,6 +759,7 @@ async function performSync(isB2B) {
     // brand = Logiwa clientDisplayName (the seller/brand). collected_by is
     // deliberately NOT sent: it's user-set in the app and a partial upsert
     // (merge-duplicates only touches the columns in the body) preserves it.
+    const SYNC_TS = new Date().toISOString();   // one stamp for this sync's per-order rows → used to mirror-delete departed orders
     const B2B_SM = { 6: 'open', 8: 'rfp', 9: 'picking', 12: 'pack_ready', 13: 'packing', 16: 'ready_ship' };
     const b2bOrders = all
       .filter(o => o.shipmentOrderTypeName === 'B2B')
@@ -768,7 +769,7 @@ async function performSync(isB2B) {
         status: B2B_SM[o.shipmentOrderStatusId] || null,
         brand: o.clientDisplayName || null,
         expected_ship_date: o.expectedShipmentDate || null,
-        updated_at: new Date().toISOString()
+        updated_at: SYNC_TS
       }))
       .filter(o => o.order_id && o.wh && o.status);
 
@@ -801,7 +802,7 @@ async function performSync(isB2B) {
         order_type: o.shipmentOrderTypeName || null,
         age: o.orderAge ?? null,
         brand: o.clientDisplayName || null,
-        updated_at: new Date().toISOString()
+        updated_at: SYNC_TS
       }))
       .filter(o => o.order_id && o.wh);
 
@@ -861,6 +862,13 @@ async function performSync(isB2B) {
       sbUpsert('shortage_orders', shortageOrders, 'order_id'),
       sbUpsert('b2c_brand',       b2cBrandRows,   'wh,status,day'),
     ]);
+
+    // Mirror-delete: the per-order tables are built from the CURRENT unshipped list, so any
+    // b2b_orders / shortage_orders row not stamped this sync has left that state (shipped/etc.)
+    // — remove it so the tables don't accumulate stale orders. Guarded by a non-empty sync.
+    const sbDelete = async (table, filter) => { try { await fetch(`${SB_URL}/rest/v1/${table}?${filter}`, { method: 'DELETE', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY } }); } catch (e) {} };
+    if (b2bOrders.length)      await sbDelete('b2b_orders',      'updated_at=lt.' + encodeURIComponent(SYNC_TS));
+    if (shortageOrders.length) await sbDelete('shortage_orders', 'updated_at=lt.' + encodeURIComponent(SYNC_TS));
 
     // 5b. B2C flow snapshot (feature 2): per warehouse, the current Open count
     // and how many B2C orders were created in the last 60 min (inflow). Appended

@@ -5357,9 +5357,16 @@
 
   async function fetchB2BOrders() {
     try {
-      const res = await fetch(SB_URL + '/b2b_orders?select=*&order=wh.asc,order_id.asc', { headers: SB_HDR });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      b2bOrders = (await res.json()).filter(r => whAllowed(r.wh));   // hard-restrict to the user's warehouses
+      // Paginate (>1000 orders) + select only needed columns — the boxes/table both
+      // rely on this being complete, and narrower columns cut egress.
+      const sel = 'order_id,wh,brand,status,expected_ship_date,collected_by';
+      const rows = [];
+      for (let off = 0; off < 50000; off += 1000) {
+        const page = await fetch(SB_URL + '/b2b_orders?select=' + sel + '&order=wh.asc,order_id.asc&limit=1000&offset=' + off, { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+        rows.push(...page);
+        if (!page || page.length < 1000) break;
+      }
+      b2bOrders = rows.filter(r => whAllowed(r.wh));   // hard-restrict to the user's warehouses
       renderB2BOrders();
     } catch (err) {
       console.error('B2B orders fetch error:', err);
