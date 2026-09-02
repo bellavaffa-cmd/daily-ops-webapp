@@ -4134,7 +4134,7 @@
     // last ~1h (per-user snapshot deltas); someone who has stopped drops out of those but
     // still counts in total manpower (anyone who picked or packed at all today).
     try {
-      const perf = await fetch(SB_URL + '/user_performance?select=warehouse_code,executed_by,activity_date,picked_orders,packed_orders&order=activity_date.desc&limit=6000', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      const perf = await fetch(SB_URL + '/user_performance?select=warehouse_code,executed_by,activity_date,picked_orders,packed_orders&activity_date=gte.' + new Date(Date.now() - 400 * 864e5).toISOString().slice(0, 10) + '&order=activity_date.desc&limit=6000', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
       const all = (perf || []);
       const rows = all.filter(r => inWhFilter(r.warehouse_code));
       // "Today"/"yesterday" = the latest operational dates across ALL warehouses, so a
@@ -4221,7 +4221,7 @@
   function _dateInTz(tz) { try { return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date()); } catch (e) { return new Intl.DateTimeFormat('en-CA').format(new Date()); } }
   async function loadActivityToday() {
     try {
-      const perf = await fetch(SB_URL + '/user_performance?select=warehouse_code,activity_date,picked_orders,packed_orders&order=activity_date.desc&limit=6000', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      const perf = await fetch(SB_URL + '/user_performance?select=warehouse_code,activity_date,picked_orders,packed_orders&activity_date=gte.' + new Date(Date.now() - 400 * 864e5).toISOString().slice(0, 10) + '&order=activity_date.desc&limit=6000', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
       const map = {}, todayByTz = {};
       for (const r of (perf || [])) {
         const wh = r.warehouse_code; if (!wh) continue;
