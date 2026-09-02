@@ -821,7 +821,8 @@ async function performSync(isB2B) {
     // row per order — keep the highest age so the oldest state wins.
     const _agingById = new Map();
     for (const o of all) {
-      if (o.shipmentOrderTypeName !== 'B2C' || Number(o.orderAge || 0) < 1) continue;
+      // Exclude Shortage (statusId 2) — the Shortage tab covers those.
+      if (o.shipmentOrderTypeName !== 'B2C' || o.shipmentOrderStatusId === 2 || Number(o.orderAge || 0) < 1) continue;
       const order_id = String(o.code ?? o.identifier ?? '');
       const wh = o.warehouseCode;
       if (!order_id || !wh) continue;
