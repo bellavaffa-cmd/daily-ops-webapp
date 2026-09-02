@@ -2091,6 +2091,28 @@
       </div>
     </div>
 
+    <!-- ── B2C AGING ORDERS ── -->
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:.85rem;font-weight:600;color:var(--text)">Aging orders <span id="agingCount" style="font-weight:400;color:var(--muted);font-size:.75rem"></span></div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:2px">Open B2C orders past their carrier's aging threshold (default 2 days) · carrier parsed from the WMS note · managers set per-carrier thresholds in the Console</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="agingCarrierFilter" onchange="renderAging()" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer"></select>
+          <input id="agingSearch" oninput="renderAging()" placeholder="Order or brand" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);min-width:140px">
+        </div>
+      </div>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.82rem"><thead><tr style="background:var(--surface2)">
+        <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Order</th>
+        <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Brand</th>
+        <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Carrier</th>
+        <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Age (days)</th>
+        <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Status</th>
+        <th style="text-align:right;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Threshold</th>
+      </tr></thead><tbody id="agingTable"></tbody></table></div>
+    </div>
+
     <!-- B2C orders received — trend & forecast -->
     <style>
       .ot-toggle{font-size:.75rem;padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:pointer}
@@ -5076,7 +5098,7 @@
   // user regardless of the open tab was the dominant Supabase egress cost.
   function refreshFromCache(silent = true) {
     const v = _currentView, all = (v === 'dash');
-    try { if (all || v === 'b2c') { fetchB2CData(silent); fetchB2CFlow(); } } catch (e) {}
+    try { if (all || v === 'b2c') { fetchB2CData(silent); fetchB2CFlow(); fetchAging(); } } catch (e) {}
     try { if (all || v === 'b2b') { fetchB2BData(); fetchB2BOrders(); } } catch (e) {}
     try { if (all || v === 'shortage') { fetchShortageData(); fetchShortageOrders(); } } catch (e) {}
     try { if (all || v === 'jobs') { fetchJobData(); } } catch (e) {}
@@ -7757,6 +7779,53 @@
   }
   function onInboundWhChange(v) { try { localStorage.setItem('inboundWarehouse', v || ''); } catch (e) {} renderInbound(); }
 
+  // ── B2C Aging orders (open B2C orders past their carrier's aging threshold) ──
+  let agingData = [], agingThresholds = { '*': 2 };
+  async function fetchAging() {
+    try {
+      const [rows, thr] = await Promise.all([
+        fetch(SB_URL + '/aging_orders?select=order_id,wh,brand,carrier,age_days,status&order=age_days.desc&limit=5000', { headers: SB_HDR }).then(r => r.ok ? r.json() : []),
+        fetch(SB_URL + '/aging_threshold?select=carrier,days', { headers: SB_HDR }).then(r => r.ok ? r.json() : []),
+      ]);
+      agingData = (rows || []).filter(r => whAllowed(r.wh));
+      const m = { '*': 2 }; (thr || []).forEach(t => { m[t.carrier] = Number(t.days); }); agingThresholds = m;
+    } catch (e) { agingData = []; }
+    renderAging();
+  }
+  function _agingThr(carrier) { const m = agingThresholds || {}; if (carrier && m[carrier] != null) return m[carrier]; return m['*'] != null ? m['*'] : 2; }
+  function renderAging() {
+    const tbody = document.getElementById('agingTable'); if (!tbody) return;
+    const pick = globalWh();
+    const carSel = document.getElementById('agingCarrierFilter');
+    const carPick = carSel ? carSel.value : '';
+    const q = (document.getElementById('agingSearch')?.value || '').toLowerCase().trim();
+    // "Aging" = open >= its carrier's threshold, scoped to the selected warehouse.
+    const base = (agingData || []).filter(r => whAllowed(r.wh) && (!pick || whEq(r.wh, pick)) && Number(r.age_days || 0) >= _agingThr(r.carrier));
+    if (carSel) {
+      const cars = [...new Set(base.map(r => r.carrier).filter(Boolean))].sort();
+      const cur = cars.includes(carPick) ? carPick : (carPick === '__none' ? '__none' : '');
+      carSel.innerHTML = '<option value="">All carriers</option>' + cars.map(c => `<option value="${escHtml(c)}"${c === cur ? ' selected' : ''}>${escHtml(c)}</option>`).join('') + `<option value="__none"${cur === '__none' ? ' selected' : ''}>(no carrier)</option>`;
+    }
+    let rows = base;
+    if (carPick === '__none') rows = rows.filter(r => !r.carrier);
+    else if (carPick) rows = rows.filter(r => r.carrier === carPick);
+    if (q) rows = rows.filter(r => (r.order_id || '').toLowerCase().includes(q) || (r.brand || '').toLowerCase().includes(q));
+    rows = rows.slice().sort((a, b) => Number(b.age_days || 0) - Number(a.age_days || 0));
+    const cnt = document.getElementById('agingCount'); if (cnt) cnt.textContent = rows.length ? '(' + rows.length.toLocaleString() + ')' : '';
+    tbody.innerHTML = rows.length ? rows.map(r => {
+      const age = Number(r.age_days || 0), thr = _agingThr(r.carrier);
+      const ageColor = age >= thr * 2 ? '#f87171' : '#fbbf24';
+      return `<tr style="border-top:1px solid var(--border)">
+        <td style="padding:7px 18px;white-space:nowrap">${wmsOrderLink(r.order_id)}</td>
+        <td style="padding:7px 14px;color:var(--text);white-space:nowrap">${escHtml(r.brand || '—')}</td>
+        <td style="padding:7px 14px;color:var(--muted);white-space:nowrap">${escHtml(r.carrier || '—')}</td>
+        <td data-sort="${age}" style="padding:7px 14px;text-align:right;color:${ageColor};font-weight:600">${age.toLocaleString()}</td>
+        <td style="padding:7px 14px;color:var(--muted);white-space:nowrap">${escHtml(r.status || '—')}</td>
+        <td style="padding:7px 18px;text-align:right;color:var(--muted)">${thr}d</td>
+      </tr>`;
+    }).join('') : `<tr><td colspan="6" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No aging orders past threshold.</td></tr>`;
+  }
+
   // ── Generic click-to-sort for every table (asc/desc toggle) ──────────────────
   // Attaches to all <table> with a <thead><th> + <tbody>. Groups continuation rows
   // (single-cell/colspan detail rows, e.g. the Inbound expand panel) with their
@@ -9127,7 +9196,7 @@
     const fab = document.getElementById('fabReport');
     if (fab) fab.classList.toggle('visible', v === 'b2c');
     if (v === 'cs') { if (_shouldFetch('cs', 45000)) { try { fetchCustomerSuccess(); } catch(e){} } }
-    if (v === 'b2c') { try { fetchAiForecast(true); } catch(e){} }
+    if (v === 'b2c') { try { fetchAiForecast(true); } catch(e){} try { if (_shouldFetch('aging', 60000)) fetchAging(); else renderAging(); } catch(e){} }
     if (v === 'shortage') { try { fetchShortageAi(true, false); } catch(e){} }
     if (v === 'inbound') { if (_shouldFetch('inbound', 45000)) { try { fetchInbound(); } catch(e){} } else { try { renderInbound(); } catch(e){} } }
     if (v === 'vas') { if (_shouldFetch('vas', 45000)) { try { fetchVasRequests(); } catch(e){} } else { try { renderVasRequests(); } catch(e){} } }

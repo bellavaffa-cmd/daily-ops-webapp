@@ -806,6 +806,24 @@ async function performSync(isB2B) {
       }))
       .filter(o => o.order_id && o.wh);
 
+    // B2C aging orders: open B2C orders aged >= 1 day. The B2C carrier field is generic, so
+    // the real carrier = the Channel: value parsed from the WMS note (tiktok, shopee, …).
+    // Feeds the B2C tab's Aging Orders section (thresholds applied client-side per carrier).
+    const _chan = note => { const m = /Channel\s*:\s*([^,)]+)/i.exec(note || ''); return m ? m[1].trim().toLowerCase() : null; };
+    const agingOrders = all
+      .filter(o => o.shipmentOrderTypeName === 'B2C' && Number(o.orderAge || 0) >= 1)
+      .map(o => ({
+        order_id:   String(o.code ?? o.identifier ?? ''),
+        wh:         o.warehouseCode,
+        brand:      o.clientDisplayName || null,
+        carrier:    _chan(o.note),
+        age_days:   Math.round(Number(o.orderAge || 0)),
+        status:     o.shipmentOrderStatusName || null,
+        order_date: (o.shipmentOrderDate || '').slice(0, 10) || null,
+        synced_at:  SYNC_TS
+      }))
+      .filter(o => o.order_id && o.wh);
+
     // 4d. B2C brand breakdown per (wh, status, day) → { brand: {mp_only,
     // mp_nextday, nonmp, total} }. Feeds the status-box drill-down. Tags:
     // Priority MP (prioritymp) — split by whether it also carries Next Day
@@ -860,6 +878,7 @@ async function performSync(isB2B) {
       sbUpsert('b2b_orders',      b2bOrders,      'order_id'),
       sbUpsert('shortage_data',   shortageRows,   'wh'),
       sbUpsert('shortage_orders', shortageOrders, 'order_id'),
+      sbUpsert('aging_orders',    agingOrders,    'order_id'),
       sbUpsert('b2c_brand',       b2cBrandRows,   'wh,status,day'),
     ]);
 
@@ -871,11 +890,13 @@ async function performSync(isB2B) {
     // non-empty sync so a failed/empty fetch never mass-deletes.
     const sbDelete = async (table, filter) => { try { await fetch(`${SB_URL}/rest/v1/${table}?${filter}`, { method: 'DELETE', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY } }); } catch (e) {} };
     const syncedWhs = [...new Set(all.map(o => o.warehouseCode).filter(Boolean))];
-    if (syncedWhs.length && (b2bOrders.length || shortageOrders.length)) {
+    if (syncedWhs.length && (b2bOrders.length || shortageOrders.length || agingOrders.length)) {
       for (const wh of syncedWhs) {
-        const f = 'wh=eq.' + encodeURIComponent(wh) + '&updated_at=lt.' + encodeURIComponent(SYNC_TS);
+        const whf = 'wh=eq.' + encodeURIComponent(wh);
+        const f = whf + '&updated_at=lt.' + encodeURIComponent(SYNC_TS);
         await sbDelete('b2b_orders', f);
         await sbDelete('shortage_orders', f);
+        await sbDelete('aging_orders', whf + '&synced_at=lt.' + encodeURIComponent(SYNC_TS));   // aging uses synced_at
       }
     }
 

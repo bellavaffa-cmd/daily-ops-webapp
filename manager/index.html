@@ -140,6 +140,18 @@
     </div>
   </div>
 
+  <!-- Aging thresholds -->
+  <div class="card">
+    <h2>⏳ Aging thresholds</h2>
+    <p class="hint">Per-carrier threshold (in <b>days</b>) for open B2C orders. An order shows as <b>aging</b> on the B2C tab once its age reaches its carrier's threshold. Carrier is the <b>Channel</b> parsed from the WMS note (e.g. tiktok, shopee). The <b>*</b> row is the default for any carrier without its own row. Global — applies to all warehouses. <span class="msg" id="agingMsg"></span></p>
+    <table><thead><tr><th>Carrier</th><th>Threshold (days)</th><th></th></tr></thead><tbody id="agingRows"></tbody></table>
+    <div class="row" style="margin-top:12px">
+      <div style="flex:1;min-width:160px"><label>Carrier (channel)</label><input type="text" id="agingCarrier" placeholder="e.g. tiktok, shopee"></div>
+      <div style="flex:0 1 140px"><label>Threshold (days)</label><input type="number" id="agingDays" min="1" step="1" placeholder="2"></div>
+      <button class="btn" onclick="addAging()">Add / update</button>
+    </div>
+  </div>
+
   <!-- Lunch / breaks -->
   <div class="card">
     <h2>🍽️ Lunch / breaks</h2>
@@ -511,7 +523,7 @@
     CURRENT_WH = $('whSelect').value;
     populateUserPicker();
     loadTiming(); loadWebhooks(); loadRoles(); loadRoleTabs();
-    loadWhUserRoster();
+    loadWhUserRoster(); loadAging();
   }
 
   // ── 1 + 3: Timing ──────────────────────────────────────────────────────────
@@ -715,6 +727,38 @@
     } catch (e) {}
   }
   async function delWebhook(id) { try { await sbSend('DELETE', '/warehouse_webhooks?id=eq.' + id); loadWebhooks(); } catch (e) {} }
+
+  // ── Aging thresholds (global, per-carrier) ───────────────────────────────────
+  async function loadAging() {
+    const rows = await sbGet('/aging_threshold?select=carrier,days&order=carrier.asc');
+    const list = rows.slice().sort((a, b) => (a.carrier === '*' ? -1 : b.carrier === '*' ? 1 : String(a.carrier).localeCompare(String(b.carrier))));
+    $('agingRows').innerHTML = list.length ? list.map(r => {
+      const isDef = r.carrier === '*';
+      const label = isDef ? '<b>* (default)</b>' : esc(r.carrier);
+      const del = isDef ? '' : `<button class="btn icon" title="Remove" onclick="delAging('${esc(r.carrier)}')">✕</button>`;
+      return `<tr><td>${label}</td>
+        <td><input type="number" min="1" step="1" value="${Number(r.days) || 2}" style="width:80px" onchange="setAging('${esc(r.carrier)}', this.value)"></td>
+        <td style="text-align:right">${del}</td></tr>`;
+    }).join('') : '<tr><td colspan="3" style="color:var(--muted)">No thresholds yet.</td></tr>';
+  }
+  async function addAging() {
+    const carrier = $('agingCarrier').value.trim().toLowerCase();
+    const days = parseInt($('agingDays').value, 10);
+    if (!carrier) { flash('agingMsg', 'Enter a carrier (channel).', false); return; }
+    if (!(days >= 1)) { flash('agingMsg', 'Enter a whole number of days ≥ 1.', false); return; }
+    try {
+      await sbSend('POST', '/aging_threshold?on_conflict=carrier', [{ carrier, days, updated_at: new Date().toISOString() }], 'resolution=merge-duplicates,return=minimal');
+      $('agingCarrier').value = ''; $('agingDays').value = ''; loadAging(); flash('agingMsg', 'Saved ✓', true);
+    } catch (e) { flash('agingMsg', 'Failed to save.', false); }
+  }
+  async function setAging(carrier, val) {
+    const days = parseInt(val, 10); if (!(days >= 1)) { loadAging(); return; }
+    try { await sbSend('PATCH', '/aging_threshold?carrier=eq.' + encodeURIComponent(carrier), { days, updated_at: new Date().toISOString() }, 'return=minimal'); flash('agingMsg', 'Saved ✓', true); } catch (e) { flash('agingMsg', 'Failed to save.', false); }
+  }
+  async function delAging(carrier) {
+    if (carrier === '*') return;
+    try { await sbSend('DELETE', '/aging_threshold?carrier=eq.' + encodeURIComponent(carrier)); loadAging(); } catch (e) {}
+  }
 
   // ── 2: User roles ────────────────────────────────────────────────────────────
   let _roleRows = [];
