@@ -863,12 +863,21 @@ async function performSync(isB2B) {
       sbUpsert('b2c_brand',       b2cBrandRows,   'wh,status,day'),
     ]);
 
-    // Mirror-delete: the per-order tables are built from the CURRENT unshipped list, so any
-    // b2b_orders / shortage_orders row not stamped this sync has left that state (shipped/etc.)
-    // — remove it so the tables don't accumulate stale orders. Guarded by a non-empty sync.
+    // Mirror-delete stale orders: the per-order tables are built from the CURRENT unshipped
+    // list, so any b2b_orders / shortage_orders row NOT stamped this sync has left that state
+    // (shipped/etc.). Scope the delete to the warehouses THIS sync actually covered — other
+    // users sync other warehouses, so a global delete would wipe theirs. Warehouse names carry
+    // parens/spaces that break PostgREST in.(), so delete per-warehouse with wh=eq. Guarded by a
+    // non-empty sync so a failed/empty fetch never mass-deletes.
     const sbDelete = async (table, filter) => { try { await fetch(`${SB_URL}/rest/v1/${table}?${filter}`, { method: 'DELETE', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY } }); } catch (e) {} };
-    if (b2bOrders.length)      await sbDelete('b2b_orders',      'updated_at=lt.' + encodeURIComponent(SYNC_TS));
-    if (shortageOrders.length) await sbDelete('shortage_orders', 'updated_at=lt.' + encodeURIComponent(SYNC_TS));
+    const syncedWhs = [...new Set(all.map(o => o.warehouseCode).filter(Boolean))];
+    if (syncedWhs.length && (b2bOrders.length || shortageOrders.length)) {
+      for (const wh of syncedWhs) {
+        const f = 'wh=eq.' + encodeURIComponent(wh) + '&updated_at=lt.' + encodeURIComponent(SYNC_TS);
+        await sbDelete('b2b_orders', f);
+        await sbDelete('shortage_orders', f);
+      }
+    }
 
     // 5b. B2C flow snapshot (feature 2): per warehouse, the current Open count
     // and how many B2C orders were created in the last 60 min (inflow). Appended
