@@ -1376,17 +1376,9 @@
       <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
       VAS
     </button>
-    <button class="snav-btn" id="snav-btn-briefing" onclick="showView('briefing')">
-      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3l1.9 4.3 4.6.4-3.5 3 1.1 4.6L12 13l-4.1 2.3 1.1-4.6-3.5-3 4.6-.4z"/></svg>
-      Daily Briefing
-    </button>
     <button class="snav-btn" id="snav-btn-attendance" onclick="showView('attendance')">
       <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 7v5l3 2"/></svg>
       Attendance
-    </button>
-    <button class="snav-btn" id="snav-btn-weekly" onclick="showView('weekly')">
-      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-6M12 17v-4M15 17v-8"/><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
-      Weekly Report
     </button>
     <button class="snav-btn" id="snav-btn-temp" onclick="showView('temp')">
       <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="7" height="7" rx="1"/><path stroke-linecap="round" stroke-linejoin="round" d="M14 4h3v3M20 7V4M14 20h3v-3M4 14v3h3M17 14v6M20 14v3h-3"/></svg>
@@ -2532,40 +2524,6 @@
     </div>
   </div>
 
-  <!-- ── DAILY BRIEFING VIEW (AI) ── -->
-  <div class="view" id="view-briefing">
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px">
-      <div>
-        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Daily Briefing <span style="font-size:.7rem;font-weight:600;color:var(--muted)">✨ AI</span></div>
-        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Morning ops summary &amp; staffing recommendation per warehouse · generated once a day by Claude from your rollups &amp; forecast · <span id="briefingStamp"></span></div>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <select id="briefingWarehouse" onchange="onBriefingWhChange(this.value)" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer"></select>
-        <button type="button" onclick="fetchBriefing(true, true)" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">⟳ Refresh</button>
-      </div>
-    </div>
-    <div id="briefingHeadline" style="margin-bottom:16px"></div>
-    <div id="briefingCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px"></div>
-  </div>
-
-  <!-- ── WEEKLY REPORT VIEW (AI) ── -->
-  <div class="view" id="view-weekly">
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px">
-      <div>
-        <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Weekly Report <span style="font-size:.7rem;font-weight:600;color:var(--muted)">✨ AI</span></div>
-        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Last complete week vs the week before · generated once a week by Claude · <span id="weeklyStamp"></span></div>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <select id="weeklyWarehouse" onchange="onWeeklyWhChange(this.value)" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer"></select>
-        <button type="button" onclick="copyWeeklyReport(this)" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">⧉ Copy</button>
-        <button type="button" onclick="window.print()" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">⎙ Print</button>
-        <button type="button" onclick="fetchWeekly(true, true)" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">⟳ Refresh</button>
-      </div>
-    </div>
-    <div id="weeklyExec" style="margin-bottom:16px"></div>
-    <div id="weeklyCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px"></div>
-  </div>
-
   <!-- ── TEMP ACCOUNTS VIEW ── -->
   <div class="view" id="view-temp">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px">
@@ -2974,21 +2932,14 @@
   const SB_HDR = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' };
   // Claude-generated forecasts (cached daily in ai_forecast by the ai-forecast edge function).
   const AI_FN_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co/functions/v1/ai-forecast';
-  const BRIEFING_FN_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co/functions/v1/ops-briefing';
   let aiForecast = {};        // "metric|wh" -> { horizon:[{day,value}], reasoning, confidence, model, run_date }
   let aiForecastRun = null;   // newest run_date present in the cache
   let aiRefreshTried = false; // trigger a daily refresh at most once per session
   let aiAccuracy = {};        // "metric|wh" -> { abs_err, tot, n } realized 1-day-ahead (WAPE parts)
-  let aiBriefing = {};        // scope ('ALL' or wh name) -> { headline, briefing, staffing, model }
-  let aiBriefingRun = null;
-  let aiBriefingTried = false;
   const SHORTAGE_FN_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co/functions/v1/ai-shortage';
   let aiShortage = {};        // wh -> { summary, priorities:[{title,count,urgency,action}], model }
   let aiShortageRun = null;
   let aiShortageTried = false;
-  const WEEKLY_FN_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co/functions/v1/ai-weekly-report';
-  let aiWeekly = {};          // scope -> { summary, sections:{wins,concerns}, period_start, model }
-  let aiWeeklyEnd = null, aiWeeklyStart = null, aiWeeklyTried = false;
 
   // ── Config ────────────────────────────────────────────────────────────
   let SCRIPT_URL     = localStorage.getItem('packingErrorScriptUrl') || ''; // kept for B2C data only
@@ -3029,9 +2980,7 @@
     { key: 'packingErrorTabInbound',  navId: 'snav-btn-inbound',  view: 'inbound',  toggleId: 'tabToggleInbound'  },
     { key: 'packingErrorTabVas',      navId: 'snav-btn-vas',      view: 'vas',      toggleId: 'tabToggleVas'      },
     { key: 'packingErrorTabCs',       navId: 'snav-btn-cs',       view: 'cs',       toggleId: 'tabToggleCs'       },
-    { key: 'packingErrorTabBriefing', navId: 'snav-btn-briefing', view: 'briefing', toggleId: 'tabToggleBriefing' },
     { key: 'packingErrorTabAttendance', navId: 'snav-btn-attendance', view: 'attendance', toggleId: 'tabToggleAttendance' },
-    { key: 'packingErrorTabWeekly',   navId: 'snav-btn-weekly',   view: 'weekly',   toggleId: 'tabToggleWeekly'   },
     { key: 'packingErrorTabTemp',     navId: 'snav-btn-temp',     view: 'temp',     toggleId: 'tabToggleTemp'     },
     { key: 'packingErrorTabDash',     navId: 'snav-btn-dash',     view: 'dash',     toggleId: 'tabToggleDash'     },
     { key: 'packingErrorTabLabels',   navId: 'snav-btn-labels',   view: 'labels',   toggleId: 'tabToggleLabels'   },
@@ -6304,134 +6253,6 @@
     el.innerHTML = `<div style="font-size:.7rem;color:var(--muted)">✨ Forecast blends <b style="color:${color}">Claude</b> (${ai.conf || '—'} confidence${ai.model ? ' · ' + escHtml(ai.model) : ''}) with the statistical model${ai.run ? ' · as of ' + ai.run : ''}${realized}.</div>
       ${notes ? `<details style="margin-top:5px"><summary style="font-size:.7rem;color:var(--muted);cursor:pointer">Claude's reasoning</summary><div style="font-size:.72rem;color:var(--muted);margin-top:4px">${notes}</div></details>` : ''}`;
   }
-  // ── Daily ops briefing + staffing (AI, cached daily in ai_briefing) ───────
-  async function fetchBriefing(trigger, force) {
-    try {
-      const rows = await fetch(SB_URL + '/ai_briefing?select=run_date,scope,headline,briefing,staffing,model&order=run_date.desc', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
-      const map = {}; let latest = null;
-      rows.forEach(r => { if (!map[r.scope] || r.run_date > map[r.scope].run_date) map[r.scope] = r; if (!latest || r.run_date > latest) latest = r.run_date; });
-      aiBriefing = map; aiBriefingRun = latest;
-    } catch (e) { }
-    const today = localDateStr();
-    if (trigger && (force || (!aiBriefingTried && (!aiBriefingRun || aiBriefingRun < today)))) {
-      aiBriefingTried = true;
-      const btn = document.querySelector('#view-briefing button'); if (btn && force) btn.textContent = '⏳ Generating…';
-      try {
-        const res = await fetch(BRIEFING_FN_URL + (force ? '?force=1' : ''), { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: SB_KEY } }).then(r => r.json()).catch(() => null);
-        if (res && res.ok && (res.generated > 0 || force)) { if (btn) btn.textContent = '⟳ Refresh'; return fetchBriefing(false, false); }
-      } catch (e) { }
-      if (btn) btn.textContent = '⟳ Refresh';
-    }
-    try { renderBriefing(); } catch (e) { }
-  }
-  function onBriefingWhChange(v) { localStorage.setItem('briefingWarehouse', v || ''); renderBriefing(); }
-  function renderBriefing() {
-    const stamp = document.getElementById('briefingStamp');
-    const head = document.getElementById('briefingHeadline');
-    const cards = document.getElementById('briefingCards');
-    if (!cards) return;
-    if (stamp) stamp.textContent = aiBriefingRun ? 'as of ' + aiBriefingRun : '';
-    if (!aiBriefingRun) {
-      if (head) head.innerHTML = '';
-      cards.innerHTML = `<div style="color:var(--muted);font-size:.85rem;padding:10px 2px">✨ No briefing generated yet. It builds automatically once a day from your rollups + forecast (needs the ANTHROPIC_API_KEY set on the edge function). Tap Refresh to generate now.</div>`;
-      return;
-    }
-    const all = aiBriefing['ALL'];
-    let whRows = Object.values(aiBriefing).filter(r => r.scope !== 'ALL' && whAllowed(r.scope)).sort((a, b) => a.scope < b.scope ? -1 : 1);
-    // Warehouse comes from the app-wide filter (globalWh).
-    { const sel = document.getElementById('briefingWarehouse'); if (sel) sel.innerHTML = ''; }
-    const pick = globalWh();
-    // Show the network headline only in the "all" view.
-    if (head) head.innerHTML = (!pick && all && all.headline)
-      ? `<div style="border:1px solid var(--border);border-left:3px solid var(--primary,#4ade80);border-radius:10px;padding:13px 16px;background:var(--surface2);font-size:.9rem;color:var(--text);line-height:1.5">${escHtml(all.headline)}</div>`
-      : '';
-    if (pick) whRows = whRows.filter(r => whEq(r.scope, pick));
-    if (!whRows.length) { cards.innerHTML = `<div style="color:var(--muted);font-size:.85rem;padding:10px 2px">No briefing for your warehouses yet.</div>`; return; }
-    const num = n => (n == null ? '—' : Number(n).toLocaleString());
-    cards.innerHTML = whRows.map(r => {
-      const s = r.staffing || {};
-      const staff = (s.pickers_needed != null || s.packers_needed != null) ? `
-        <div style="display:flex;gap:18px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
-          <div><div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Pickers</div><div style="font-size:1.35rem;font-weight:800;color:var(--text);line-height:1.1">${num(s.pickers_needed)}</div></div>
-          <div><div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Packers</div><div style="font-size:1.35rem;font-weight:800;color:var(--text);line-height:1.1">${num(s.packers_needed)}</div></div>
-          ${s.note ? `<div style="flex:1;font-size:.72rem;color:var(--muted);align-self:center">${escHtml(s.note)}</div>` : ''}
-        </div>` : '';
-      return `<div class="card" style="padding:14px 16px">
-        <div style="font-size:.82rem;font-weight:700;color:var(--text);margin-bottom:7px">${escHtml(r.scope)}</div>
-        <div style="font-size:.8rem;color:var(--text);line-height:1.55">${escHtml(r.briefing || '')}</div>
-        ${staff}
-        <div style="font-size:.6rem;color:var(--muted);margin-top:9px">✨ ${escHtml(r.model || 'Claude')} · staffing = recommendation for the upcoming operating day</div>
-      </div>`;
-    }).join('');
-  }
-  // ── AI weekly performance report (cached per week in ai_weekly_report) ────
-  async function fetchWeekly(trigger, force) {
-    try {
-      const rows = await fetch(SB_URL + '/ai_weekly_report?select=period_end,period_start,scope,summary,sections,model&order=period_end.desc', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
-      let end = null; rows.forEach(r => { if (!end || r.period_end > end) end = r.period_end; });
-      const map = {}; rows.filter(r => r.period_end === end).forEach(r => { map[r.scope] = r; });
-      aiWeekly = map; aiWeeklyEnd = end; aiWeeklyStart = end ? (map['ALL'] || Object.values(map)[0] || {}).period_start : null;
-    } catch (e) { }
-    if (trigger && (force || (!aiWeeklyTried))) {
-      aiWeeklyTried = true;
-      const btn = document.querySelector('#view-weekly button[onclick^="fetchWeekly"]'); if (btn && force) btn.textContent = '⏳ Generating…';
-      try {
-        const res = await fetch(WEEKLY_FN_URL + (force ? '?force=1' : ''), { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: SB_KEY } }).then(r => r.json()).catch(() => null);
-        if (btn) btn.textContent = '⟳ Refresh';
-        if (res && res.ok && (res.generated > 0 || force)) return fetchWeekly(false, false);
-      } catch (e) { if (btn) btn.textContent = '⟳ Refresh'; }
-    }
-    try { renderWeekly(); } catch (e) { }
-  }
-  function onWeeklyWhChange(v) { localStorage.setItem('weeklyWarehouse', v || ''); renderWeekly(); }
-  function weeklyRows() { return Object.values(aiWeekly).filter(r => r.scope !== 'ALL' && whAllowed(r.scope)).sort((a, b) => a.scope < b.scope ? -1 : 1); }
-  function renderWeekly() {
-    const stamp = document.getElementById('weeklyStamp'), exec = document.getElementById('weeklyExec'), cards = document.getElementById('weeklyCards');
-    if (!cards) return;
-    if (stamp) stamp.textContent = aiWeeklyEnd ? (aiWeeklyStart ? aiWeeklyStart + ' → ' + aiWeeklyEnd : 'week ending ' + aiWeeklyEnd) : '';
-    if (!aiWeeklyEnd) {
-      if (exec) exec.innerHTML = '';
-      cards.innerHTML = `<div style="color:var(--muted);font-size:.85rem;padding:10px 2px">✨ No weekly report yet. It builds once a week from your rollups (needs the ANTHROPIC_API_KEY set on the edge function). Tap Refresh to generate now.</div>`;
-      return;
-    }
-    let rows = weeklyRows();
-    { const sel = document.getElementById('weeklyWarehouse'); if (sel) sel.innerHTML = ''; }
-    const pick = globalWh();
-    const all = aiWeekly['ALL'];
-    if (exec) exec.innerHTML = (!pick && all && all.summary)
-      ? `<div style="border:1px solid var(--border);border-left:3px solid var(--primary,#4ade80);border-radius:10px;padding:13px 16px;background:var(--surface2)"><div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:5px">Network summary</div><div style="font-size:.88rem;color:var(--text);line-height:1.55">${escHtml(all.summary)}</div></div>`
-      : '';
-    if (pick) rows = rows.filter(r => whEq(r.scope, pick));
-    if (!rows.length) { cards.innerHTML = `<div style="color:var(--muted);font-size:.85rem;padding:10px 2px">No report for your warehouses yet.</div>`; return; }
-    const list = (items, color, label) => (items && items.length) ? `
-      <div style="margin-top:9px"><div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:${color};margin-bottom:3px">${label}</div>
-      <ul style="margin:0;padding-left:16px;font-size:.75rem;color:var(--muted);line-height:1.5">${items.map(t => `<li>${escHtml(t)}</li>`).join('')}</ul></div>` : '';
-    cards.innerHTML = rows.map(r => {
-      const s = r.sections || {};
-      return `<div class="card" style="padding:14px 16px">
-        <div style="font-size:.82rem;font-weight:700;color:var(--text);margin-bottom:7px">${escHtml(r.scope)}</div>
-        <div style="font-size:.8rem;color:var(--text);line-height:1.55">${escHtml(r.summary || '')}</div>
-        ${list(s.wins, '#4ade80', 'Wins')}
-        ${list(s.concerns, '#f87171', 'Concerns')}
-      </div>`;
-    }).join('');
-  }
-  function copyWeeklyReport(btn) {
-    if (!aiWeeklyEnd) return;
-    const lines = [`Weekly Performance Report — ${aiWeeklyStart || ''} to ${aiWeeklyEnd}`, ''];
-    const all = aiWeekly['ALL']; if (all && all.summary) { lines.push('NETWORK SUMMARY', all.summary, ''); }
-    weeklyRows().forEach(r => {
-      const s = r.sections || {};
-      lines.push('■ ' + r.scope, r.summary || '');
-      if (s.wins && s.wins.length) { lines.push('  Wins:'); s.wins.forEach(w => lines.push('   • ' + w)); }
-      if (s.concerns && s.concerns.length) { lines.push('  Concerns:'); s.concerns.forEach(c => lines.push('   • ' + c)); }
-      lines.push('');
-    });
-    const txt = lines.join('\n');
-    const done = () => { if (btn) { const o = btn.textContent; btn.textContent = '✓ Copied'; setTimeout(() => btn.textContent = o, 1500); } };
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done).catch(() => { window.prompt('Copy the report:', txt); });
-    else window.prompt('Copy the report:', txt);
-  }
   // ── Temp Logiwa accounts ─────────────────────────────────────────────────
   // Per user choice: the account LIST and the QR codes are viewable WITHOUT a
   // passphrase (self-service for temp staff); the passphrase only gates EDITING.
@@ -9226,8 +9047,6 @@
     if (v === 'shortage') { try { fetchShortageAi(true, false); } catch(e){} }
     if (v === 'inbound') { if (_shouldFetch('inbound', 45000)) { try { fetchInbound(); } catch(e){} } else { try { renderInbound(); } catch(e){} } }
     if (v === 'vas') { if (_shouldFetch('vas', 45000)) { try { fetchVasRequests(); } catch(e){} } else { try { renderVasRequests(); } catch(e){} } }
-    if (v === 'briefing') { try { renderBriefing(); fetchBriefing(true, false); } catch(e){} }
-    if (v === 'weekly') { try { renderWeekly(); fetchWeekly(true, false); } catch(e){} }
     if (v === 'temp') { try { openTempView(); } catch(e){} }
     if (v === 'attendance') { if (_shouldFetch('attendance', 45000)) { try { fetchAttendance(); } catch(e){} } else { try { renderAttendance(); } catch(e){} } }
     if (v === 'labels') {
