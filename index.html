@@ -2395,7 +2395,13 @@
     <div class="card" style="padding:0;overflow:hidden;margin-top:16px">
       <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
         <div id="prodHourTableTitle" style="font-size:.85rem;font-weight:600;color:var(--text)">Packed order count per hour · by user</div>
-        <label style="font-size:.75rem;color:var(--muted)">Date <input type="date" id="prodHourDate" onchange="onProdHourDateChange(this.value)" style="margin-left:4px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></label>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div class="prod-seg">
+            <button type="button" id="prodHourCountOrders" class="prod-seg-btn active" onclick="onProdHourCountChange('orders')">Orders</button>
+            <button type="button" id="prodHourCountItems" class="prod-seg-btn" onclick="onProdHourCountChange('items')">Items</button>
+          </div>
+          <label style="font-size:.75rem;color:var(--muted)">Date <input type="date" id="prodHourDate" onchange="onProdHourDateChange(this.value)" style="margin-left:4px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></label>
+        </div>
       </div>
       <div style="overflow-x:auto"><table id="prodHourTable" style="width:100%;border-collapse:collapse;font-size:.82rem"></table></div>
     </div>
@@ -6860,6 +6866,7 @@
 
   // ── Per-hour-by-warehouse user productivity matrix (Logiwa-style) ─────────
   function onProdHourDateChange(v) { prodHourDate = v; fetchProdHourly(); }
+  function onProdHourCountChange(v) { try { localStorage.setItem('prodHourCount', v === 'items' ? 'items' : 'orders'); } catch (e) {} renderProdHourlyTable(); }
   async function fetchProdHourly() {
     const date = prodHourDate || localDateStr();
     prodHourDate = date;
@@ -6872,9 +6879,12 @@
   function renderProdHourlyTable() {
     const el = document.getElementById('prodHourTable'); if (!el) return;
     const packed = localStorage.getItem('prodMode') === 'packed';
-    const field = packed ? 'packed_orders' : 'picked_orders';
+    const items = localStorage.getItem('prodHourCount') === 'items';
+    const field = (packed ? 'packed_' : 'picked_') + (items ? 'items' : 'orders');
     const t = document.getElementById('prodHourTableTitle');
-    if (t) t.textContent = (packed ? 'Packed' : 'Picked') + ' order count per hour · by user';
+    if (t) t.textContent = (packed ? 'Packed' : 'Picked') + ' ' + (items ? 'item' : 'order') + ' count per hour · by user';
+    document.getElementById('prodHourCountOrders')?.classList.toggle('active', !items);
+    document.getElementById('prodHourCountItems')?.classList.toggle('active', items);
     const dEl = document.getElementById('prodHourDate');
     const date = (dEl && dEl.value) || prodHourDate || localDateStr();
     if (dEl && !dEl.value) dEl.value = date;
