@@ -143,7 +143,7 @@
   <!-- Aging thresholds -->
   <div class="card">
     <h2>⏳ Aging thresholds</h2>
-    <p class="hint">Per-carrier threshold (in <b>days</b>) for open B2C orders. An order shows as <b>aging</b> on the B2C tab once its age reaches its carrier's threshold. Carrier is the <b>Channel</b> parsed from the WMS note (e.g. tiktok, shopee). The <b>*</b> row is the default for any carrier without its own row. Global — applies to all warehouses. <span class="msg" id="agingMsg"></span></p>
+    <p class="hint">Per-carrier threshold (in <b>days</b>) for unfulfilled B2C orders in <b>any</b> status (Open, Picking, Packing, …). An order shows as <b>aging</b> on the B2C tab once its age reaches its carrier's threshold. Carrier is the <b>Channel</b> parsed from the WMS note (e.g. tiktok, shopee). The <b>*</b> row is the default for any carrier without its own row. Global — applies to all warehouses. <span class="msg" id="agingMsg"></span></p>
     <table><thead><tr><th>Carrier</th><th>Threshold (days)</th><th></th></tr></thead><tbody id="agingRows"></tbody></table>
     <div class="row" style="margin-top:12px">
       <div style="flex:1;min-width:160px"><label>Carrier (channel)</label><input type="text" id="agingCarrier" placeholder="e.g. tiktok, shopee"></div>
