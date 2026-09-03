@@ -6831,7 +6831,7 @@
     const date = prodHourDate || localDateStr();
     prodHourDate = date;
     try {
-      const rows = await fetch(SB_URL + '/user_perf_hourly?select=executed_by_name,executed_by,warehouse_code,hour_local,picked_orders,packed_orders&activity_date=eq.' + date + '&order=warehouse_code.asc,executed_by_name.asc,hour_local.asc', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+      const rows = await fetch(SB_URL + '/user_perf_hourly?select=executed_by_name,executed_by,warehouse_code,hour_local,picked_orders,picked_items,packed_orders,packed_items&activity_date=eq.' + date + '&order=warehouse_code.asc,executed_by_name.asc,hour_local.asc', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
       prodHourlyRows = rows.filter(r => whAllowed(r.warehouse_code));
     } catch (e) { prodHourlyRows = []; }
     renderProdHourlyTable();
