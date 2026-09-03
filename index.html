@@ -7963,7 +7963,9 @@
     const sel = document.getElementById(id); if (!sel) return;
     const whs = _pkgWhList();
     const cur = sel.value || singleWh() || whs[0] || '';
-    sel.innerHTML = whs.map(w => `<option value="${escHtml(w)}"${w === cur ? ' selected' : ''}>${escHtml(_stripWhCode(w))}</option>`).join('');
+    // Label with the FULL warehouse name, same as the global warehouse filter.
+    // (_stripWhCode is a compare-only normaliser — it lower-cases — never use it for display.)
+    sel.innerHTML = whs.map(w => `<option value="${escHtml(w)}"${w === cur ? ' selected' : ''}>${escHtml(w)}</option>`).join('');
   }
   // Warehouse-aware material dropdown: only materials belonging to the working warehouse.
   function pkgFillMaterialDropdown() {
