@@ -2228,6 +2228,7 @@
               <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Status</th>
               <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Expected Ship</th>
               <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">Collected By</th>
+              <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0;background:var(--surface2)" title="Order instructions from Partner Hub">Note</th>
             </tr>
           </thead>
           <tbody id="b2bOrdersTable"></tbody>
@@ -5573,7 +5574,7 @@
     const tbl = document.getElementById('b2bOrdersTable');
     if (!tbl) return;
     if (!filtered.length) {
-      tbl.innerHTML = `<tr><td colspan="6" style="padding:16px 18px;color:var(--muted);font-size:.82rem">${_b2bStatus ? 'No B2B orders in this status.' : 'No B2B orders synced yet.'}</td></tr>`;
+      tbl.innerHTML = `<tr><td colspan="7" style="padding:16px 18px;color:var(--muted);font-size:.82rem">${_b2bStatus ? 'No B2B orders in this status.' : 'No B2B orders synced yet.'}</td></tr>`;
       return;
     }
     tbl.innerHTML = filtered.map(o => {
@@ -5593,6 +5594,7 @@
         <td style="padding:8px 14px;font-size:.82rem;white-space:nowrap;color:${meta.color}">${meta.label}</td>
         <td style="padding:8px 14px;color:var(--text);font-size:.82rem;white-space:nowrap">${fmtShipDate(o.expected_ship_date)}</td>
         <td style="padding:6px 14px;font-size:.82rem;white-space:nowrap">${collectedSel}</td>
+        <td style="padding:8px 14px;color:var(--muted);font-size:.78rem;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(o.note || '')}">${escHtml(o.note || '')}</td>
       </tr>`;
     }).join('');
   }
@@ -5601,7 +5603,7 @@
     try {
       // Paginate (>1000 orders) + select only needed columns — the boxes/table both
       // rely on this being complete, and narrower columns cut egress.
-      const sel = 'order_id,wh,brand,status,expected_ship_date,collected_by';
+      const sel = 'order_id,wh,brand,status,expected_ship_date,collected_by,note';
       const rows = [];
       for (let off = 0; off < 50000; off += 1000) {
         const page = await fetch(SB_URL + '/b2b_orders?select=' + sel + '&order=wh.asc,order_id.asc&limit=1000&offset=' + off, { headers: SB_HDR }).then(r => r.ok ? r.json() : []);

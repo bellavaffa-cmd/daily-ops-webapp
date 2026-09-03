@@ -474,6 +474,88 @@ async function getInboundItems(id) {
     pack_type: it.pack_type || null,
   }));
 }
+// ── Partner Hub B2B notes ────────────────────────────────────────────────────
+// B2B "notes" live in Partner Hub, not Logiwa: an order-level shipment.instruction
+// plus per-item instructions (the SAME sentence repeated once per line item, so we
+// dedupe). They exist only on the DETAIL endpoint — one HTTP call per order — but a
+// note is set at order creation and effectively never changes, so each order is
+// fetched ONCE and cached on b2b_orders. note_fetched_at is stamped even when the
+// order has no note, so we never retry it. Orders leave b2b_orders when they ship,
+// so the pending backlog stays small and steady-state cost is ~zero.
+// Partner Hub order_num === our WMS b2b_orders.order_id (verified exact match).
+async function syncB2BNotes(limitPerRun) {
+  const cap = limitPerRun || 60;
+  const auth = await getPartnerAuth();
+  if (!auth || !auth.token) return;                     // no Partner Hub session — skip quietly
+  const AH = { Authorization: 'Token ' + auth.token };
+  const SBH = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY };
+
+  // 1. Which open B2B orders have not been looked up yet?
+  let pending = [];
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/b2b_orders?note_fetched_at=is.null&select=order_id&limit=${cap}`, { headers: SBH });
+    if (!r.ok) return;
+    pending = ((await r.json()) || []).map(x => String(x.order_id || '')).filter(Boolean);
+  } catch (e) { return; }
+  if (!pending.length) return;
+
+  // 2. Map order number -> Partner Hub internal id (the detail endpoint is keyed by id).
+  const now = new Date();
+  const sd = new Date(now.getTime() - 120 * 24 * 3600 * 1000).toISOString();
+  const ed = new Date(now.getTime() + 30 * 24 * 3600 * 1000).toISOString();
+  let whCsv = '';
+  try {
+    const wr = await fetch('https://dashboard.golocad.com/api/partnerhub/access/warehouses/', { headers: AH });
+    if (wr.ok) { const wj = await wr.json(); const arr = Array.isArray(wj) ? wj : (wj.results || wj.warehouses || []); whCsv = arr.map(w => w.id).filter(x => x != null).join(','); }
+  } catch (e) {}
+  const LIST = 'https://dashboard.golocad.com/api/partnerhub/outboundhub/bulk-orders/';
+  const idByNum = {};
+  try {
+    for (let offset = 0, guard = 0; guard < 40; guard++, offset += 500) {
+      const p = new URLSearchParams({ search: '', start_date: sd, end_date: ed, limit: '500', offset: String(offset) });
+      if (whCsv) p.set('warehouse', whCsv);
+      const r = await fetch(LIST + '?' + p.toString(), { headers: AH });
+      if (r.status === 401 || r.status === 403) { try { await chrome.storage.local.remove('partnerToken'); } catch (e) {} return; }
+      if (!r.ok) break;
+      const j = await r.json();
+      (j.results || []).forEach(o => { if (o && o.consignment_number != null && o.id != null) idByNum[String(o.consignment_number)] = o.id; });
+      if (!j.next || !(j.results || []).length) break;
+    }
+  } catch (e) {}
+
+  // 3. Fetch each pending order's detail once, build the note, write it back.
+  const clean = s => String(s == null ? '' : s).trim();
+  const noteOf = d => {
+    const parts = [];
+    const ship = clean(d && d.shipment && d.shipment.instruction);
+    if (ship) parts.push(ship);
+    const items = ((d && d.basic && d.basic.order_items) || []).map(i => clean(i && i.instruction)).filter(Boolean);
+    [...new Set(items)].forEach(t => { if (!parts.includes(t)) parts.push(t); });   // repeats once per line → dedupe
+    return parts.join(' · ').slice(0, 2000) || null;
+  };
+  const stamp = new Date().toISOString();
+  const CONC = 4;
+  for (let i = 0; i < pending.length; i += CONC) {
+    await Promise.all(pending.slice(i, i + CONC).map(async num => {
+      let note = null;
+      const pid = idByNum[num] != null ? idByNum[num] : idByNum[num.split('_')[0]];   // split orders look like "…_1"
+      if (pid != null) {
+        try {
+          const r = await fetch(`https://dashboard.golocad.com/api/partnerhub/outboundhub/bulk-orders/${pid}/`, { headers: AH });
+          if (r.ok) note = noteOf(await r.json());
+        } catch (e) {}
+      }
+      // Stamp whether or not a note was found, so the order is never re-fetched.
+      try {
+        await fetch(`${SB_URL}/rest/v1/b2b_orders?order_id=eq.${encodeURIComponent(num)}`, {
+          method: 'PATCH',
+          headers: Object.assign({}, SBH, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+          body: JSON.stringify({ note, note_fetched_at: stamp })
+        });
+      } catch (e) {}
+    }));
+  }
+}
 // Packaging materials = Logiwa "License Plate Types" of category packaging.
 // Pulls the full catalog (name/code/warehouse per material) for the app's
 // Packaging Material tab "Import from WMS". Live read — not stored by the extension.
@@ -1056,6 +1138,12 @@ async function performSync(isB2B) {
       }
     } catch (e) {
       console.error('[WMS bg] b2c_orders error:', e.message);
+    }
+
+    // 5d. Partner Hub B2B notes — fetch-once per order, heavy cycle only. Runs after the
+    // broadcast so the dashboard is never held up by it, and never fails the sync.
+    if (heavyCycle) {
+      try { await syncB2BNotes(60); } catch (e) { console.error('[WMS bg] b2b notes error:', e && e.message); }
     }
 
     // 5d. Brand × type (single/multi) open-order snapshot — hourly, collapsed
