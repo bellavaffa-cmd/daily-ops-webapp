@@ -123,6 +123,19 @@ window.addEventListener('message', (e) => {
     return;
   }
 
+  // Packaging Material tab → "Import from WMS": relay to the background worker,
+  // which pulls the License Plate Type (packaging) catalog live from Logiwa.
+  if (e.data.type === 'wms-packaging-list') {
+    const reqId = e.data.reqId;
+    try {
+      chrome.runtime.sendMessage({ action: 'getPackagingList' }, (resp) => {
+        const ok = !chrome.runtime.lastError && resp && resp.ok;
+        window.postMessage({ type: 'wms-packaging-list-result', reqId, ok: !!ok, items: (resp && resp.items) || null, error: (resp && resp.error) || (chrome.runtime.lastError && chrome.runtime.lastError.message) || null }, '*');
+      });
+    } catch (err) { window.postMessage({ type: 'wms-packaging-list-result', reqId, ok: false, error: String(err) }, '*'); }
+    return;
+  }
+
   if (e.data.type !== 'wms-ext-close') return;
   if (window.parent !== window) {
     // We're inside an iframe — signal the WMS page to close the overlay

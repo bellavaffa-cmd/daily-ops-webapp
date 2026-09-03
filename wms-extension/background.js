@@ -121,6 +121,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'getInboundItems') { getInboundItems(msg.id).then(items => sendResponse({ ok: true, items })).catch(e => sendResponse({ ok: false, error: e && e.message })); return true; }
   // Error dashboard: look up the WMS shipment-order status for a set of order ids.
   if (msg.action === 'wmsOrderStatuses') { lookupOrderStatuses(msg.orderIds).then(statuses => sendResponse({ ok: true, statuses })).catch(e => sendResponse({ ok: false, error: e && e.message })); return true; }
+  if (msg.action === 'getPackagingList') { getPackagingList().then(items => sendResponse({ ok: true, items })).catch(e => sendResponse({ ok: false, error: e && e.message })); return true; }
   // companion.js pushes the LOCAD Ops access token on load so we can sync tab-free.
   if (msg.action === 'storeCompanionToken' && msg.token) { try { chrome.storage.local.set({ companionToken: msg.token, companionTokenExp: msg.exp || _jwtExp(msg.token) }); } catch (e) {} sendResponse({ ok: true }); return false; }
 });
@@ -472,6 +473,31 @@ async function getInboundItems(id) {
     barcode: it.barcode || null,
     pack_type: it.pack_type || null,
   }));
+}
+// Packaging materials = Logiwa "License Plate Types" of category packaging.
+// Pulls the full catalog (name/code/warehouse per material) for the app's
+// Packaging Material tab "Import from WMS". Live read — not stored by the extension.
+async function getPackagingList() {
+  const token = await getWmsToken();
+  if (!token) throw new Error('No WMS session — open wms.golocad.com and log in once.');
+  const H = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+  const size = 1000, out = [];
+  for (let page = 0; page < 25; page++) {
+    const r = await fetch('https://mywmsquery.logiwa.com/api/licenseplatetype/packaging/list/i/' + page + '/s/' + size, { method: 'POST', headers: H, body: '{}' });
+    if (!r.ok) throw new Error('WMS packaging list ' + r.status);
+    const j = await r.json();
+    const data = j.data || [];
+    for (const d of data) out.push({
+      wms_id:      d.identifier || null,
+      code:        d.code || null,
+      name:        d.description || d.code || null,
+      wh:          d.warehouseCode || null,
+      active:      d.isActive !== false,
+    });
+    const total = j.totalCount || out.length;
+    if (!data.length || out.length >= total) break;
+  }
+  return out;
 }
 async function storedWmsIdentity() {
   try {
