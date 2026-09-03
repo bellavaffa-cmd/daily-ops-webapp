@@ -2610,9 +2610,17 @@
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
         <div style="display:flex;flex-direction:column;gap:4px"><label style="font-size:.7rem;color:var(--muted)">Warehouse</label><select id="pkgWh" onchange="onPkgWhChange()" style="font-size:.8rem;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer"></select></div>
         <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:180px"><label style="font-size:.7rem;color:var(--muted)">Material</label><select id="pkgMat" onchange="onPkgMatChange()" style="font-size:.8rem;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer"></select></div>
-        <div style="display:flex;flex-direction:column;gap:4px"><label style="font-size:.7rem;color:var(--muted)">Location</label><input id="pkgLoc" placeholder="e.g. Rack A1" style="font-size:.8rem;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);width:130px"></div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <label style="font-size:.7rem;color:var(--muted)">Location</label>
+          <div class="scan-input-wrap" style="width:176px">
+            <input id="pkgLoc" placeholder="e.g. Rack A1" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('pkgUom').focus();}" style="font-size:.8rem;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);width:100%;box-sizing:border-box">
+            <button type="button" class="scan-btn" onclick="openBarcodeScanner('pkgLoc')" title="Scan location barcode" style="height:32px;padding:0 7px">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="4" height="16"/><rect x="8" y="4" width="2" height="16"/><rect x="13" y="4" width="3" height="16"/><rect x="19" y="4" width="3" height="16"/></svg>
+            </button>
+          </div>
+        </div>
         <div style="display:flex;flex-direction:column;gap:4px"><label style="font-size:.7rem;color:var(--muted)">UOM</label><input id="pkgUom" placeholder="each / case / pallet" style="font-size:.8rem;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);width:130px"></div>
-        <div style="display:flex;flex-direction:column;gap:4px"><label style="font-size:.7rem;color:var(--muted)">Qty</label><input id="pkgQty" type="number" min="0" step="any" placeholder="0" style="font-size:.8rem;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);width:90px;text-align:right"></div>
+        <div style="display:flex;flex-direction:column;gap:4px"><label style="font-size:.7rem;color:var(--muted)">Qty</label><input id="pkgQty" type="number" min="0" step="any" placeholder="0" onkeydown="if(event.key==='Enter'){event.preventDefault();pkgAddStock();}" style="font-size:.8rem;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);width:90px;text-align:right"></div>
         <div style="display:flex;flex-direction:column;gap:4px"><label style="font-size:.7rem;color:var(--muted)">Brand</label><input id="pkgBrand" placeholder="Brand" style="font-size:.8rem;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);width:120px"></div>
         <button type="button" onclick="pkgAddStock()" style="font-size:.8rem;font-weight:600;padding:7px 16px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">Add</button>
         <span id="pkgMsg" style="font-size:.75rem"></span>
@@ -8029,6 +8037,7 @@
       const r = await fetch(SB_URL + '/packaging_stock', { method: 'POST', headers: { ...SB_HDR, Prefer: 'return=minimal' }, body: JSON.stringify([{ material_id: Number(matId), wh, location: loc, uom, qty, brand: brand || null }]) });
       if (!r.ok) throw new Error(String(r.status));
       document.getElementById('pkgLoc').value = ''; document.getElementById('pkgUom').value = ''; document.getElementById('pkgQty').value = ''; document.getElementById('pkgBrand').value = '';
+      try { document.getElementById('pkgLoc').focus(); } catch (e) {}   // ready for the next scan
       flash('Added ✓', true); fetchPackaging();
     } catch (e) { flash('Failed to add stock entry.', false); }
   }
