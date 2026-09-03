@@ -997,9 +997,15 @@ async function performSync(isB2B) {
         });
         if (!r.ok) throw new Error('b2c_orders upsert ' + r.status);
       }
-      await fetch(`${SB_URL}/rest/v1/b2c_orders?updated_at=lt.${encodeURIComponent(syncIso)}`, {
-        method: 'DELETE', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY }
-      }).catch(() => {});
+      // Per-warehouse mirror-delete: clear stale b2c_orders ONLY for the warehouses
+      // THIS sync covered. A GLOBAL delete wipes every OTHER warehouse's orders when a
+      // colleague syncs just their own warehouse (users sync different warehouses at
+      // different times), which made whole warehouses' B2C order data vanish.
+      for (const wh of syncedWhs) {
+        await fetch(`${SB_URL}/rest/v1/b2c_orders?wh=eq.${encodeURIComponent(wh)}&updated_at=lt.${encodeURIComponent(syncIso)}`, {
+          method: 'DELETE', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY }
+        }).catch(() => {});
+      }
     } catch (e) {
       console.error('[WMS bg] b2c_orders error:', e.message);
     }
