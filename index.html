@@ -5034,8 +5034,16 @@
           if (gap > 200 * 60 * 1000) break;   // prodArr is newest-first → stop once beyond ~3.3h
           smPrev = bkt; smHrs = gap / 3600000;
         }
-        const packRate = smHrs > 0 ? Math.max(0, latest.packed - smPrev.packed) / smHrs : packVal;
-        const pickRate = smHrs > 0 ? Math.max(0, latest.picked - smPrev.picked) / smHrs : Math.max(0, latest.picked - prev.picked);
+        // Hours/breaks-aware config for this view (only when exactly ONE warehouse is selected).
+        const sel = (typeof getSelectedWhs === 'function') ? getSelectedWhs() : [];
+        const cfg = (sel.length === 1 && typeof opsFor === 'function') ? opsFor(sel[0]) : null;
+        // Rates are per WORKING hour: _projectDone spends them per working minute and already
+        // skips breaks/closed hours, so dividing by raw elapsed time would double-count any
+        // break inside the window (deflating the rate, then skipping the break again).
+        const _workHrs = (cfg && cfg.tz && smPrev) ? (_workMinutesBetween(cfg, smPrev.t, latest.t) / 60) : 0;
+        const rateHrs = _workHrs >= 0.25 ? _workHrs : smHrs;   // fall back to elapsed when no config / window sits outside working hours
+        const packRate = rateHrs > 0 ? Math.max(0, latest.packed - smPrev.packed) / rateHrs : packVal;
+        const pickRate = rateHrs > 0 ? Math.max(0, latest.picked - smPrev.picked) / rateHrs : Math.max(0, latest.picked - prev.picked);
         const ETA_TIP = 'Time to clear the CURRENT open queue — new arrivals are ignored. Two stages: every open order must be packed, and orders not yet picked must be picked first. The slower stage sets the finish.';
         const setEta = (txt, sub, color) => { etaEl.textContent = txt; etaEl.style.color = color || 'var(--text)'; etaEl.title = ETA_TIP; if (etaSub) { etaSub.textContent = sub || ''; etaSub.title = ETA_TIP; } };
         const fmtDur = h => { const m = Math.round(h * 60); if (m < 60) return '~' + m + 'm'; return '~' + Math.floor(m / 60) + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : ''); };
@@ -5049,10 +5057,8 @@
           const hPack = unpacked / packRate;
           const hPick = unpicked > 0 ? unpicked / pickRate : 0;
           const bound = (hPick > hPack) ? 'picking-bound' : 'packing-bound';
-          // Hours/breaks-aware projection when exactly ONE warehouse is selected (its own
-          // operating hours + timezone). "All warehouses" / no config → naive projection.
-          const sel = (typeof getSelectedWhs === 'function') ? getSelectedWhs() : [];
-          const cfg = (sel.length === 1 && typeof opsFor === 'function') ? opsFor(sel[0]) : null;
+          // Hours/breaks-aware projection uses the cfg resolved above (single warehouse only).
+          // "All warehouses" / no config → naive projection.
           const pPack = (cfg && cfg.tz) ? _projectDone(unpacked, packRate, cfg, now) : null;
           const pPick = (cfg && cfg.tz) ? (unpicked > 0 ? _projectDone(unpicked, pickRate, cfg, now) : { doneMs: now }) : null;
           if (pPack && pPick && (pPack.over || pPick.over)) {
@@ -8293,6 +8299,20 @@
       }
     }
     return { doneMs: wallMs };
+  }
+  // Working minutes between two instants in the warehouse's local day (operating hours
+  // minus breaks). Throughput must be expressed per WORKING hour because _projectDone
+  // consumes it per working minute — dividing by raw elapsed time would count a break
+  // twice (once deflating the rate, once skipped again in the projection).
+  function _workMinutesBetween(cfg, fromMs, toMs) {
+    try {
+      const wins = _workWindows(cfg); if (!wins.length) return 0;
+      const a = _tzNowMin(fromMs, cfg.tz), b = _tzNowMin(toMs, cfg.tz);
+      if (a == null || b == null || b <= a) return 0;   // same local day only
+      let mins = 0;
+      for (const w of wins) mins += Math.max(0, Math.min(b, w.e) - Math.max(a, w.s));
+      return mins;
+    } catch (e) { return 0; }
   }
   // Per-brand, per-type completion estimate from the historical depletion RPC
   // (brand_type_snapshot). All-warehouse; scoped to the CS's brands for CS role.
