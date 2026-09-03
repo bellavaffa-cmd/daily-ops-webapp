@@ -683,34 +683,54 @@ async function performSync(isB2B) {
     // Cut-offs are PER WAREHOUSE (set in the Manager Console → warehouse_config),
     // falling back to the '*' default row, then to hardcoded defaults. Interpreted
     // in the sync machine's local time (the operating region).
-    let defCfg = { mp_cutoff: '16:15', nonmp_cutoff: '14:09' };
+    let defCfg = { mp_cutoff: '16:15', nonmp_cutoff: '14:09', tz: 'Asia/Manila' };
     const whCfg = {};
     try {
-      const cr = await fetch('https://hmpkjmnxoidesnnoecfm.supabase.co/rest/v1/warehouse_config?select=wh,mp_cutoff,nonmp_cutoff', {
+      const cr = await fetch('https://hmpkjmnxoidesnnoecfm.supabase.co/rest/v1/warehouse_config?select=wh,mp_cutoff,nonmp_cutoff,tz', {
         headers: { apikey: 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP', Authorization: 'Bearer sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP' }
       });
-      if (cr.ok) { for (const r of (await cr.json()) || []) { if (r.wh === '*') defCfg = { mp_cutoff: r.mp_cutoff, nonmp_cutoff: r.nonmp_cutoff }; else whCfg[r.wh] = r; } }
+      if (cr.ok) { for (const r of (await cr.json()) || []) { if (r.wh === '*') defCfg = { mp_cutoff: r.mp_cutoff, nonmp_cutoff: r.nonmp_cutoff, tz: r.tz || defCfg.tz }; else whCfg[r.wh] = r; } }
     } catch (e) { /* keep defaults */ }
-    const todayCutoffTs = hhmm => {
-      if (!hhmm) return null;
-      const [h, m] = String(hhmm).split(':').map(Number);
-      const d = new Date(); d.setHours(h || 0, m || 0, 0, 0);
-      return d.getTime();
+    const DEFAULT_TZ = defCfg.tz || 'Asia/Manila';
+    const cfgFor = wh => whCfg[wh] || defCfg;
+    // Timezone: explicit warehouse_config.tz wins; else infer from the warehouse code
+    // suffix "(CC-XXX)" so non-configured sites still get their real local day (not the
+    // Manila default), which matters for the order-date day boundary at US/AU/AE/MX sites.
+    const _TZ_SITE = { 'US-MES': 'America/Chicago', 'US-SAN': 'America/Los_Angeles' };
+    const _TZ_CC = { SG: 'Asia/Singapore', MY: 'Asia/Kuala_Lumpur', PH: 'Asia/Manila', ID: 'Asia/Jakarta', TH: 'Asia/Bangkok', VN: 'Asia/Ho_Chi_Minh', HK: 'Asia/Hong_Kong', JP: 'Asia/Tokyo', CN: 'Asia/Shanghai', IN: 'Asia/Kolkata', AU: 'Australia/Sydney', NZ: 'Pacific/Auckland', AE: 'Asia/Dubai', SA: 'Asia/Riyadh', KSA: 'Asia/Riyadh', QA: 'Asia/Qatar', KW: 'Asia/Kuwait', MX: 'America/Mexico_City', US: 'America/Chicago', CA: 'America/Toronto', BR: 'America/Sao_Paulo', GB: 'Europe/London', UK: 'Europe/London', DE: 'Europe/Berlin', FR: 'Europe/Paris' };
+    const _inferTz = wh => { const m = /\(([^)]+)\)\s*$/.exec(wh || ''); if (!m) return null; const code = m[1].toUpperCase(); return _TZ_SITE[code] || _TZ_CC[code.split('-')[0]] || null; };
+    const tzOf = wh => cfgFor(wh).tz || _inferTz(wh) || DEFAULT_TZ;
+    // Wall-clock date + minute-of-day of an instant in a warehouse's local timezone
+    // (cached DateTimeFormat per tz so pivoting ~15-20k orders stays fast).
+    const _fmtCache = {};
+    const _fmtFor = tz => (_fmtCache[tz] = _fmtCache[tz] || new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }));
+    const _tzParts = (ms, tz) => {
+      try { const p = _fmtFor(tz).formatToParts(new Date(ms)); const g = t => p.find(x => x.type === t).value; return { date: `${g('year')}-${g('month')}-${g('day')}`, min: (+g('hour') % 24) * 60 + (+g('minute')) }; }
+      catch (e) { const d = new Date(ms); return { date: d.toISOString().slice(0, 10), min: d.getUTCHours() * 60 + d.getUTCMinutes() }; }
     };
-    const _cutCache = {};
-    const cutsFor = wh => {
-      if (_cutCache[wh]) return _cutCache[wh];
-      const c = whCfg[wh] || defCfg;
-      const v = { mp: todayCutoffTs(c.mp_cutoff || defCfg.mp_cutoff), nonmp: todayCutoffTs(c.nonmp_cutoff || defCfg.nonmp_cutoff) };
-      return (_cutCache[wh] = v);
-    };
-    // An order is "tomorrow" if it dropped after its warehouse's type cut-off today.
+    const _todayCache = {};
+    const todayInTz = tz => (_todayCache[tz] = _todayCache[tz] || _tzParts(Date.now(), tz).date);
+    const cutMinOf = hhmm => { if (!hhmm) return null; const [h, m] = String(hhmm).split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+    // "Tomorrow" follows the ORDER DATE (shipmentOrderDate), NOT the created/release date,
+    // so orders released late to Logiwa (older order date) still land in today's queue.
+    // order date < today ⇒ today (overdue); > today ⇒ tomorrow; == today ⇒ after the
+    // type cut-off ⇒ tomorrow. All compared in the warehouse's local timezone.
     const isTomorrowOrder = (o, isMp) => {
-      const created = Date.parse(o.createdDateTime || o.shipmentOrderDate || '');
-      if (!created) return false;
-      const c = cutsFor(o.warehouseCode);
-      const cut = isMp ? c.mp : c.nonmp;
-      return !!(cut && created > cut);
+      const orderMs = Date.parse(o.shipmentOrderDate || o.createdDateTime || '');
+      if (!orderMs) return false;
+      const cfg = cfgFor(o.warehouseCode), tz = tzOf(o.warehouseCode);
+      const today = todayInTz(tz), op = _tzParts(orderMs, tz);
+      if (op.date < today) return false;   // overdue → today's queue
+      if (op.date > today) return true;    // future order → tomorrow
+      const cutMin = cutMinOf(isMp ? (cfg.mp_cutoff || defCfg.mp_cutoff) : (cfg.nonmp_cutoff || defCfg.nonmp_cutoff));
+      return cutMin != null && op.min > cutMin;
+    };
+    // Late release: entered Logiwa (created) on a later local day than its order date.
+    const isLateRelease = o => {
+      const om = Date.parse(o.shipmentOrderDate || ''), cm = Date.parse(o.createdDateTime || '');
+      if (!om || !cm) return false;
+      const tz = tzOf(o.warehouseCode);
+      return _tzParts(cm, tz).date > _tzParts(om, tz).date;
     };
 
     // Warehouse code (name) → internal GUID, for the app's WMS deep-link
@@ -995,7 +1015,9 @@ async function performSync(isB2B) {
             status:         B2C_SM_AGG[o.shipmentOrderStatusId],
             brand:          o.clientDisplayName || null,
             client_id:      (function () { const c = String(o.clientIdentifier || o.clientId || o.client || ''); return /^[0-9a-fA-F-]{36}$/.test(c) ? c : null; })(),   // client GUID for the WMS brand deep-link
-            created_at:     o.createdDateTime || o.shipmentOrderDate || null,
+            created_at:     o.createdDateTime || o.shipmentOrderDate || null,   // release time
+            order_date:     o.shipmentOrderDate || null,                        // the order date (drives due-day)
+            late_release:   isLateRelease(o),
             is_priority_mp: isMp,
             is_nonmp:       orderHasTag(o, 'nonmp'),
             is_next_day:    orderHasTag(o, 'nextday'),

@@ -4167,7 +4167,7 @@
 
     // Per-order fetch → aging, single/multi, top brands
     try {
-      let orders = []; const base = SB_URL + '/b2c_orders?select=brand,client_id,created_at,total_qty,wh,tags,status,is_tomorrow&order=created_at.asc';   // fetch both days; split per cut-off / insight client-side
+      let orders = []; const base = SB_URL + '/b2c_orders?select=brand,client_id,created_at,order_date,late_release,total_qty,wh,tags,status,is_tomorrow&order=created_at.asc';   // fetch both days; split per cut-off / insight client-side
       for (let off = 0; off <= 30000; off += 1000) { const b = await fetch(base + '&limit=1000&offset=' + off, { headers: SB_HDR }).then(r => r.ok ? r.json() : []); orders = orders.concat(b); if (b.length < 1000) break; }
       orders = orders.filter(o => inWhFilter(o.wh));
       // Aging / single-multi / brands keep the MP-driven today-vs-tomorrow behaviour:
@@ -4195,10 +4195,12 @@
       // Aging
       const buckets = { '<1h': 0, '1–2h': 0, '2–4h': 0, '4h+': 0 }; let oldest = 0;
       for (const o of dayOrders) { const t = Date.parse(o.created_at || ''); if (!t) continue; const h = (now - t) / 3600000; if (h > oldest) oldest = h; if (h < 1) buckets['<1h']++; else if (h < 2) buckets['1–2h']++; else if (h < 4) buckets['2–4h']++; else buckets['4h+']++; }
+      const lateRel = dayOrders.reduce((n, o) => n + (o.late_release ? 1 : 0), 0);
       const agEl = document.getElementById('b2cInsightAging');
       if (agEl) agEl.innerHTML = `<div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">Order aging</div>
         ${Object.entries(buckets).map(([k, v]) => `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:.82rem"><span style="color:${k === '4h+' ? '#f87171' : 'var(--muted)'}">${k}</span><b style="color:var(--text)">${fmt(v)}</b></div>`).join('')}
-        <div style="font-size:.72rem;color:var(--muted);margin-top:6px">Oldest open: <b style="color:${oldest >= 4 ? '#f87171' : 'var(--text)'}">${oldest < 1 ? Math.round(oldest * 60) + 'm' : oldest.toFixed(1) + 'h'}</b></div>`;
+        <div style="font-size:.72rem;color:var(--muted);margin-top:6px">Oldest open: <b style="color:${oldest >= 4 ? '#f87171' : 'var(--text)'}">${oldest < 1 ? Math.round(oldest * 60) + 'm' : oldest.toFixed(1) + 'h'}</b></div>
+        <div title="Orders dated an earlier day but released to Logiwa later — counted in today's queue by order date, not release time." style="font-size:.72rem;color:var(--muted);margin-top:4px;border-top:1px solid var(--border);padding-top:6px">Late releases: <b style="color:${lateRel > 0 ? '#fbbf24' : 'var(--text)'}">${fmt(lateRel)}</b></div>`;
       // Single vs multi
       let single = 0, multi = 0, unk = 0; for (const o of dayOrders) { const q = o.total_qty; if (q == null) unk++; else if (Number(q) === 1) single++; else multi++; }
       const totm = single + multi; const mixEl = document.getElementById('b2cInsightMix');
