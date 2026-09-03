@@ -2432,6 +2432,7 @@
           <div class="prod-seg">
             <button type="button" id="prodHourCountOrders" class="prod-seg-btn active" onclick="onProdHourCountChange('orders')">Orders</button>
             <button type="button" id="prodHourCountItems" class="prod-seg-btn" onclick="onProdHourCountChange('items')">Items</button>
+            <button type="button" id="prodHourCountBoth" class="prod-seg-btn" onclick="onProdHourCountChange('both')">Both</button>
           </div>
           <label style="font-size:.75rem;color:var(--muted)">Date <input type="date" id="prodHourDate" onchange="onProdHourDateChange(this.value)" style="margin-left:4px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></label>
         </div>
@@ -6785,7 +6786,7 @@
 
   // ── Per-hour-by-warehouse user productivity matrix (Logiwa-style) ─────────
   function onProdHourDateChange(v) { prodHourDate = v; fetchProdHourly(); }
-  function onProdHourCountChange(v) { try { localStorage.setItem('prodHourCount', v === 'items' ? 'items' : 'orders'); } catch (e) {} renderProdHourlyTable(); }
+  function onProdHourCountChange(v) { try { localStorage.setItem('prodHourCount', (v === 'items' || v === 'both') ? v : 'orders'); } catch (e) {} renderProdHourlyTable(); }
   // ── Receiving (inbound) productivity — items received per user, from user_performance ──
   function renderProdInbound() {
     const tbody = document.getElementById('prodInTable'); if (!tbody) return;
@@ -6838,12 +6839,15 @@
   function renderProdHourlyTable() {
     const el = document.getElementById('prodHourTable'); if (!el) return;
     const packed = localStorage.getItem('prodMode') === 'packed';
-    const items = localStorage.getItem('prodHourCount') === 'items';
-    const field = (packed ? 'packed_' : 'picked_') + (items ? 'items' : 'orders');
+    const cnt = localStorage.getItem('prodHourCount');
+    const both = cnt === 'both', items = cnt === 'items';
+    const ordersField = (packed ? 'packed_' : 'picked_') + 'orders';
+    const itemsField  = (packed ? 'packed_' : 'picked_') + 'items';
     const t = document.getElementById('prodHourTableTitle');
-    if (t) t.textContent = (packed ? 'Packed' : 'Picked') + ' ' + (items ? 'item' : 'order') + ' count per hour · by user';
-    document.getElementById('prodHourCountOrders')?.classList.toggle('active', !items);
+    if (t) t.textContent = (packed ? 'Packed' : 'Picked') + ' ' + (both ? 'orders / items' : (items ? 'item' : 'order') + ' count') + ' per hour · by user';
+    document.getElementById('prodHourCountOrders')?.classList.toggle('active', !items && !both);
     document.getElementById('prodHourCountItems')?.classList.toggle('active', items);
+    document.getElementById('prodHourCountBoth')?.classList.toggle('active', both);
     const dEl = document.getElementById('prodHourDate');
     const date = (dEl && dEl.value) || prodHourDate || localDateStr();
     if (dEl && !dEl.value) dEl.value = date;
@@ -6865,12 +6869,21 @@
     if (minH > maxH) { minH = 8; maxH = 17; }
     const hours = []; for (let h = minH; h <= maxH; h++) hours.push(h);
     // Aggregate by person (warehouse is fixed by the filter, so no warehouse column).
+    // Aggregate BOTH metrics per person per hour; how a cell renders depends on the mode.
     const byPerson = {};
-    rows.forEach(r => { const person = r.executed_by_name || ('#' + r.executed_by), h = Number(String(r.hour_local).slice(11, 13)); const p = (byPerson[person] = byPerson[person] || {}); p[h] = (p[h] || 0) + Number(r[field] || 0); });
-    const people = Object.keys(byPerson).filter(p => hours.some(h => (byPerson[p][h] || 0) > 0)).sort();
+    rows.forEach(r => { const person = r.executed_by_name || ('#' + r.executed_by), h = Number(String(r.hour_local).slice(11, 13)); const p = (byPerson[person] = byPerson[person] || {}); const c = (p[h] = p[h] || { o: 0, i: 0 }); c.o += Number(r[ordersField] || 0); c.i += Number(r[itemsField] || 0); });
+    const cellHas = c => c && (both ? (c.o || c.i) : (items ? c.i : c.o));
+    const people = Object.keys(byPerson).filter(p => hours.some(h => cellHas(byPerson[p][h]))).sort();
     const th = (label, right) => `<th style="text-align:${right ? 'right' : 'left'};padding:10px ${right ? 14 : 18}px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;position:sticky;top:0;background:var(--surface2)">${label}</th>`;
     const hourLbl = h => (h % 12 || 12) + (h < 12 ? 'a' : 'p');
-    const numCell = v => `<td style="padding:7px 14px;text-align:right;color:var(--text);font-size:.82rem;white-space:nowrap">${v > 0 ? fmt(v) : ''}</td>`;
+    const sep = '<span style="color:var(--muted)">/</span>';
+    // Cell contents: 'both' → "orders / items" (items muted); else the single metric.
+    const cellStr = c => {
+      if (!c) return '';
+      if (both) return (c.o || c.i) ? `${fmt(c.o)} ${sep} <span style="color:var(--muted)">${fmt(c.i)}</span>` : '';
+      const v = items ? c.i : c.o; return v > 0 ? fmt(v) : '';
+    };
+    const numCell = c => `<td style="padding:7px 14px;text-align:right;color:var(--text);font-size:.82rem;white-space:nowrap">${cellStr(c)}</td>`;
     // Always render the operating-hours header; show a note row when there's no activity.
     let html = `<thead><tr>${th('User')}${hours.map(h => th(hourLbl(h), true)).join('')}</tr></thead><tbody>`;
     if (!people.length) {
@@ -6879,11 +6892,11 @@
     }
     people.forEach(person => {
       const pdata = byPerson[person];
-      html += `<tr style="border-top:1px solid var(--border)"><td style="padding:7px 18px;color:var(--text);font-size:.82rem;white-space:nowrap" title="${tempDisplayName(person) !== person ? escHtml(person) : ''}">${escHtml(tempDisplayName(person))}</td>${hours.map(h => numCell(pdata[h] || 0)).join('')}</tr>`;
+      html += `<tr style="border-top:1px solid var(--border)"><td style="padding:7px 18px;color:var(--text);font-size:.82rem;white-space:nowrap" title="${tempDisplayName(person) !== person ? escHtml(person) : ''}">${escHtml(tempDisplayName(person))}</td>${hours.map(h => numCell(pdata[h])).join('')}</tr>`;
     });
-    const tot = {}; hours.forEach(h => tot[h] = 0);
-    people.forEach(person => hours.forEach(h => tot[h] += (byPerson[person][h] || 0)));
-    html += `<tr style="border-top:1px solid var(--border);background:var(--surface2);font-weight:600"><td style="padding:8px 18px;color:var(--text);font-size:.82rem;white-space:nowrap">Total</td>${hours.map(h => `<td style="padding:8px 14px;text-align:right;color:var(--text);font-size:.82rem">${tot[h] > 0 ? fmt(tot[h]) : ''}</td>`).join('')}</tr></tbody>`;
+    const tot = {}; hours.forEach(h => tot[h] = { o: 0, i: 0 });
+    people.forEach(person => hours.forEach(h => { const c = byPerson[person][h]; if (c) { tot[h].o += c.o; tot[h].i += c.i; } }));
+    html += `<tr style="border-top:1px solid var(--border);background:var(--surface2);font-weight:600"><td style="padding:8px 18px;color:var(--text);font-size:.82rem;white-space:nowrap">Total</td>${hours.map(h => `<td style="padding:8px 14px;text-align:right;color:var(--text);font-size:.82rem;white-space:nowrap">${cellStr(tot[h])}</td>`).join('')}</tr></tbody>`;
     el.innerHTML = html;
   }
 
