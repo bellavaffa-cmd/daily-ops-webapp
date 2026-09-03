@@ -3220,24 +3220,31 @@
     if (opts.whIds && opts.whIds.length) {
       url += '&wn=' + enc2(opts.whIds) + '&wnqt=in&wnlbl=' + encodeURIComponent(opts.whLbl || '');
     }
-    // Created-date range (?cd=start,end&cdqt=rng) — ISO datetimes (UTC).
+    // Created-date range (?cd=start,end&cdqt=rng) — ISO datetimes (UTC). Used by the
+    // custom cut-off cards, which count by flow-in (arrival) time.
     if (opts.cdStart && opts.cdEnd) {
       url += '&cd=' + enc2s(opts.cdStart + ',' + opts.cdEnd) + '&cdqt=rng';
     }
+    // Order-date range (?sod=start,end&sodqt=rng) — the today/tomorrow split keys off the
+    // ORDER DATE, so the drill-down matches the order-date KPI counts.
+    if (opts.sodStart && opts.sodEnd) {
+      url += '&sod=' + enc2s(opts.sodStart + ',' + opts.sodEnd) + '&sodqt=rng';
+    }
     return url + '&ps=100';
   }
-  // Created-date range for a cut-off: 'pre' = up to today's cut-off (today's
-  // dispatch), 'post' = after it (tomorrow's). Cut-off is local time → UTC ISO.
-  function wmsCdRange(range, cutoffHHMM) {
+  // Order-date range for a cut-off (matches the order-date KPI counts): 'pre' = order
+  // date up to today's cut-off (today's dispatch — includes overdue past-dated orders),
+  // 'post' = after it (tomorrow's). Wide bounds so very old overdue / far-future orders
+  // are still captured. Cut-off in the viewer's local time → UTC ISO.
+  function wmsSodRange(range, cutoffHHMM) {
     if (!range || !cutoffHHMM) return {};
     const [h, m] = String(cutoffHHMM).split(':').map(Number);
     const cutoff = new Date(); cutoff.setHours(h || 0, m || 0, 0, 0);
     if (range === 'pre') {
-      const start = new Date(); start.setDate(start.getDate() - 30); start.setHours(0, 0, 0, 0);
-      return { cdStart: start.toISOString(), cdEnd: cutoff.toISOString() };
+      return { sodStart: '2020-01-01T00:00:00.000Z', sodEnd: cutoff.toISOString() };
     }
-    const end = new Date(); end.setDate(end.getDate() + 1); end.setHours(23, 59, 0, 0);
-    return { cdStart: cutoff.toISOString(), cdEnd: end.toISOString() };
+    const end = new Date(); end.setFullYear(end.getFullYear() + 2); end.setHours(23, 59, 0, 0);
+    return { sodStart: cutoff.toISOString(), sodEnd: end.toISOString() };
   }
   // Warehouse filter opts for the WMS links, from the current multi-select.
   // Empty when "All Warehouses" (no wn filter — WMS shows every warehouse).
@@ -3677,8 +3684,8 @@
     // Non-MP links use the Non-MP cut-off.
     const _wms = opts.wms || {};
     const _whOpts  = { whIds: _wms.whIds, whLbl: _wms.whLbl };
-    const _cdMp    = wmsCdRange(_wms.range, opsConfig.mp_cutoff);
-    const _cdNon   = wmsCdRange(_wms.range, opsConfig.nonmp_cutoff);
+    const _sodMp    = wmsSodRange(_wms.range, opsConfig.mp_cutoff);
+    const _sodNon   = wmsSodRange(_wms.range, opsConfig.nonmp_cutoff);
     const _day     = opts.day || 'today';   // which set the boxes reflect → drives the brand breakdown
 
     return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(${opts.minCard||140}px,1fr));gap:12px">
@@ -3695,7 +3702,7 @@
         const excluded = !isTotal && b2cExcl.has(s.key);
         const statusIds = isTotal ? WMS_B2C_ALL_STATUS : [WMS_STATUS_ID[s.label]];
         const statusLbl = isTotal ? 'All' : s.label;
-        const url = wmsStatusUrl('B2C', statusIds, statusLbl, { ..._whOpts, ..._cdMp });
+        const url = wmsStatusUrl('B2C', statusIds, statusLbl, { ..._whOpts, ..._sodMp });
         const subtitle = isTotal
           ? (opts.hidePct ? '' : (b2cExcl.size ? `excludes ${b2cExcl.size} status${b2cExcl.size > 1 ? 'es' : ''}` : 'across all statuses'))
           : (opts.hidePct ? '' : (excluded ? 'Excluded from total' : pct(s.count, total) + ' of total'));
@@ -3709,9 +3716,9 @@
           <a class="mp-link" href="${url}" target="_blank" title="Open in WMS" style="display:inline-block;text-decoration:none;color:var(--text);font-size:2rem;font-weight:700;line-height:1">${fmt(s.count)}</a>
           ${subtitle ? `<div style="font-size:.72rem;color:var(--muted);margin-top:5px">${subtitle}</div>` : ''}
           <div style="font-size:.82rem;margin-top:6px;display:flex;flex-direction:column;gap:2px;color:var(--muted)">
-            <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Next Day', { ..._whOpts, ..._cdMp })}" target="_blank" title="All orders tagged Next Day (counted here regardless of MP)" style="text-decoration:none;color:inherit;width:fit-content">Next Day <b style="color:#f0abfc">${fmt(s.nextDay || 0)}</b></a>
-            <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Priority MP', { ..._whOpts, ..._cdMp })}" target="_blank" title="Priority MP excluding Next Day (WMS link shows all Priority MP — its tag filter can't exclude)" style="text-decoration:none;color:inherit;width:fit-content">MP <b style="color:#c084fc">${fmt(Math.max(0, (s.prioritymp || 0) - (s.mpNextday || 0)))}</b></a>
-            <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Non-MP', { ..._whOpts, ..._cdNon })}" target="_blank" title="Open Non-MP in WMS" style="text-decoration:none;color:inherit;width:fit-content">Non-MP <b style="color:var(--text)">${fmt(s.nonmp || 0)}</b></a>
+            <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Next Day', { ..._whOpts, ..._sodMp })}" target="_blank" title="All orders tagged Next Day (counted here regardless of MP)" style="text-decoration:none;color:inherit;width:fit-content">Next Day <b style="color:#f0abfc">${fmt(s.nextDay || 0)}</b></a>
+            <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Priority MP', { ..._whOpts, ..._sodMp })}" target="_blank" title="Priority MP excluding Next Day (WMS link shows all Priority MP — its tag filter can't exclude)" style="text-decoration:none;color:inherit;width:fit-content">MP <b style="color:#c084fc">${fmt(Math.max(0, (s.prioritymp || 0) - (s.mpNextday || 0)))}</b></a>
+            <a class="mp-link" href="${wmsTagUrl('B2C', statusIds, statusLbl, 'Non-MP', { ..._whOpts, ..._sodNon })}" target="_blank" title="Open Non-MP in WMS" style="text-decoration:none;color:inherit;width:fit-content">Non-MP <b style="color:var(--text)">${fmt(s.nonmp || 0)}</b></a>
             <span title="Orders tagged with neither MP, Non-MP nor Next Day (WMS has no filter for this — its tag filter is include-only)" style="width:fit-content">Others <b style="color:#94a3b8">${fmt(Math.max(0, (s.count || 0) - (s.nonmp || 0) - (s.prioritymp || 0) - Math.max(0, (s.nextDay || 0) - (s.mpNextday || 0))))}</b></span>
           </div>
         </div>`;
@@ -3755,7 +3762,7 @@
     ov.id = 'brandModal';
     ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto';
     ov.addEventListener('click', e => { if (e.target === ov) closeBrandModal(); });
-    const wmsUrl = wmsStatusUrl('B2C', meta.ids(), statusKey === 'total' ? 'All' : meta.label, { ...b2cWmsWhOpts(), ...wmsCdRange(day === 'both' ? null : (day === 'today' ? 'pre' : 'post'), opsConfig.mp_cutoff) });
+    const wmsUrl = wmsStatusUrl('B2C', meta.ids(), statusKey === 'total' ? 'All' : meta.label, { ...b2cWmsWhOpts(), ...wmsSodRange(day === 'both' ? null : (day === 'today' ? 'pre' : 'post'), opsConfig.mp_cutoff) });
     ov.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;max-width:720px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5)">
       <div style="display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border)">
         <div style="flex:1;min-width:0">
@@ -4143,8 +4150,8 @@
       // Non-MP / Priority MP names deep-link to WMS: their tag + today's created-date
       // range (all dates when closed/merged), in the selected warehouse.
       const _wh = b2cWmsWhOpts();
-      const _nonUrl = wmsTagUrl('B2C', WMS_B2C_ALL_STATUS, 'All', 'Non-MP', { ..._wh, ...wmsCdRange(insClosed ? null : 'pre', cfg.nonmp_cutoff) });
-      const _mpUrl  = wmsTagUrl('B2C', WMS_B2C_ALL_STATUS, 'All', 'Priority MP', { ..._wh, ...wmsCdRange(insClosed ? null : 'pre', cfg.mp_cutoff) });
+      const _nonUrl = wmsTagUrl('B2C', WMS_B2C_ALL_STATUS, 'All', 'Non-MP', { ..._wh, ...wmsSodRange(insClosed ? null : 'pre', cfg.nonmp_cutoff) });
+      const _mpUrl  = wmsTagUrl('B2C', WMS_B2C_ALL_STATUS, 'All', 'Priority MP', { ..._wh, ...wmsSodRange(insClosed ? null : 'pre', cfg.mp_cutoff) });
       return `<div id="b2cInsightCutoff" class="card" style="padding:16px 18px"><div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Cut-off countdown${rate != null ? ` <span style="font-weight:400">· ${fmt(rate)}/hr packing</span>` : ''}</div>
         ${cutRow('Non-MP', cfg.nonmp_cutoff, openNon, _nonUrl)}${cutRow('Priority MP', cfg.mp_cutoff, openMp, _mpUrl)}${customRows}</div>`;
     };
