@@ -3332,6 +3332,98 @@
   // Productivity & CS are single-warehouse views → when "All" is active they fall back
   // to the first selected/accessible warehouse (they can't aggregate a multi set).
   function singleWh() { const g = globalWh(); if (g) return g; const s = _selectedWhs(); return s[0] || _firstWh(); }
+  // ── Searchable warehouse picker ─────────────────────────────────────────────
+  // A native <select>'s type-ahead only matches from the START of the label, so with
+  // names like "LOCAD Hicom FC (MY-HIC)" you can never find a site by typing "hicom".
+  // This wraps an existing <select> in a filterable panel WITHOUT changing how the rest
+  // of the app uses it: the <select> stays the source of truth (its value + its change
+  // event fire exactly as before) — we just hide it and drive it from the panel.
+  function _whComboInit(id) {
+    const sel = document.getElementById(id);
+    if (!sel || sel.dataset.combo === '1') return;
+    sel.dataset.combo = '1';
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative;display:inline-block;vertical-align:middle';
+    sel.parentNode.insertBefore(wrap, sel);
+    wrap.appendChild(sel);
+    sel.style.display = 'none';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.setAttribute('aria-haspopup', 'listbox');
+    btn.style.cssText = (sel.getAttribute('style') || '').replace(/display\s*:\s*none;?/gi, '') +
+      ';text-align:left;cursor:pointer;display:inline-flex;align-items:center;gap:6px;justify-content:space-between';
+    if (sel.title) btn.title = sel.title;
+    wrap.appendChild(btn);
+
+    const panel = document.createElement('div');
+    panel.dataset.whPanel = '1';
+    panel.style.cssText = 'position:absolute;z-index:1200;top:calc(100% + 4px);left:0;min-width:100%;width:max-content;max-width:320px;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.35);display:none;flex-direction:column;overflow:hidden';
+    const search = document.createElement('input');
+    search.type = 'text'; search.placeholder = 'Search warehouse…';
+    search.style.cssText = 'font-size:.78rem;padding:7px 9px;border:none;border-bottom:1px solid var(--border);background:var(--surface2);color:var(--text);outline:none;width:100%;box-sizing:border-box';
+    const list = document.createElement('div');
+    list.setAttribute('role', 'listbox');
+    list.style.cssText = 'max-height:260px;overflow-y:auto;padding:4px';
+    panel.appendChild(search); panel.appendChild(list);
+    wrap.appendChild(panel);
+
+    let items = [], hi = -1;
+    const close = () => { panel.style.display = 'none'; btn.setAttribute('aria-expanded', 'false'); hi = -1; };
+    const paint = () => [...list.children].forEach((el, i) => { if (el.dataset.i != null) el.style.background = (i === hi) ? 'var(--surface2)' : 'transparent'; });
+    const scrollHi = () => { const el = list.children[hi]; if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' }); };
+    const pick = i => {
+      const o = items[i]; if (!o) return;
+      sel.value = o.value;
+      close(); syncWhCombo(id);
+      sel.dispatchEvent(new Event('change', { bubbles: true }));   // existing onchange runs unchanged
+    };
+    const render = () => {
+      const q = search.value.trim().toLowerCase();
+      items = [...sel.options].filter(o => !q || o.text.toLowerCase().includes(q));
+      list.innerHTML = '';
+      if (!items.length) { list.innerHTML = '<div style="padding:8px 10px;color:var(--muted);font-size:.78rem">No match</div>'; return; }
+      items.forEach((o, i) => {
+        const row = document.createElement('div');
+        row.textContent = o.text; row.dataset.i = i; row.setAttribute('role', 'option');
+        const on = o.value === sel.value;
+        row.style.cssText = 'padding:7px 10px;border-radius:6px;font-size:.8rem;cursor:pointer;white-space:nowrap;color:' + (on ? 'var(--text)' : 'var(--muted)') + ';font-weight:' + (on ? '600' : '400') + ';background:transparent';
+        row.onmouseenter = () => { hi = i; paint(); };
+        row.onclick = () => pick(i);
+        list.appendChild(row);
+      });
+      paint();
+    };
+    btn.onclick = e => {
+      e.stopPropagation();
+      const isOpen = panel.style.display === 'flex';
+      document.querySelectorAll('[data-wh-panel="1"]').forEach(p => { p.style.display = 'none'; });
+      if (isOpen) return close();
+      panel.style.display = 'flex'; btn.setAttribute('aria-expanded', 'true');
+      search.value = ''; hi = -1; render();
+      setTimeout(() => { try { search.focus(); } catch (e) {} }, 10);
+    };
+    search.oninput = () => { hi = -1; render(); };
+    search.onkeydown = e => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); hi = Math.min(items.length - 1, hi + 1); paint(); scrollHi(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); hi = Math.max(0, hi - 1); paint(); scrollHi(); }
+      else if (e.key === 'Enter') { e.preventDefault(); pick(hi >= 0 ? hi : 0); }
+      else if (e.key === 'Escape') { e.preventDefault(); close(); try { btn.focus(); } catch (er) {} }
+    };
+    panel.onclick = e => e.stopPropagation();
+    document.addEventListener('click', close);
+  }
+  // Create the picker on first use, then refresh its label from the <select>'s value.
+  function syncWhCombo(id) {
+    try {
+      _whComboInit(id);
+      const sel = document.getElementById(id); if (!sel || !sel.parentNode) return;
+      const btn = sel.parentNode.querySelector('button'); if (!btn) return;
+      const opt = (sel.selectedOptions && sel.selectedOptions[0]) || sel.options[0];
+      btn.innerHTML = '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(opt ? opt.text : '—') +
+        '</span><span style="opacity:.6;font-size:.7em;flex:none">▾</span>';
+    } catch (e) {}
+  }
   function populateGlobalWh() {
     const el = document.getElementById('globalWarehouse'); if (!el) return;
     const whs = (_whAllow ? [..._whAllow] : []).filter(Boolean).sort();
@@ -3339,6 +3431,7 @@
     const match = cur ? whs.find(w => whEq(w, cur)) : null;
     el.innerHTML = '<option value="">All warehouses</option>' + whs.map(w => `<option value="${escHtml(w)}"${(match === w) ? ' selected' : ''}>${escHtml(w)}</option>`).join('');
     el.value = match || '';
+    syncWhCombo('globalWarehouse');
   }
   function onGlobalWhChange(v) {
     try { setSelectedWhs(v ? [v] : (_whAllow ? [..._whAllow] : [])); } catch (e) {}   // v='' → select all = show everything
@@ -7966,6 +8059,7 @@
     // Label with the FULL warehouse name, same as the global warehouse filter.
     // (_stripWhCode is a compare-only normaliser — it lower-cases — never use it for display.)
     sel.innerHTML = whs.map(w => `<option value="${escHtml(w)}"${w === cur ? ' selected' : ''}>${escHtml(w)}</option>`).join('');
+    syncWhCombo(id);
   }
   // Warehouse-aware material dropdown: only materials belonging to the working warehouse.
   function pkgFillMaterialDropdown() {
@@ -8057,7 +8151,7 @@
   // ── Add material to the catalog (modal) — feeds the material dropdown ──
   function pkgOpenMaterialModal() {
     pkgFillWhSelect('pkgNewWh');
-    const el = document.getElementById('pkgNewWh'); if (el) { const cur = pkgCurWh(); if ([...el.options].some(o => o.value === cur)) el.value = cur; }
+    const el = document.getElementById('pkgNewWh'); if (el) { const cur = pkgCurWh(); if ([...el.options].some(o => o.value === cur)) { el.value = cur; syncWhCombo('pkgNewWh'); } }
     const m = document.getElementById('pkgModalMsg'); if (m) m.textContent = '';
     const md = document.getElementById('pkgMatModal'); if (md) md.style.display = 'flex';
     setTimeout(() => document.getElementById('pkgNewName')?.focus(), 30);
