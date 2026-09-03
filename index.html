@@ -2595,26 +2595,66 @@
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px">
       <div>
         <div style="font-size:1.1rem;font-weight:700;color:var(--text)">Packaging Material</div>
-        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Manually-tracked packaging stock per warehouse — quantity at each UOM level, across storage locations.</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Record packaging stock per warehouse — pick a material, then log its location, UOM, quantity and brand. Materials come from the catalog (add manually or import from WMS).</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <input id="pkgSearch" oninput="renderPackaging()" placeholder="Search material, brand or code" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);min-width:180px">
-        <button type="button" id="pkgImportBtn" onclick="pkgImportFromWms()" title="Pull the packaging catalog (name & code per warehouse) from Logiwa" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">⤓ Import from WMS</button>
+        <button type="button" onclick="pkgOpenMaterialModal()" style="font-size:.78rem;font-weight:600;padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">＋ Add material</button>
+        <button type="button" id="pkgImportBtn" onclick="pkgImportFromWms()" title="Pull the packaging catalog (name & code per warehouse) from Logiwa into the material list" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">⤓ Import from WMS</button>
         <button type="button" onclick="fetchPackaging()" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">⟳ Refresh</button>
       </div>
     </div>
+
+    <!-- Stock entry input area -->
     <div class="card" style="padding:14px 18px;margin-bottom:16px">
-      <div style="font-size:.8rem;font-weight:600;color:var(--text);margin-bottom:10px">Add a material</div>
+      <div style="font-size:.8rem;font-weight:600;color:var(--text);margin-bottom:10px">Add stock entry</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-        <div style="display:flex;flex-direction:column;gap:4px"><label style="font-size:.7rem;color:var(--muted)">Warehouse</label><select id="pkgNewWh" style="font-size:.8rem;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer"></select></div>
-        <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:150px"><label style="font-size:.7rem;color:var(--muted)">Material name</label><input id="pkgNewName" placeholder="e.g. Small mailer" style="font-size:.8rem;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></div>
-        <div style="display:flex;flex-direction:column;gap:4px"><label style="font-size:.7rem;color:var(--muted)">Brand (optional)</label><input id="pkgNewBrand" placeholder="Brand" style="font-size:.8rem;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);width:140px"></div>
-        <div style="display:flex;flex-direction:column;gap:4px"><label style="font-size:.7rem;color:var(--muted)">Code (optional)</label><input id="pkgNewCode" placeholder="SKU" style="font-size:.8rem;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);width:120px"></div>
-        <button type="button" onclick="pkgAddMaterial()" style="font-size:.8rem;font-weight:600;padding:7px 14px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">Add material</button>
+        <div style="display:flex;flex-direction:column;gap:4px"><label style="font-size:.7rem;color:var(--muted)">Warehouse</label><select id="pkgWh" onchange="onPkgWhChange()" style="font-size:.8rem;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer"></select></div>
+        <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:180px"><label style="font-size:.7rem;color:var(--muted)">Material</label><select id="pkgMat" onchange="onPkgMatChange()" style="font-size:.8rem;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer"></select></div>
+        <div style="display:flex;flex-direction:column;gap:4px"><label style="font-size:.7rem;color:var(--muted)">Location</label><input id="pkgLoc" placeholder="e.g. Rack A1" style="font-size:.8rem;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);width:130px"></div>
+        <div style="display:flex;flex-direction:column;gap:4px"><label style="font-size:.7rem;color:var(--muted)">UOM</label><input id="pkgUom" placeholder="each / case / pallet" style="font-size:.8rem;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);width:130px"></div>
+        <div style="display:flex;flex-direction:column;gap:4px"><label style="font-size:.7rem;color:var(--muted)">Qty</label><input id="pkgQty" type="number" min="0" step="any" placeholder="0" style="font-size:.8rem;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);width:90px;text-align:right"></div>
+        <div style="display:flex;flex-direction:column;gap:4px"><label style="font-size:.7rem;color:var(--muted)">Brand</label><input id="pkgBrand" placeholder="Brand" style="font-size:.8rem;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);width:120px"></div>
+        <button type="button" onclick="pkgAddStock()" style="font-size:.8rem;font-weight:600;padding:7px 16px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">Add</button>
         <span id="pkgMsg" style="font-size:.75rem"></span>
       </div>
     </div>
-    <div id="pkgList"></div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+      <div id="pkgStockCount" style="font-size:.75rem;color:var(--muted)"></div>
+      <input id="pkgSearch" oninput="renderPkgStock()" placeholder="Search material, location or brand" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);min-width:200px">
+    </div>
+
+    <!-- Stock table -->
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.82rem"><thead><tr style="background:var(--surface2)">
+        <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Material</th>
+        <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Location</th>
+        <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">UOM</th>
+        <th style="text-align:right;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Qty</th>
+        <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Brand</th>
+        <th style="width:44px"></th>
+      </tr></thead><tbody id="pkgStockTable"></tbody></table></div>
+    </div>
+
+    <!-- Add material modal -->
+    <div id="pkgMatModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2000;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)pkgCloseMaterialModal()">
+      <div class="card" style="max-width:440px;width:100%;padding:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div style="font-size:1rem;font-weight:700;color:var(--text)">Add material to catalog</div>
+          <button type="button" onclick="pkgCloseMaterialModal()" aria-label="Close" style="background:none;border:none;color:var(--muted);font-size:1.5rem;line-height:1;cursor:pointer">×</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:4px"><label style="font-size:.72rem;color:var(--muted)">Warehouse</label><select id="pkgNewWh" style="font-size:.85rem;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></select></div>
+          <div style="display:flex;flex-direction:column;gap:4px"><label style="font-size:.72rem;color:var(--muted)">Material name</label><input id="pkgNewName" placeholder="e.g. Small mailer" style="font-size:.85rem;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></div>
+          <div style="display:flex;flex-direction:column;gap:4px"><label style="font-size:.72rem;color:var(--muted)">Code (optional)</label><input id="pkgNewCode" placeholder="SKU" style="font-size:.85rem;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"></div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+            <button type="button" onclick="pkgSaveNewMaterial()" style="font-size:.85rem;font-weight:600;padding:8px 16px;border-radius:6px;border:none;background:var(--primary);color:var(--on-primary,#0b1f12);cursor:pointer">Save material</button>
+            <button type="button" onclick="pkgCloseMaterialModal()" style="font-size:.85rem;padding:8px 14px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">Cancel</button>
+            <span id="pkgModalMsg" style="font-size:.78rem"></span>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ── TEMP ACCOUNTS VIEW ── -->
@@ -7887,123 +7927,131 @@
     _applyAgingCollapsed();
   }
 
-  // ── Packaging material (manual stock per warehouse, qty by UOM × location) ──
+  // ── Packaging material: catalog (materials) + stock entries (location/UOM/qty/brand) ──
   let pkgMaterials = [], pkgStock = [];
   const _pkgInp = 'font-size:.8rem;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)';
-  const _pkgNum = n => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 4 });
-  function pkgPopulateWhSelect() {
-    const sel = document.getElementById('pkgNewWh'); if (!sel) return;
-    const whs = _whAllow ? [..._whAllow].sort() : [];
+  const _pkgWhList = () => (_whAllow ? [..._whAllow].sort() : []);
+  // The warehouse the tab is working in (the stock-entry selector) — drives the material dropdown + table.
+  function pkgCurWh() { const sel = document.getElementById('pkgWh'); return (sel && sel.value) || singleWh() || _pkgWhList()[0] || ''; }
+  function pkgFillWhSelect(id) {
+    const sel = document.getElementById(id); if (!sel) return;
+    const whs = _pkgWhList();
     const cur = sel.value || singleWh() || whs[0] || '';
     sel.innerHTML = whs.map(w => `<option value="${escHtml(w)}"${w === cur ? ' selected' : ''}>${escHtml(_stripWhCode(w))}</option>`).join('');
+  }
+  // Warehouse-aware material dropdown: only materials belonging to the working warehouse.
+  function pkgFillMaterialDropdown() {
+    const sel = document.getElementById('pkgMat'); if (!sel) return;
+    const wh = pkgCurWh(), cur = sel.value;
+    const mats = (pkgMaterials || []).filter(m => whAllowed(m.wh) && whEq(m.wh, wh)).slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    sel.innerHTML = mats.length ? mats.map(m => `<option value="${m.id}">${escHtml((m.name || '(unnamed)') + (m.code ? ' · ' + m.code : ''))}</option>`).join('') : '<option value="">— no materials for this warehouse —</option>';
+    if (cur && mats.some(m => String(m.id) === String(cur))) sel.value = cur;
+    onPkgMatChange();
   }
   async function fetchPackaging() {
     try {
       const [mats, stock] = await Promise.all([
-        fetch(SB_URL + '/packaging_material?select=id,wh,name,brand,code&order=name.asc&limit=3000', { headers: SB_HDR }).then(r => r.ok ? r.json() : []),
-        fetch(SB_URL + '/packaging_stock?select=id,material_id,wh,location,uom,qty&limit=20000', { headers: SB_HDR }).then(r => r.ok ? r.json() : []),
+        fetch(SB_URL + '/packaging_material?select=id,wh,name,brand,code,wms_id&order=name.asc&limit=5000', { headers: SB_HDR }).then(r => r.ok ? r.json() : []),
+        fetch(SB_URL + '/packaging_stock?select=id,material_id,wh,location,uom,qty,brand&limit=20000', { headers: SB_HDR }).then(r => r.ok ? r.json() : []),
       ]);
       pkgMaterials = (mats || []).filter(m => whAllowed(m.wh));
       pkgStock = (stock || []).filter(s => whAllowed(s.wh));
     } catch (e) { pkgMaterials = []; pkgStock = []; }
-    pkgPopulateWhSelect();
     renderPackaging();
   }
+  // Full refresh: warehouse selects + material dropdown + table.
   function renderPackaging() {
-    const list = document.getElementById('pkgList'); if (!list) return;
-    pkgPopulateWhSelect();
-    const pick = globalWh();
-    const q = (document.getElementById('pkgSearch')?.value || '').toLowerCase().trim();
-    let mats = (pkgMaterials || []).filter(m => whAllowed(m.wh) && (!pick || whEq(m.wh, pick)));
-    if (q) mats = mats.filter(m => (m.name || '').toLowerCase().includes(q) || (m.brand || '').toLowerCase().includes(q) || (m.code || '').toLowerCase().includes(q));
-    mats = mats.slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-    if (!mats.length) { list.innerHTML = `<div class="card" style="padding:20px;text-align:center;color:var(--muted);font-size:.85rem">No packaging materials yet${pick ? '' : ' for your warehouses'}. Add one above.</div>`; return; }
-    const byMat = {}; (pkgStock || []).forEach(s => { (byMat[s.material_id] = byMat[s.material_id] || []).push(s); });
-    const showWh = !pick;
-    list.innerHTML = mats.map(m => {
-      const lines = (byMat[m.id] || []).slice().sort((a, b) => String(a.location || '').localeCompare(String(b.location || '')) || String(a.uom || '').localeCompare(String(b.uom || '')));
-      const tot = {}; lines.forEach(l => { const u = l.uom || '—'; tot[u] = (tot[u] || 0) + Number(l.qty || 0); });
-      const chips = Object.keys(tot).sort().map(u => `<span style="display:inline-block;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:.75rem;color:var(--text)"><b>${_pkgNum(tot[u])}</b> <span style="color:var(--muted)">${escHtml(u)}</span></span>`).join(' ');
-      const rows = lines.map(l => `<tr style="border-top:1px solid var(--border)">
-        <td style="padding:6px 10px"><input value="${escHtml(l.location || '')}" onchange="pkgSaveLine(${l.id},'location',this.value)" style="${_pkgInp};width:100%;box-sizing:border-box"></td>
-        <td style="padding:6px 10px"><input value="${escHtml(l.uom || '')}" onchange="pkgSaveLine(${l.id},'uom',this.value)" style="${_pkgInp};width:110px"></td>
-        <td style="padding:6px 10px;text-align:right"><input type="number" step="any" min="0" value="${Number(l.qty || 0)}" onchange="pkgSaveLine(${l.id},'qty',this.value)" style="${_pkgInp};width:110px;text-align:right"></td>
-        <td style="padding:6px 10px;text-align:right"><button type="button" title="Delete line" onclick="pkgDeleteLine(${l.id})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem;line-height:1">✕</button></td>
-      </tr>`).join('');
-      return `<div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">
-        <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-          <input value="${escHtml(m.name || '')}" onchange="pkgSaveMaterial(${m.id},'name',this.value)" style="${_pkgInp};font-weight:600;min-width:140px;flex:1">
-          <input value="${escHtml(m.brand || '')}" placeholder="brand" onchange="pkgSaveMaterial(${m.id},'brand',this.value)" style="${_pkgInp};width:130px">
-          <input value="${escHtml(m.code || '')}" placeholder="code" onchange="pkgSaveMaterial(${m.id},'code',this.value)" style="${_pkgInp};width:110px">
-          ${showWh ? `<span style="font-size:.72rem;color:var(--muted)">${escHtml(_stripWhCode(m.wh))}</span>` : ''}
-          <div style="flex:1;display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${chips || '<span style="font-size:.72rem;color:var(--muted)">no stock</span>'}</div>
-          <button type="button" title="Delete material" onclick="pkgDeleteMaterial(${m.id})" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);cursor:pointer;font-size:.75rem;padding:5px 9px">Delete</button>
-        </div>
-        <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.82rem">
-          <thead><tr style="background:var(--surface2)">
-            <th style="text-align:left;padding:8px 10px;font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600">Location</th>
-            <th style="text-align:left;padding:8px 10px;font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600">UOM</th>
-            <th style="text-align:right;padding:8px 10px;font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600">Qty</th>
-            <th style="width:40px"></th>
-          </tr></thead>
-          <tbody>${rows}
-            <tr style="border-top:1px solid var(--border);background:var(--surface2)">
-              <td style="padding:6px 10px"><input id="pkgLoc_${m.id}" placeholder="Location" style="${_pkgInp};width:100%;box-sizing:border-box"></td>
-              <td style="padding:6px 10px"><input id="pkgUom_${m.id}" placeholder="UOM (e.g. each, case, pallet)" style="${_pkgInp};width:110px"></td>
-              <td style="padding:6px 10px;text-align:right"><input id="pkgQty_${m.id}" type="number" step="any" min="0" placeholder="0" style="${_pkgInp};width:110px;text-align:right"></td>
-              <td style="padding:6px 10px;text-align:right"><button type="button" title="Add line" onclick="pkgAddLine(${m.id})" style="border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;font-size:1rem;line-height:1;padding:3px 10px">+</button></td>
-            </tr>
-          </tbody>
-        </table></div>
-      </div>`;
-    }).join('');
+    pkgFillWhSelect('pkgWh');
+    pkgFillMaterialDropdown();
+    renderPkgStock();
   }
-  async function pkgAddMaterial() {
-    const wh = (document.getElementById('pkgNewWh')?.value || '');
-    const name = (document.getElementById('pkgNewName')?.value || '').trim();
-    const brand = (document.getElementById('pkgNewBrand')?.value || '').trim();
-    const code = (document.getElementById('pkgNewCode')?.value || '').trim();
+  function onPkgWhChange() { pkgFillMaterialDropdown(); renderPkgStock(); }
+  // Pre-fill brand from the selected material's catalog brand (only when brand is empty).
+  function onPkgMatChange() {
+    const b = document.getElementById('pkgBrand'); if (!b) return;
+    const m = (pkgMaterials || []).find(x => String(x.id) === String(document.getElementById('pkgMat')?.value));
+    if (m && m.brand && !b.value.trim()) b.value = m.brand;
+  }
+  function renderPkgStock() {
+    const tbody = document.getElementById('pkgStockTable'); if (!tbody) return;
+    const wh = pkgCurWh();
+    const q = (document.getElementById('pkgSearch')?.value || '').toLowerCase().trim();
+    const matById = {}; (pkgMaterials || []).forEach(m => matById[m.id] = m);
+    let rows = (pkgStock || []).filter(s => whAllowed(s.wh) && whEq(s.wh, wh));
+    if (q) rows = rows.filter(s => { const m = matById[s.material_id] || {}; return (m.name || '').toLowerCase().includes(q) || (s.location || '').toLowerCase().includes(q) || (s.brand || '').toLowerCase().includes(q) || (m.code || '').toLowerCase().includes(q); });
+    rows = rows.slice().sort((a, b) => { const na = (matById[a.material_id] || {}).name || '', nb = (matById[b.material_id] || {}).name || ''; return na.localeCompare(nb) || String(a.location || '').localeCompare(String(b.location || '')) || String(a.uom || '').localeCompare(String(b.uom || '')); });
+    const cnt = document.getElementById('pkgStockCount'); if (cnt) cnt.textContent = rows.length ? rows.length.toLocaleString() + ' stock ' + (rows.length === 1 ? 'entry' : 'entries') : '';
+    tbody.innerHTML = rows.length ? rows.map(s => {
+      const m = matById[s.material_id] || {};
+      const mn = escHtml(m.name || '(unknown material)') + (m.code ? ` <span style="color:var(--muted);font-size:.75rem">${escHtml(m.code)}</span>` : '');
+      return `<tr style="border-top:1px solid var(--border)">
+        <td style="padding:7px 18px;color:var(--text);white-space:nowrap">${mn}</td>
+        <td style="padding:6px 14px"><input value="${escHtml(s.location || '')}" onchange="pkgSaveLine(${s.id},'location',this.value)" style="${_pkgInp};width:100%;min-width:110px;box-sizing:border-box"></td>
+        <td style="padding:6px 14px"><input value="${escHtml(s.uom || '')}" onchange="pkgSaveLine(${s.id},'uom',this.value)" style="${_pkgInp};width:110px"></td>
+        <td style="padding:6px 14px;text-align:right"><input type="number" step="any" min="0" value="${Number(s.qty || 0)}" onchange="pkgSaveLine(${s.id},'qty',this.value)" style="${_pkgInp};width:100px;text-align:right"></td>
+        <td style="padding:6px 14px"><input value="${escHtml(s.brand || '')}" placeholder="—" onchange="pkgSaveLine(${s.id},'brand',this.value)" style="${_pkgInp};width:120px"></td>
+        <td style="padding:6px 14px;text-align:right"><button type="button" title="Delete entry" onclick="pkgDeleteLine(${s.id})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem;line-height:1">✕</button></td>
+      </tr>`;
+    }).join('') : `<tr><td colspan="6" style="padding:16px 18px;color:var(--muted);font-size:.82rem">No stock entries for this warehouse yet. Pick a material above and add one.</td></tr>`;
+  }
+  async function pkgAddStock() {
+    const wh = pkgCurWh();
+    const matId = document.getElementById('pkgMat')?.value;
+    const loc = (document.getElementById('pkgLoc')?.value || '').trim();
+    const uom = (document.getElementById('pkgUom')?.value || '').trim();
+    const qty = parseFloat(document.getElementById('pkgQty')?.value);
+    const brand = (document.getElementById('pkgBrand')?.value || '').trim();
     const msg = document.getElementById('pkgMsg');
     const flash = (t, ok) => { if (msg) { msg.textContent = t; msg.style.color = ok ? '#4ade80' : '#f87171'; } };
-    if (!wh) return flash('Pick a warehouse.', false);
-    if (!name) return flash('Enter a material name.', false);
-    if ((pkgMaterials || []).some(m => whEq(m.wh, wh) && (m.name || '').toLowerCase() === name.toLowerCase() && (m.brand || '').toLowerCase() === brand.toLowerCase())) return flash('That material already exists for this warehouse/brand.', false);
+    if (!matId) return flash('Pick a material (add one first, or Import from WMS).', false);
+    if (!loc) return flash('Enter a location.', false);
+    if (!uom) return flash('Enter a UOM.', false);
+    if (!(qty >= 0)) return flash('Enter a quantity.', false);
     try {
-      const r = await fetch(SB_URL + '/packaging_material', { method: 'POST', headers: { ...SB_HDR, Prefer: 'return=minimal' }, body: JSON.stringify([{ wh, name, brand: brand || null, code: code || null }]) });
+      const r = await fetch(SB_URL + '/packaging_stock', { method: 'POST', headers: { ...SB_HDR, Prefer: 'return=minimal' }, body: JSON.stringify([{ material_id: Number(matId), wh, location: loc, uom, qty, brand: brand || null }]) });
       if (!r.ok) throw new Error(String(r.status));
-      document.getElementById('pkgNewName').value = ''; document.getElementById('pkgNewBrand').value = ''; document.getElementById('pkgNewCode').value = '';
+      document.getElementById('pkgLoc').value = ''; document.getElementById('pkgUom').value = ''; document.getElementById('pkgQty').value = ''; document.getElementById('pkgBrand').value = '';
       flash('Added ✓', true); fetchPackaging();
-    } catch (e) { flash(String(e.message).includes('409') ? 'That material already exists for this warehouse.' : 'Failed to add.', false); }
-  }
-  async function pkgSaveMaterial(id, field, val) {
-    const v = field === 'name' ? String(val).trim() : (String(val).trim() || null);
-    if (field === 'name' && !v) { renderPackaging(); return; }
-    try { await fetch(SB_URL + '/packaging_material?id=eq.' + id, { method: 'PATCH', headers: { ...SB_HDR, Prefer: 'return=minimal' }, body: JSON.stringify({ [field]: v, updated_at: new Date().toISOString() }) }); const m = pkgMaterials.find(x => x.id === id); if (m) m[field] = v; } catch (e) {}
-  }
-  async function pkgDeleteMaterial(id) {
-    if (!confirm('Delete this material and all its stock lines?')) return;
-    try { await fetch(SB_URL + '/packaging_material?id=eq.' + id, { method: 'DELETE', headers: SB_HDR }); } catch (e) {}
-    fetchPackaging();
-  }
-  async function pkgAddLine(materialId) {
-    const m = pkgMaterials.find(x => x.id === materialId); if (!m) return;
-    const loc = (document.getElementById('pkgLoc_' + materialId)?.value || '').trim();
-    const uom = (document.getElementById('pkgUom_' + materialId)?.value || '').trim();
-    const qty = parseFloat(document.getElementById('pkgQty_' + materialId)?.value);
-    if (!loc || !uom || !(qty >= 0)) return;
-    try { await fetch(SB_URL + '/packaging_stock', { method: 'POST', headers: { ...SB_HDR, Prefer: 'return=minimal' }, body: JSON.stringify([{ material_id: materialId, wh: m.wh, location: loc, uom, qty }]) }); } catch (e) {}
-    fetchPackaging();
+    } catch (e) { flash('Failed to add stock entry.', false); }
   }
   async function pkgSaveLine(id, field, val) {
     let v = val;
-    if (field === 'qty') { v = parseFloat(val); if (!(v >= 0)) { renderPackaging(); return; } }
-    else { v = String(val).trim(); if (!v) { renderPackaging(); return; } }
+    if (field === 'qty') { v = parseFloat(val); if (!(v >= 0)) { renderPkgStock(); return; } }
+    else if (field === 'location' || field === 'uom') { v = String(val).trim(); if (!v) { renderPkgStock(); return; } }
+    else { v = String(val).trim() || null; }   // brand may be cleared
     try { await fetch(SB_URL + '/packaging_stock?id=eq.' + id, { method: 'PATCH', headers: { ...SB_HDR, Prefer: 'return=minimal' }, body: JSON.stringify({ [field]: v, updated_at: new Date().toISOString() }) }); const s = pkgStock.find(x => x.id === id); if (s) s[field] = v; } catch (e) {}
-    if (field === 'qty' || field === 'uom') renderPackaging();
   }
   async function pkgDeleteLine(id) {
     try { await fetch(SB_URL + '/packaging_stock?id=eq.' + id, { method: 'DELETE', headers: SB_HDR }); } catch (e) {}
     fetchPackaging();
+  }
+  // ── Add material to the catalog (modal) — feeds the material dropdown ──
+  function pkgOpenMaterialModal() {
+    pkgFillWhSelect('pkgNewWh');
+    const el = document.getElementById('pkgNewWh'); if (el) { const cur = pkgCurWh(); if ([...el.options].some(o => o.value === cur)) el.value = cur; }
+    const m = document.getElementById('pkgModalMsg'); if (m) m.textContent = '';
+    const md = document.getElementById('pkgMatModal'); if (md) md.style.display = 'flex';
+    setTimeout(() => document.getElementById('pkgNewName')?.focus(), 30);
+  }
+  function pkgCloseMaterialModal() { const md = document.getElementById('pkgMatModal'); if (md) md.style.display = 'none'; }
+  async function pkgSaveNewMaterial() {
+    const wh = (document.getElementById('pkgNewWh')?.value || '');
+    const name = (document.getElementById('pkgNewName')?.value || '').trim();
+    const code = (document.getElementById('pkgNewCode')?.value || '').trim();
+    const msg = document.getElementById('pkgModalMsg');
+    const flash = (t, ok) => { if (msg) { msg.textContent = t; msg.style.color = ok ? '#4ade80' : '#f87171'; } };
+    if (!wh) return flash('Pick a warehouse.', false);
+    if (!name) return flash('Enter a material name.', false);
+    if ((pkgMaterials || []).some(m => whEq(m.wh, wh) && (m.name || '').toLowerCase() === name.toLowerCase() && !m.wms_id)) return flash('That material already exists for this warehouse.', false);
+    try {
+      const r = await fetch(SB_URL + '/packaging_material', { method: 'POST', headers: { ...SB_HDR, Prefer: 'return=minimal' }, body: JSON.stringify([{ wh, name, code: code || null }]) });
+      if (!r.ok) throw new Error(String(r.status));
+      document.getElementById('pkgNewName').value = ''; document.getElementById('pkgNewCode').value = '';
+      flash('Saved ✓', true);
+      const whSel = document.getElementById('pkgWh'); if (whSel && [...whSel.options].some(o => o.value === wh)) whSel.value = wh;   // align so the new material shows
+      await fetchPackaging();
+      setTimeout(pkgCloseMaterialModal, 500);
+    } catch (e) { flash('Failed to save.', false); }
   }
   // Import the packaging catalog from Logiwa (via the extension). Upserts on the WMS
   // identifier so re-imports update name/code in place and keep your brand + stock lines.
