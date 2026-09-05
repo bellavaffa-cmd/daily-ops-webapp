@@ -2544,14 +2544,14 @@
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <select id="inboundWarehouse" onchange="onInboundWhChange(this.value)" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer"></select>
-        <input id="inboundSearch" oninput="renderInbound()" placeholder="Consignment #, brand" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);min-width:150px">
+        <input id="inboundSearch" oninput="renderInbound()" placeholder="ASN #, brand" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);min-width:150px">
         <button type="button" id="inboundSyncBtn" onclick="syncInboundNow(this)" title="Pull the latest inbound shipments from the Partner Hub" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--primary,#4ade80);background:var(--surface2);color:var(--text);cursor:pointer">⭳ Sync now</button>
       </div>
     </div>
     <div id="inboundKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:16px"></div>
     <div class="card" style="padding:0;overflow:hidden">
       <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.82rem"><thead><tr style="background:var(--surface2)">
-        <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Consignment #</th>
+        <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">ASN #</th>
         <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Brand</th>
         <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Warehouse</th>
         <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Status</th>
@@ -2571,14 +2571,14 @@
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <select id="vasWarehouse" onchange="onVasWhChange(this.value)" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer"></select>
-        <input id="vasSearch" oninput="renderVasRequests()" placeholder="Consignment, brand, details" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);min-width:170px">
+        <input id="vasSearch" oninput="renderVasRequests()" placeholder="ASN, brand, details" style="font-size:.78rem;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);min-width:170px">
         <button type="button" onclick="fetchVasRequests()" style="font-size:.78rem;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer">⟳ Refresh</button>
       </div>
     </div>
     <div id="vasKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:16px"></div>
     <div class="card" style="padding:0;overflow:hidden">
       <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.82rem"><thead><tr style="background:var(--surface2)">
-        <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Consignment</th>
+        <th style="text-align:left;padding:10px 18px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">ASN</th>
         <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Brand</th>
         <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Warehouse</th>
         <th style="text-align:left;padding:10px 14px;font-weight:600;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Source</th>
@@ -3776,8 +3776,8 @@
       { key: 'picking', label: 'Picking Started', count: tot.picking, color: '#93c5fd', ...mpOf('picking') },
       { key: 'picked',  label: 'Ready to Pack',   count: tot.picked,  color: '#86efac', ...mpOf('picked') },
       { key: 'packing', label: 'Packing Started', count: packingShown, color: '#c4b5fd', ...mpOf('packing') },
-      ...(errCount ? [{ key: 'error', label: 'Error', count: errCount, color: '#f87171', nonmp: 0, prioritymp: 0, mpNextday: 0, nextDay: 0 }] : []),
       { key: 'total',   label: 'Total Orders',    count: total,       color: 'var(--text)', nonmp: totNonmp, prioritymp: totPrio, mpNextday: totMpN, nextDay: totNext },
+      ...(errCount ? [{ key: 'error', label: 'Error', count: errCount, color: '#f87171', nonmp: 0, prioritymp: 0, mpNextday: 0, nextDay: 0 }] : []),
     ];
 
     // WMS deep-link options: warehouse filter + created-date range. The caller
@@ -7472,6 +7472,14 @@
   function csBrandAllowed(brand) { return !csMyBrands || csMyBrands.has(brand); }
   function onCsWarehouseChange(v) { try { localStorage.setItem('csWarehouseFilter', v); } catch (e) {} populateCsBrandSelect(); renderCustomerSuccess(); renderCsEta(); }
   function onCsBrandChange(v) { try { localStorage.setItem('csBrandFilter', v); } catch (e) {} renderCustomerSuccess(); renderCsEta(); }
+  // Best readable name for the signed-in user, for 'requested/reported by' fields:
+  // live WMS label -> instance profile name (shared devices) -> dashboard device label.
+  function currentUserName() {
+    try { if (_liveWmsLabel) return String(_liveWmsLabel); } catch (e) {}
+    try { if (_instanceProfile && _instanceProfile.name) return String(_instanceProfile.name); } catch (e) {}
+    try { if (typeof _dashDeviceLabel !== 'undefined' && _dashDeviceLabel) return String(_dashDeviceLabel); } catch (e) {}
+    return '';
+  }
   function csCurrentUid() { let c = null; try { c = localStorage.getItem('loggedInWmsId'); } catch (e) {} return (c && c.indexOf('wms:') === 0) ? c.slice(4) : null; }
   function openCsConsole() {
     const uid = csCurrentUid();
@@ -7634,7 +7642,7 @@
   }
   function renderInboundItems(id, items) {
     const el = document.getElementById('inbitems-' + id); if (!el) return;
-    if (!items.length) { el.innerHTML = '<span style="color:var(--muted)">No SKU lines on this consignment.</span>'; return; }
+    if (!items.length) { el.innerHTML = '<span style="color:var(--muted)">No SKU lines on this ASN.</span>'; return; }
     const body = items.map(it => `<tr style="border-top:1px solid var(--border)">
       <td style="padding:4px 12px 4px 0;color:var(--text);white-space:nowrap">${escHtml(it.sku || '—')}</td>
       <td style="padding:4px 12px;color:var(--text)">${escHtml(it.name || '—')}</td>
@@ -7655,7 +7663,7 @@
     const cap = s => s.charAt(0) + s.slice(1).toLowerCase();
     const catOpts = VAS_CATEGORIES.map(c => `<option value="${c}"${c === 'INBOUND' ? ' selected' : ''}>${cap(c)}</option>`).join('');
     const reqOpts = VAS_REQUESTORS.map(c => `<option value="${c}"${c === 'BRAND' ? ' selected' : ''}>${cap(c)}</option>`).join('');
-    const who = (typeof _dashDeviceLabel !== 'undefined' && _dashDeviceLabel) ? _dashDeviceLabel : '';
+    const who = currentUserName();
     const ov = document.createElement('div');
     ov.id = 'vasModal';
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
@@ -7666,7 +7674,7 @@
       <div style="font-size:1rem;font-weight:700;margin-bottom:4px">Request VAS</div>
       <div style="font-size:.76rem;color:var(--muted);margin-bottom:16px">Queues for Customer Success to create in the Partner Hub — this does <b>not</b> submit to LOCAD.</div>
       <div style="display:grid;gap:12px;font-size:.82rem">
-        <div>${lbl}Consignment</div><div style="font-weight:600">${escHtml(r.consignment_number || ('#' + r.id))} · ${escHtml(brandName(r.brand) || '')} · ${escHtml(r.wh || '')}</div></div>
+        <div>${lbl}ASN</div><div style="font-weight:600">${escHtml(r.consignment_number || ('#' + r.id))} · ${escHtml(brandName(r.brand) || '')} · ${escHtml(r.wh || '')}</div></div>
         <label style="display:block">${lbl}VAS type</div><select id="vasCat" style="${inCss}">${catOpts}</select></label>
         <label style="display:block">${lbl}Requestor</div><select id="vasReq" style="${inCss}">${reqOpts}</select></label>
         <label style="display:block">${lbl}Service</div><select id="vasDetails" onchange="onVasServiceChange()" style="${inCss}"><option value="" selected disabled>Select service…</option><option value="Labelling">Labelling</option><option value="Kitting">Kitting</option><option value="Sorting">Sorting</option><option value="Loading">Loading</option><option value="Unloading">Unloading</option><option value="Others">Others</option></select></label>
@@ -7679,6 +7687,13 @@
       </div>
     </div>`;
     document.body.appendChild(ov);
+    // The WMS label / instance profile can resolve asynchronously — top the field up
+    // if it was still unknown when the modal was built (never overwrite typing).
+    if (!who) {
+      Promise.resolve(typeof getInstanceProfile === 'function' ? getInstanceProfile() : null)
+        .then(() => { const el = document.getElementById('vasBy'); if (el && !el.value.trim()) el.value = currentUserName(); })
+        .catch(() => {});
+    }
   }
   function closeVasModal() { const m = document.getElementById('vasModal'); if (m) m.remove(); }
   const _vasLnCss = 'flex:1;min-width:0;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)';
@@ -7690,15 +7705,35 @@
     const cont = document.getElementById('vasLines'); if (!cont) return;
     if (VAS_SKU_SERVICES.includes(svc)) {
       cont.innerHTML = `<div style="color:var(--muted);font-size:.72rem;margin:2px 0 6px">SKUs &amp; quantity to ${escHtml(svc.toLowerCase())} (charged per unit)</div><div id="vasLineRows"></div><button type="button" onclick="vasAddSkuLine()" style="margin-top:2px;font-size:.75rem;padding:4px 10px;border-radius:6px;border:1px dashed var(--border);background:transparent;color:var(--text);cursor:pointer">+ Add SKU</button>`;
-      if (_vasModalSkus) { vasAddSkuLine(); }
+      // Re-fetch when a previous attempt came back empty, so a transient Partner Hub
+      // failure doesn't leave you stuck with a bare text box for the rest of the modal.
+      if (_vasModalSkus && _vasModalSkus.length) { vasAddSkuLine(); }
       else {
         const rows = document.getElementById('vasLineRows'); if (rows) rows.innerHTML = '<div style="color:var(--muted);font-size:.78rem">Loading SKUs…</div>';
-        requestInboundItems(_vasModalId).then(items => { _vasModalSkus = items || []; const rr = document.getElementById('vasLineRows'); if (rr) { rr.innerHTML = ''; vasAddSkuLine(); } });
+        requestInboundItems(_vasModalId).then(items => {
+          _vasModalSkus = items || [];
+          const rr = document.getElementById('vasLineRows'); if (!rr) return;
+          rr.innerHTML = '';
+          if (!_vasModalSkus.length) {
+            // Never block the request — fall back to free text, but say why and offer a retry.
+            const n = document.createElement('div');
+            n.style.cssText = 'color:#fbbf24;font-size:.72rem;margin-bottom:6px';
+            n.innerHTML = 'Could not load this ASN&rsquo;s SKUs from Partner Hub &mdash; type the SKU, or <a href="#" onclick="vasRetrySkus();return false" style="color:inherit">retry</a>.';
+            rr.appendChild(n);
+          }
+          vasAddSkuLine();
+        });
       }
     } else if (VAS_UOM_SERVICES.includes(svc)) {
       cont.innerHTML = `<div style="color:var(--muted);font-size:.72rem;margin:2px 0 6px">UOM &amp; quantity (charged by UOM)</div><div id="vasLineRows"></div><button type="button" onclick="vasAddUomLine()" style="margin-top:2px;font-size:.75rem;padding:4px 10px;border-radius:6px;border:1px dashed var(--border);background:transparent;color:var(--text);cursor:pointer">+ Add UOM</button>`;
       vasAddUomLine();
     } else { cont.innerHTML = ''; }
+  }
+  // Drop the cached SKU list for this ASN and try Partner Hub again.
+  function vasRetrySkus() {
+    try { if (_vasModalId != null) delete _inboundItems[_vasModalId]; } catch (e) {}
+    _vasModalSkus = null;
+    try { onVasServiceChange(); } catch (e) {}
   }
   function vasAddSkuLine() {
     const rows = document.getElementById('vasLineRows'); if (!rows) return;
@@ -7811,7 +7846,7 @@
     const dtfmt = t => { if (!t) return '—'; try { return new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (e) { return String(t).slice(0, 16); } };
     const cap = s => s ? s.charAt(0) + s.slice(1).toLowerCase() : '';
     const phUrl = r => 'https://partner.golocad.com/partnerhub/inbound/manage-inbound-shipment/' + encodeURIComponent(r.consignment_id || '');
-    const phLink = r => `<a href="${phUrl(r)}" target="_blank" rel="noopener" title="Open consignment in Partner Hub" style="font-size:.72rem;padding:3px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);text-decoration:none;white-space:nowrap">Partner Hub ↗</a>`;
+    const phLink = r => `<a href="${phUrl(r)}" target="_blank" rel="noopener" title="Open ASN in Partner Hub" style="font-size:.72rem;padding:3px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);text-decoration:none;white-space:nowrap">Partner Hub ↗</a>`;
     const vasLinesHtml = r => {
       let ls = r.lines; try { if (typeof ls === 'string') ls = JSON.parse(ls); } catch (e) { ls = null; }
       if (!Array.isArray(ls) || !ls.length) return '';
@@ -7965,7 +8000,7 @@
         ${field('Tags', tagStr)}
       </div>
       <div style="margin-top:14px">
-        <div style="font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px">SKUs in this consignment</div>
+        <div style="font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px">SKUs in this ASN</div>
         <div id="inbitems-${r.id}" style="font-size:.8rem;color:var(--muted)">${exp ? 'Loading…' : ''}</div>
       </div>
       <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
