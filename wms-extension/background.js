@@ -1,5 +1,11 @@
 // Background service worker
 
+// Supabase target, shared by every sync in this file. Several functions declare their
+// own local SB_URL/SB_KEY which simply shadow these; the ones that DON'T (syncInboundItems,
+// syncB2BNotes) used to throw a silent ReferenceError, so their tables stayed empty.
+const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co';
+const SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
+
 // Open side panel when the extension toolbar icon is clicked
 chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
@@ -453,29 +459,55 @@ async function syncInboundShipments(force) {
   if (!saveErr) { try { await fetch(`${SB_URL}/rest/v1/inbound_shipment?synced_at=lt.${encodeURIComponent(nowIso)}`, { method: 'DELETE', headers: SBH }); } catch (e) {} }
   await reportInboundStatus(!saveErr, saveErr, rows.length);
   // Warm the per-ASN SKU cache so the app reads SKUs straight from Supabase.
-  try { await syncInboundItems(40); } catch (e) { console.error('[WMS bg] inbound items:', e && e.message); }
+  try { await syncInboundItems(200); } catch (e) { console.error('[WMS bg] inbound items:', e && e.message); }
 }
 // Cache each ASN's SKU lines in Supabase (one row per consignment, items as JSONB) so the
-// app can read them in a single query instead of waiting on the extension bridge + a live
-// Partner Hub call. Fetch-once: only ASNs with no cached row yet, capped per run. A failed
-// fetch writes nothing, so it is simply retried next run.
+// app can read them in a single query instead of going through the extension bridge. This
+// is what lets a phone / any browser WITHOUT the extension still show ASN SKUs in the
+// Inbound table and the Request-VAS SKU dropdown, so it has to cover every ASN, not just
+// the ones somebody happened to open.
+//
+// Work order per run:
+//   1. ASNs with no cached row at all (newest first) — the backlog.
+//   2. ASNs still in flight whose cached row is older than REFRESH_H — received/usable
+//      quantities move while an ASN is being put away, so a fetch-once cache goes stale.
+// Terminal ASNs (completed / cancelled / rejected) are never re-fetched. A failed fetch
+// writes nothing, so it is simply retried next run. Rows for ASNs that have aged out of
+// inbound_shipment are deleted so this table stays a mirror.
+const _INB_DONE_STATUS = ['COMPLETED', 'CANCELLED', 'ASN_REJECTED'];
 async function syncInboundItems(limitPerRun) {
-  const cap = limitPerRun || 40;
+  const cap = limitPerRun || 200;
+  const REFRESH_H = 12;
   const auth = await getPartnerAuth();
   if (!auth || !auth.token) return;                       // no Partner Hub session — skip quietly
   const SBH = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY };
-  let ids = [];
+  let ids = [], ship = [], have = [];
   try {
-    const [ship, have] = await Promise.all([
-      fetch(`${SB_URL}/rest/v1/inbound_shipment?select=id&order=id.desc&limit=800`, { headers: SBH }).then(r => r.ok ? r.json() : []),
-      fetch(`${SB_URL}/rest/v1/inbound_items?select=consignment_id&limit=5000`, { headers: SBH }).then(r => r.ok ? r.json() : []),
+    [ship, have] = await Promise.all([
+      fetch(`${SB_URL}/rest/v1/inbound_shipment?select=id,status&order=id.desc&limit=5000`, { headers: SBH }).then(r => r.ok ? r.json() : []),
+      fetch(`${SB_URL}/rest/v1/inbound_items?select=consignment_id,synced_at&limit=5000`, { headers: SBH }).then(r => r.ok ? r.json() : []),
     ]);
-    const done = new Set((have || []).map(x => Number(x.consignment_id)));
-    ids = (ship || []).map(x => Number(x.id)).filter(id => id && !done.has(id)).slice(0, cap);
+    const cached = new Map((have || []).map(x => [Number(x.consignment_id), Date.parse(x.synced_at || '') || 0]));
+    const stale = Date.now() - REFRESH_H * 60 * 60 * 1000;
+    const missing = [], refresh = [];
+    (ship || []).forEach(s => {
+      const id = Number(s.id); if (!id) return;
+      if (!cached.has(id)) { missing.push(id); return; }
+      if (_INB_DONE_STATUS.includes(String(s.status || '').toUpperCase())) return;   // settled — never changes again
+      if (cached.get(id) < stale) refresh.push(id);
+    });
+    ids = missing.concat(refresh).slice(0, cap);
+    // Mirror-delete: drop cached SKUs for ASNs that have aged out of inbound_shipment.
+    const live = new Set((ship || []).map(x => Number(x.id)));
+    const gone = [...cached.keys()].filter(id => !live.has(id));
+    for (let i = 0; i < gone.length; i += 200) {
+      try { await fetch(`${SB_URL}/rest/v1/inbound_items?consignment_id=in.(${gone.slice(i, i + 200).join(',')})`, { method: 'DELETE', headers: SBH }); } catch (e) {}
+    }
   } catch (e) { return; }
   if (!ids.length) return;
   const stamp = new Date().toISOString();
   const CONC = 4;
+  let ok = 0;
   for (let i = 0; i < ids.length; i += CONC) {
     const batch = [];
     await Promise.all(ids.slice(i, i + CONC).map(async id => {
@@ -486,13 +518,15 @@ async function syncInboundItems(limitPerRun) {
     }));
     if (!batch.length) continue;
     try {
-      await fetch(`${SB_URL}/rest/v1/inbound_items?on_conflict=consignment_id`, {
+      const r = await fetch(`${SB_URL}/rest/v1/inbound_items?on_conflict=consignment_id`, {
         method: 'POST',
         headers: Object.assign({}, SBH, { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }),
         body: JSON.stringify(batch)
       });
+      if (r.ok) ok += batch.length;
     } catch (e) {}
   }
+  console.log('[WMS bg] inbound items cached:', ok, 'of', ids.length);
 }
 // On-demand SKU line items for one consignment (used by the app's expand panel, live — not stored).
 async function getInboundItems(id) {
@@ -1185,6 +1219,10 @@ async function performSync(isB2B) {
     // broadcast so the dashboard is never held up by it, and never fails the sync.
     if (heavyCycle) {
       try { await syncB2BNotes(60); } catch (e) { console.error('[WMS bg] b2b notes error:', e && e.message); }
+      // 5e. Per-ASN SKU cache. Also warmed at the end of the (2-hourly) inbound sync, but
+      // driven from here too so the backlog clears in hours rather than days — devices
+      // without the extension can only see ASN SKUs once this table is filled.
+      try { await syncInboundItems(200); } catch (e) { console.error('[WMS bg] inbound items error:', e && e.message); }
     }
 
     // 5d. Brand × type (single/multi) open-order snapshot — hourly, collapsed

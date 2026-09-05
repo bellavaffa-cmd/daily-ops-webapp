@@ -7627,11 +7627,33 @@
   }
   // A consignment's SKU lines. Order of preference:
   //   1. in-memory / sessionStorage cache
-  //   2. Supabase `inbound_items` (the extension warms this) — one fast query, and it
-  //      works even without the extension installed
+  //   2. Supabase `inbound_items` (the extension warms this for every ASN) — one fast
+  //      query, and it is the ONLY path that works on a phone / any browser without the
+  //      extension, so it is tried before the bridge and its answer is always trusted
   //   3. the extension bridge -> live Partner Hub call (slowest; wakes the service worker)
   // Resolves to the items array, or null if all three come up empty.
+  //
+  // An existing Supabase row with an EMPTY items array is a real answer ("this ASN has no
+  // lines"), not a miss — returning it stops us falling through to a bridge that isn't
+  // there and sitting on a spinner.
   const _inbInflight = {};                              // id -> Promise (dedupe concurrent asks)
+  // One query for many ASNs — used by the prefetch so opening the Inbound tab costs a
+  // single request instead of one per row. Returns the ids that came back.
+  async function _fetchInboundItemsBatch(ids) {
+    const found = [];
+    for (let i = 0; i < ids.length; i += 100) {
+      const chunk = ids.slice(i, i + 100).map(x => encodeURIComponent(x));
+      try {
+        const rows = await fetch(SB_URL + '/inbound_items?consignment_id=in.(' + chunk.join(',') + ')&select=consignment_id,items', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
+        (rows || []).forEach(row => {
+          if (!Array.isArray(row.items)) return;
+          _cacheInboundItems(row.consignment_id, row.items);
+          found.push(String(row.consignment_id));
+        });
+      } catch (e) {}
+    }
+    return found;
+  }
   function requestInboundItems(id) {
     if (_inboundItems[id]) return Promise.resolve(_inboundItems[id]);
     if (_inbInflight[id]) return _inbInflight[id];
@@ -7639,7 +7661,7 @@
       try {
         const rows = await fetch(SB_URL + '/inbound_items?consignment_id=eq.' + encodeURIComponent(id) + '&select=items&limit=1', { headers: SB_HDR }).then(r => r.ok ? r.json() : []);
         const items = rows && rows[0] && rows[0].items;
-        if (Array.isArray(items) && items.length) { _cacheInboundItems(id, items); return items; }
+        if (Array.isArray(items)) { _cacheInboundItems(id, items); return items; }
       } catch (e) {}
       return await _requestInboundItemsLive(id);
     })().finally(() => { delete _inbInflight[id]; });
@@ -7647,7 +7669,10 @@
     return p;
   }
   // Live fetch via the extension bridge (Partner Hub token lives in the extension).
+  // With no extension nobody ever answers, so don't post into the void and wait 15s —
+  // give up immediately and let the caller show "not synced yet".
   function _requestInboundItemsLive(id) {
+    if (!_extInstalled) return Promise.resolve(null);
     return new Promise((resolve) => {
       const reqId = 'itm-' + id + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
       let done = false;
@@ -7665,12 +7690,18 @@
   // modal is instant. Low concurrency, cached/in-flight ids skipped, failures ignored.
   let _inbPrefetchT = null;
   function prefetchInboundItems(ids) {
-    const need = [...new Set((ids || []).filter(x => x != null))].filter(x => !_inboundItems[x] && !_inbInflight[x]).slice(0, 24);
+    const need = [...new Set((ids || []).filter(x => x != null).map(String))].filter(x => !_inboundItems[x] && !_inbInflight[x]).slice(0, 60);
     if (!need.length) return;
     clearTimeout(_inbPrefetchT);
     _inbPrefetchT = setTimeout(async () => {
-      for (let i = 0; i < need.length; i += 3) {
-        await Promise.all(need.slice(i, i + 3).map(x => requestInboundItems(x).catch(() => null)));
+      // One batched Supabase read covers the whole page of ASNs — this is the path a
+      // phone without the extension takes, so it has to be the cheap one.
+      let got = [];
+      try { got = await _fetchInboundItemsBatch(need); } catch (e) {}
+      if (!_extInstalled) return;                       // nothing else to try
+      const rest = need.filter(x => got.indexOf(x) === -1).slice(0, 24);
+      for (let i = 0; i < rest.length; i += 3) {
+        await Promise.all(rest.slice(i, i + 3).map(x => requestInboundItems(x).catch(() => null)));
       }
     }, 600);                                            // let the table settle first
   }
@@ -7707,7 +7738,9 @@
     requestInboundItems(id).then(items => {
       const c = document.getElementById('inbitems-' + id); if (!c) return;
       if (items) renderInboundItems(id, items);
-      else c.innerHTML = '<span style="color:var(--muted)">Couldn\'t load SKUs — needs the WMS extension (v3.33+) with a Partner Hub session.</span>';
+      else c.innerHTML = '<span style="color:var(--muted)">' + (_extInstalled
+        ? 'Couldn\'t load SKUs — check the extension still has a Partner Hub session.'
+        : 'SKUs for this ASN haven\'t synced yet. They show up here automatically once someone running the WMS extension syncs — no extension needed on this device.') + '</span>';
     });
   }
   function renderInboundItems(id, items) {
@@ -7799,7 +7832,10 @@
             // Never block the request — fall back to free text, but say why and offer a retry.
             const n = document.createElement('div');
             n.style.cssText = 'color:#fbbf24;font-size:.72rem;margin-bottom:6px';
-            n.innerHTML = 'Could not load this ASN&rsquo;s SKUs from Partner Hub &mdash; type the SKU, or <a href="#" onclick="vasRetrySkus();return false" style="color:inherit">retry</a>.';
+            n.innerHTML = (_extInstalled
+              ? 'Could not load this ASN&rsquo;s SKUs from Partner Hub &mdash; type the SKU, or '
+              : 'This ASN&rsquo;s SKUs haven&rsquo;t synced yet &mdash; type the SKU, or ')
+              + '<a href="#" onclick="vasRetrySkus();return false" style="color:inherit">retry</a>.';
             rr.appendChild(n);
           }
           vasAddSkuLine();
