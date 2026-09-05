@@ -452,6 +452,47 @@ async function syncInboundShipments(force) {
   for (let i = 0; i < rows.length; i += 500) { try { const sr = await fetch(`${SB_URL}/rest/v1/inbound_shipment?on_conflict=id`, { method: 'POST', headers: Object.assign({}, SBH, { Prefer: 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(rows.slice(i, i + 500)) }); if (!sr.ok) saveErr = 'DB save failed (HTTP ' + sr.status + ')'; } catch (e) { saveErr = 'DB save failed: ' + (e && e.message); } }
   if (!saveErr) { try { await fetch(`${SB_URL}/rest/v1/inbound_shipment?synced_at=lt.${encodeURIComponent(nowIso)}`, { method: 'DELETE', headers: SBH }); } catch (e) {} }
   await reportInboundStatus(!saveErr, saveErr, rows.length);
+  // Warm the per-ASN SKU cache so the app reads SKUs straight from Supabase.
+  try { await syncInboundItems(40); } catch (e) { console.error('[WMS bg] inbound items:', e && e.message); }
+}
+// Cache each ASN's SKU lines in Supabase (one row per consignment, items as JSONB) so the
+// app can read them in a single query instead of waiting on the extension bridge + a live
+// Partner Hub call. Fetch-once: only ASNs with no cached row yet, capped per run. A failed
+// fetch writes nothing, so it is simply retried next run.
+async function syncInboundItems(limitPerRun) {
+  const cap = limitPerRun || 40;
+  const auth = await getPartnerAuth();
+  if (!auth || !auth.token) return;                       // no Partner Hub session — skip quietly
+  const SBH = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY };
+  let ids = [];
+  try {
+    const [ship, have] = await Promise.all([
+      fetch(`${SB_URL}/rest/v1/inbound_shipment?select=id&order=id.desc&limit=800`, { headers: SBH }).then(r => r.ok ? r.json() : []),
+      fetch(`${SB_URL}/rest/v1/inbound_items?select=consignment_id&limit=5000`, { headers: SBH }).then(r => r.ok ? r.json() : []),
+    ]);
+    const done = new Set((have || []).map(x => Number(x.consignment_id)));
+    ids = (ship || []).map(x => Number(x.id)).filter(id => id && !done.has(id)).slice(0, cap);
+  } catch (e) { return; }
+  if (!ids.length) return;
+  const stamp = new Date().toISOString();
+  const CONC = 4;
+  for (let i = 0; i < ids.length; i += CONC) {
+    const batch = [];
+    await Promise.all(ids.slice(i, i + CONC).map(async id => {
+      try {
+        const items = await getInboundItems(id);
+        batch.push({ consignment_id: id, items: items || [], item_count: (items || []).length, synced_at: stamp });
+      } catch (e) { /* leave uncached — retried next run */ }
+    }));
+    if (!batch.length) continue;
+    try {
+      await fetch(`${SB_URL}/rest/v1/inbound_items?on_conflict=consignment_id`, {
+        method: 'POST',
+        headers: Object.assign({}, SBH, { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }),
+        body: JSON.stringify(batch)
+      });
+    } catch (e) {}
+  }
 }
 // On-demand SKU line items for one consignment (used by the app's expand panel, live — not stored).
 async function getInboundItems(id) {
