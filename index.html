@@ -1303,13 +1303,14 @@
     /* Narrow viewports (phones, the Chrome side panel ~320-400px): the top bar is a
        fixed-height, non-wrapping flex row, so without this the right-hand controls
        simply overflow past the edge and become unreachable. Shed the least important
-       items first, then tighten what is left, so Sync + Settings always stay visible. */
+       items first, then tighten what is left. Sync, Settings and "open in new tab"
+       ALWAYS stay visible: the Chrome side panel has no address bar, so that button is
+       the only way to pop the app out into a full tab. */
     .topbar .tb-actions > * { flex: none; }
     .wh-combo-btn { min-width: 0; }
     @media (max-width: 620px) {
       .topbar { gap: 6px; padding: 0 10px; }
       .topbar .last-sync { display: none; }        /* also shown in the sidebar footer */
-      .topbar .tb-newtab { display: none; }        /* the browser can already open a new tab */
       .topbar .wh-combo-btn { max-width: 132px !important; }
     }
     @media (max-width: 420px) {
