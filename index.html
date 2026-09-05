@@ -7874,7 +7874,7 @@
       const line = rows.lastElementChild; if (!line) return;
       const sEl = line.querySelector('.vas-line-sku'); if (sEl) sEl.value = sku;
       const qEl = line.querySelector('.vas-line-qty');
-      if (qEl && it.qty != null && Number(it.qty) > 0) qEl.value = Number(it.qty);
+      if (qEl && it.qty != null && Number(it.qty) > 0) { qEl.value = Number(it.qty); qEl.dataset.auto = String(Number(it.qty)); }
     });
   }
   // Drop the cached SKU list for this ASN and try Partner Hub again.
@@ -7892,14 +7892,26 @@
     const rows = document.getElementById('vasLineRows'); if (!rows) return;
     let skuField;
     if (_vasModalSkus && _vasModalSkus.length) {
-      const opts = _vasModalSkus.map(it => `<option value="${escHtml(it.sku || '')}" data-name="${escHtml(it.name || '')}">${escHtml((it.sku || '') + (it.name ? ' — ' + it.name : ''))}</option>`).join('');
-      skuField = `<select class="vas-line-sku" style="${_vasLnCss}"><option value="" selected disabled>Select SKU…</option>${opts}</select>`;
+      const opts = _vasModalSkus.map(it => `<option value="${escHtml(it.sku || '')}" data-name="${escHtml(it.name || '')}" data-qty="${it.qty != null && Number(it.qty) > 0 ? Number(it.qty) : ''}">${escHtml((it.sku || '') + (it.name ? ' — ' + it.name : ''))}</option>`).join('');
+      skuField = `<select class="vas-line-sku" onchange="vasSkuLineQty(this)" style="${_vasLnCss}"><option value="" selected disabled>Select SKU…</option>${opts}</select>`;
     } else {
       skuField = `<input class="vas-line-sku" placeholder="SKU" style="${_vasLnCss}">`;
     }
     const div = document.createElement('div'); div.className = 'vas-line'; div.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:center';
     div.innerHTML = `${skuField}<input class="vas-line-qty" type="number" min="0" placeholder="Qty" style="${_vasQtyCss}">${_vasXBtn}`;
     rows.appendChild(div);
+  }
+  // Picking a SKU fills in that SKU's ASN quantity, so the usual request (do the whole
+  // line) needs no typing. Only ever overwrites a value we put there ourselves — once the
+  // qty has been edited by hand it is left alone, even if the SKU is changed again.
+  function vasSkuLineQty(sel) {
+    const line = sel.closest('.vas-line'); if (!line) return;
+    const qty = line.querySelector('.vas-line-qty'); if (!qty) return;
+    if (qty.value !== '' && qty.value !== (qty.dataset.auto || '')) return;      // hand-edited — leave it
+    const opt = sel.selectedOptions && sel.selectedOptions[0];
+    const asnQty = opt ? (opt.dataset.qty || '') : '';
+    qty.value = asnQty;
+    if (asnQty) qty.dataset.auto = asnQty; else delete qty.dataset.auto;
   }
   function vasAddUomLine() {
     const rows = document.getElementById('vasLineRows'); if (!rows) return;
