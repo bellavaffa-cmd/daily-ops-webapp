@@ -7704,10 +7704,10 @@
     const svc = document.getElementById('vasDetails')?.value || '';
     const cont = document.getElementById('vasLines'); if (!cont) return;
     if (VAS_SKU_SERVICES.includes(svc)) {
-      cont.innerHTML = `<div style="color:var(--muted);font-size:.72rem;margin:2px 0 6px">SKUs &amp; quantity to ${escHtml(svc.toLowerCase())} (charged per unit)</div><div id="vasLineRows"></div><button type="button" onclick="vasAddSkuLine()" style="margin-top:2px;font-size:.75rem;padding:4px 10px;border-radius:6px;border:1px dashed var(--border);background:transparent;color:var(--text);cursor:pointer">+ Add SKU</button>`;
+      cont.innerHTML = `<div style="color:var(--muted);font-size:.72rem;margin:2px 0 6px">SKUs &amp; quantity to ${escHtml(svc.toLowerCase())} (charged per unit)</div><div id="vasLineRows"></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px"><button type="button" onclick="vasAddSkuLine()" style="font-size:.75rem;padding:4px 10px;border-radius:6px;border:1px dashed var(--border);background:transparent;color:var(--text);cursor:pointer">+ Add SKU</button><button type="button" id="vasAddAllBtn" onclick="vasAddAllSkuLines()" title="Add every SKU on this ASN, quantities prefilled" style="display:none;font-size:.75rem;padding:4px 10px;border-radius:6px;border:1px dashed var(--primary,#4ade80);background:transparent;color:var(--primary,#4ade80);cursor:pointer">+ Add all SKUs</button></div>`;
       // Re-fetch when a previous attempt came back empty, so a transient Partner Hub
       // failure doesn't leave you stuck with a bare text box for the rest of the modal.
-      if (_vasModalSkus && _vasModalSkus.length) { vasAddSkuLine(); }
+      if (_vasModalSkus && _vasModalSkus.length) { vasAddSkuLine(); _vasSyncAddAllBtn(); }
       else {
         const rows = document.getElementById('vasLineRows'); if (rows) rows.innerHTML = '<div style="color:var(--muted);font-size:.78rem">Loading SKUs…</div>';
         requestInboundItems(_vasModalId).then(items => {
@@ -7722,12 +7722,43 @@
             rr.appendChild(n);
           }
           vasAddSkuLine();
+          _vasSyncAddAllBtn();
         });
       }
     } else if (VAS_UOM_SERVICES.includes(svc)) {
       cont.innerHTML = `<div style="color:var(--muted);font-size:.72rem;margin:2px 0 6px">UOM &amp; quantity (charged by UOM)</div><div id="vasLineRows"></div><button type="button" onclick="vasAddUomLine()" style="margin-top:2px;font-size:.75rem;padding:4px 10px;border-radius:6px;border:1px dashed var(--border);background:transparent;color:var(--text);cursor:pointer">+ Add UOM</button>`;
       vasAddUomLine();
     } else { cont.innerHTML = ''; }
+  }
+  // The "+ Add all SKUs" button only makes sense once the ASN's SKU list has loaded.
+  function _vasSyncAddAllBtn() {
+    const b = document.getElementById('vasAddAllBtn'); if (!b) return;
+    const n = (_vasModalSkus || []).length;
+    b.style.display = n ? '' : 'none';
+    b.textContent = '+ Add all ' + n + ' SKU' + (n === 1 ? '' : 's');
+  }
+  // One line per SKU on the ASN, quantity prefilled from the ASN so the lines actually
+  // submit (collectVasLines drops any line with qty <= 0). Skips SKUs already added.
+  function vasAddAllSkuLines() {
+    const rows = document.getElementById('vasLineRows'); if (!rows) return;
+    if (!(_vasModalSkus && _vasModalSkus.length)) return;
+    const have = new Set([...rows.querySelectorAll('.vas-line-sku')].map(el => String(el.value || '').trim()).filter(Boolean));
+    // Clear any blank starter row so we don't leave an empty line behind.
+    [...rows.querySelectorAll('.vas-line')].forEach(r => {
+      const sku = String(r.querySelector('.vas-line-sku')?.value || '').trim();
+      const qty = String(r.querySelector('.vas-line-qty')?.value || '').trim();
+      if (!sku && !qty) r.remove();
+    });
+    _vasModalSkus.forEach(it => {
+      const sku = String((it && it.sku) || '').trim();
+      if (!sku || have.has(sku)) return;
+      have.add(sku);
+      vasAddSkuLine();
+      const line = rows.lastElementChild; if (!line) return;
+      const sEl = line.querySelector('.vas-line-sku'); if (sEl) sEl.value = sku;
+      const qEl = line.querySelector('.vas-line-qty');
+      if (qEl && it.qty != null && Number(it.qty) > 0) qEl.value = Number(it.qty);
+    });
   }
   // Drop the cached SKU list for this ASN and try Partner Hub again.
   function vasRetrySkus() {
