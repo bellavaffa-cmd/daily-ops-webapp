@@ -775,16 +775,31 @@ async function performSync(isB2B) {
     // Orders are the critical path (awaited first so B2C is reported early);
     // perf/jobs failures degrade to null without failing the sync.
     const LG_API = 'https://mywmsquery.logiwa.com';
-    const fetchAllPages = async (makeUrl, body, concurrency = 4, pageSize = 1000) => {
+    // Logiwa pages an UNORDERED scan (we send sorts: []), so page N can repeat rows that
+    // page M already gave us AND silently skip others — measured at ~109 of 4,998 rows on
+    // the 30-day productivity report, i.e. ~2% of user-days simply never arrived. Dedupe
+    // downstream hides the repeats but cannot recover the misses.
+    //
+    // `oneShot` avoids the problem instead of patching it: once page 0 tells us the true
+    // totalCount, re-ask for the whole set as a single page. Verified the API honours a
+    // page size well above 1000 (4,998 rows in one request, all distinct). If the server
+    // ever caps the size we just fall through to the old paged loop.
+    const fetchAllPages = async (makeUrl, body, concurrency = 4, pageSize = 1000, oneShot = false) => {
       const headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
-      const getPage = async (p) => {
-        const r = await fetch(makeUrl(p), { method: 'POST', headers, body });
+      const getPage = async (p, size) => {
+        const r = await fetch(makeUrl(p, size || pageSize), { method: 'POST', headers, body });
         if (!r.ok) throw new Error('Logiwa API error ' + r.status);
         return r.json();
       };
       const first = await getPage(0);
       let out = first.data || [];
       const total = first.totalCount || out.length;
+      if (oneShot && total > out.length) {
+        try {
+          const all = await getPage(0, total + 100);
+          if ((all.data || []).length >= total) return all.data;
+        } catch (e) { /* fall through to paging */ }
+      }
       const pages = Math.max(1, Math.ceil(total / pageSize));
       for (let s = 1; s < pages; s += concurrency) {
         const batch = [];
@@ -822,9 +837,9 @@ async function performSync(isB2B) {
       heavyCycle = (n % 3 === 1);
     } catch (e) { /* default: fetch */ }
 
-    const ordersP = fetchAllPages(p => `${LG_API}/api/shipmentorder/list/unshipped/i/${p}/s/1000`, '{}');
+    const ordersP = fetchAllPages((p, n) => `${LG_API}/api/shipmentorder/list/unshipped/i/${p}/s/${n}`, '{}');
     const perfP   = heavyCycle
-      ? fetchAllPages(p => `${LG_API}/api/warehousetask/userperformance/last/30/i/${p}/s/1000`, perfBody)
+      ? fetchAllPages((p, n) => `${LG_API}/api/warehousetask/userperformance/last/30/i/${p}/s/${n}`, perfBody, 4, 1000, true)
           .catch(e => { console.error('[WMS bg] userperformance fetch:', e.message); return null; })
       : Promise.resolve(null);
     const jobsP   = heavyCycle
