@@ -1083,8 +1083,22 @@ async function performSync(isB2B) {
     // 5. Upsert to Supabase — all tables every sync so nothing lags.
     const SB_URL = 'https://hmpkjmnxoidesnnoecfm.supabase.co';
     const SB_KEY = 'sb_publishable_00pJSeJ3cKuxqwelQbaKWg_uJe7XPtP';
+    // Postgres rejects the WHOLE command with 21000 ("cannot affect row a second time")
+    // if two rows in one upsert share the conflict key, and Logiwa's paginated lists are
+    // requested with sorts:[] — an unordered scan, so a row can legitimately come back on
+    // two different pages. Collapse duplicates here, last one wins, which is exactly what
+    // resolution=merge-duplicates would have done had Postgres allowed it. Doing it inside
+    // the helper means every table gets the protection, not just the ones we've been bitten
+    // on (aging_orders, b2c_orders, user_performance...).
     const sbUpsert = async (table, rowsToSend, conflict) => {
       if (!rowsToSend.length) return;
+      const keyCols = conflict.split(',').map(c => c.trim()).filter(Boolean);
+      const byKey = new Map();
+      for (const row of rowsToSend) byKey.set(keyCols.map(c => String(row[c])).join(''), row);
+      if (byKey.size !== rowsToSend.length) {
+        console.warn(`[WMS bg] ${table}: collapsed ${rowsToSend.length - byKey.size} duplicate (${conflict}) row(s)`);
+        rowsToSend = [...byKey.values()];
+      }
       const r = await fetch(`${SB_URL}/rest/v1/${table}?on_conflict=${conflict}`, {
         method: 'POST',
         headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' },
@@ -1283,7 +1297,22 @@ async function performSync(isB2B) {
         received_lp:      u.receivedLPQuantity   || 0,
         updated_at:       new Date().toISOString()
       })).filter(u => u.warehouse_code && u.executed_by != null && u.activity_date);
-      await sbUpsert('user_performance', perfRows, 'warehouse_code,executed_by,activity_date');
+      // These are cumulative day-to-date counters and the pages are fetched concurrently
+      // while people are still picking, so a row repeated across pages can carry two
+      // DIFFERENT readings. Keep the highest per metric rather than whichever landed last,
+      // so a stale early page can't walk somebody's numbers backwards.
+      const perfByKey = new Map();
+      const PERF_METRICS = ['picked_orders', 'packed_orders', 'picked_items', 'packed_items', 'received_items', 'received_lp'];
+      for (const row of perfRows) {
+        const k = row.warehouse_code + '' + row.executed_by + '' + row.activity_date;
+        const prev = perfByKey.get(k);
+        if (!prev) { perfByKey.set(k, row); continue; }
+        PERF_METRICS.forEach(m => { prev[m] = Math.max(prev[m] || 0, row[m] || 0); });
+        if (!prev.executed_by_name && row.executed_by_name) prev.executed_by_name = row.executed_by_name;
+      }
+      const perfMerged = [...perfByKey.values()];
+      if (perfMerged.length !== perfRows.length) console.warn('[WMS bg] user_performance: merged', perfRows.length - perfMerged.length, 'duplicate user-day row(s)');
+      await sbUpsert('user_performance', perfMerged, 'warehouse_code,executed_by,activity_date');
       // Retention: keep ~1 month.
       const upCutoff = new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       await fetch(`${SB_URL}/rest/v1/user_performance?activity_date=lt.${upCutoff}`, {
@@ -1295,10 +1324,10 @@ async function performSync(isB2B) {
       // depletion rate = this total minus the total ~1h ago. Plain insert (not
       // upsert) — each sync is a new point in the history.
       try {
-        const todayStr = perfRows.reduce((m, r) => (r.activity_date > m ? r.activity_date : m), '');
+        const todayStr = perfMerged.reduce((m, r) => (r.activity_date > m ? r.activity_date : m), '');
         if (todayStr) {
           const snapWh = {};
-          for (const r of perfRows) {
+          for (const r of perfMerged) {          // merged, not raw — this loop SUMS, so page repeats would inflate it
             if (r.activity_date !== todayStr) continue;
             const s = (snapWh[r.warehouse_code] = snapWh[r.warehouse_code] ||
               { warehouse_code: r.warehouse_code, activity_date: todayStr, picked_orders: 0, packed_orders: 0, picked_items: 0, packed_items: 0 });
@@ -1327,7 +1356,7 @@ async function performSync(isB2B) {
           // 6c. Per-USER snapshot of today's cumulative totals — same timestamp as
           // the per-warehouse one. Lets the app show each user's last-hour pick/pack
           // rate (now minus ~1h ago) and an hour-by-hour series for today.
-          const userSnap = perfRows.filter(r => r.activity_date === todayStr).map(r => ({
+          const userSnap = perfMerged.filter(r => r.activity_date === todayStr).map(r => ({
             executed_by: r.executed_by, executed_by_name: r.executed_by_name,
             warehouse_code: r.warehouse_code, activity_date: todayStr,
             picked_orders: r.picked_orders, packed_orders: r.packed_orders,
