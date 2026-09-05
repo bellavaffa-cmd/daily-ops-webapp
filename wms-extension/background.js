@@ -481,11 +481,25 @@ async function syncInboundItems(limitPerRun) {
   const auth = await getPartnerAuth();
   if (!auth || !auth.token) return;                       // no Partner Hub session — skip quietly
   const SBH = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY };
+  // PostgREST caps a response at db_max_rows (1000 here) NO MATTER what limit you ask for,
+  // so both of these must be paged. Getting it wrong is not just an incomplete backlog: the
+  // mirror-delete below compares cached ids against the shipment list, and a truncated
+  // shipment list makes perfectly good rows look like they aged out.
+  const sbPage = async (path) => {
+    const out = [];
+    for (let from = 0; ; from += 1000) {
+      const r = await fetch(`${SB_URL}/rest/v1/${path}`, { headers: Object.assign({}, SBH, { Range: `${from}-${from + 999}`, 'Range-Unit': 'items' }) });
+      if (!r.ok) throw new Error('inbound_items paging ' + r.status);
+      const chunk = await r.json();
+      out.push(...chunk);
+      if (chunk.length < 1000) return out;
+    }
+  };
   let ids = [], ship = [], have = [];
   try {
     [ship, have] = await Promise.all([
-      fetch(`${SB_URL}/rest/v1/inbound_shipment?select=id,status&order=id.desc&limit=5000`, { headers: SBH }).then(r => r.ok ? r.json() : []),
-      fetch(`${SB_URL}/rest/v1/inbound_items?select=consignment_id,synced_at&limit=5000`, { headers: SBH }).then(r => r.ok ? r.json() : []),
+      sbPage('inbound_shipment?select=id,status&order=id.desc'),
+      sbPage('inbound_items?select=consignment_id,synced_at&order=consignment_id.asc'),
     ]);
     const cached = new Map((have || []).map(x => [Number(x.consignment_id), Date.parse(x.synced_at || '') || 0]));
     const stale = Date.now() - REFRESH_H * 60 * 60 * 1000;
